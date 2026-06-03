@@ -131,6 +131,29 @@ Presets: `standard`, `half_ppr` (default), `ppr`. Negative plays use Yahoo
 defaults: interception thrown −1, fumble lost −2 (Yahoo has no QB sack penalty;
 sacks score +1 on defense).
 
+## Active pool, rookies & coaching
+
+The draft pool is limited to players on a current NFL roster. Load it (and refresh
+each player's current team) from a season roster:
+
+```bash
+python -m fantasy_football.cli load-active --year 2026
+```
+
+Once loaded, valuation auto-restricts to active players (drops departed/retired
+players) and includes active players with no stats yet — **rookies** — as $1
+placeholders flagged `(R)`, to be tiered by hand or via the H2H game.
+
+Player cards/board also show **current team** and **coaching staff**. Head coaches
+come from nflverse's schedule data; offensive coordinator / play-caller aren't in
+nflverse, so fill them in a CSV:
+
+```bash
+python -m fantasy_football.cli coaching-template --out coaching.csv  # HCs prefilled
+# fill offensive_coordinator / play_caller columns, then:
+python -m fantasy_football.cli load-coaching --file coaching.csv
+```
+
 ## Auction values
 
 `src/fantasy_football/valuation.py` turns historical scoring into auction dollar
