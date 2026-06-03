@@ -91,11 +91,12 @@ def build_board(
 #: Default pick-game depth per position — roughly the draftable universe for a
 #: 12-team league plus a buffer. Trims the long tail of players unlikely to be
 #: drafted so you never have to weigh them head-to-head.
-DEFAULT_WEBAPP_DEPTH = {"QB": 24, "RB": 48, "WR": 54, "TE": 24, "K": 16, "DST": 16}
+DEFAULT_WEBAPP_DEPTH = {"QB": 24, "RB": 48, "WR": 54, "TE": 24, "K": 16, "DST": 32}
 
 #: Positions limited to one per team (NFL starters) rather than a depth cap.
-#: QB backups don't get drafted, so we keep only each team's projected starter.
-STARTER_POSITIONS = {"QB"}
+#: QB/K backups don't get drafted, so we keep only each team's starter. DST is
+#: left uncapped (32) so every defense is ranked.
+STARTER_POSITIONS = {"QB", "K"}
 
 
 def build_webapp_data(
