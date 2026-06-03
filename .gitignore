@@ -16,6 +16,10 @@ env/
 *.sqlite3
 data/*.db
 
+# Generated draft artifacts
+*.xlsx
+tiers.csv
+
 # Environment
 .env
 

@@ -176,6 +176,21 @@ Picks are stored (`comparisons`) and ratings persist (`user_ratings`), so the
 game keeps sharpening tiers across sessions. Matchups favour similarly-rated
 players within a position — where your pick actually moves the order.
 
+## Draft-board export (live in-draft pricing)
+
+Export a tiered cheat sheet as an Excel workbook (`src/fantasy_football/export.py`):
+
+```bash
+pip install -e ".[export]"
+python -m fantasy_football.cli cheatsheet --out draft_board.xlsx
+```
+
+The **Draft Board** sheet shows recommended prices and reacts live: mark a player
+`x` in *Drafted* and enter what they went for in *Paid*, and the remaining
+players' recommended prices re-adjust for auction inflation (more money left →
+prices rise; overpays → prices fall). Per-position sheets give the static tier
+view (rank-in-position, rank-in-tier, value, the three bases), banded by tier.
+
 ## Roadmap
 
 - [x] Data ingestion from nflverse (teams, games, players, weekly + team stats)

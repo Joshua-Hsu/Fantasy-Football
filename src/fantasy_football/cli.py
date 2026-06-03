@@ -205,6 +205,21 @@ def _cmd_values(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_cheatsheet(args: argparse.Namespace) -> int:
+    from .export import write_cheatsheet
+    from .scoring import PRESETS
+    from .valuation import LeagueConfig
+
+    config = LeagueConfig(teams=args.teams, budget=args.budget)
+    with _open_session(args) as session:
+        path = write_cheatsheet(
+            session, args.out, year=args.year, config=config,
+            rules=PRESETS[args.scoring], basis=args.basis,
+        )
+    print(f"Wrote tiered draft board to {path}")
+    return 0
+
+
 def _cmd_serve(args: argparse.Namespace) -> int:
     from .web import create_app
 
@@ -297,6 +312,15 @@ def build_parser() -> argparse.ArgumentParser:
     p_serve.add_argument("--host", default="127.0.0.1", help="Bind host (use 0.0.0.0 for LAN/phone)")
     p_serve.add_argument("--port", type=int, default=8000, help="Port (default 8000)")
     p_serve.set_defaults(func=_cmd_serve)
+
+    p_sheet = sub.add_parser("cheatsheet", help="Export a tiered draft board (.xlsx)")
+    p_sheet.add_argument("--out", default="draft_board.xlsx", help="Output .xlsx path")
+    p_sheet.add_argument("--year", type=int, default=None, help="Most recent season (default: latest)")
+    p_sheet.add_argument("--basis", choices=["total", "ppg", "w3yr"], default="w3yr")
+    p_sheet.add_argument("--scoring", choices=["standard", "half_ppr", "ppr"], default="half_ppr")
+    p_sheet.add_argument("--teams", type=int, default=12)
+    p_sheet.add_argument("--budget", type=int, default=200)
+    p_sheet.set_defaults(func=_cmd_cheatsheet)
 
     return parser
 

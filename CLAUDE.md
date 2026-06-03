@@ -138,6 +138,13 @@ ratings to produce `{key: tier}` that flows into `compute_values(manual_tiers=)`
 (optional `web` extra) launched with `python -m fantasy_football.cli serve`;
 both new tables are created by `create_all`, so no DB rebuild is needed.
 
+**Draft board (`export.py`).** `cheatsheet` CLI writes an .xlsx (optional
+`export` extra, openpyxl): static per-position tier sheets plus a live **Draft
+Board** sheet whose recommended prices are Excel formulas — marking a player
+drafted + the price they went for re-prices the rest for auction inflation
+(allocation weight = recommended − $1; remaining pool/slots shrink). Pure
+in-sheet formulas, no recompute needed.
+
 **Schema-change note:** `init-db` uses `create_all`, which does **not** alter
 existing tables. When you add columns (as the scoring work did to
 `PlayerGameStats` FG buckets and `TeamGameStats` defensive fields), an existing

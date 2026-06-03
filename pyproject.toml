@@ -17,6 +17,8 @@ dev = ["pytest>=8.0"]
 ingest = ["pandas>=2.0", "pyarrow>=14"]
 # The head-to-head comparison web app.
 web = ["flask>=3.0"]
+# Draft-board export to Excel.
+export = ["openpyxl>=3.1"]
 
 [project.scripts]
 fantasy-football = "fantasy_football.cli:main"
