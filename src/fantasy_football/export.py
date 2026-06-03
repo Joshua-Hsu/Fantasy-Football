@@ -93,6 +93,10 @@ def build_board(
 #: drafted so you never have to weigh them head-to-head.
 DEFAULT_WEBAPP_DEPTH = {"QB": 24, "RB": 48, "WR": 54, "TE": 24, "K": 16, "DST": 16}
 
+#: Positions limited to one per team (NFL starters) rather than a depth cap.
+#: QB backups don't get drafted, so we keep only each team's projected starter.
+STARTER_POSITIONS = {"QB"}
+
 
 def build_webapp_data(
     session: Session,
@@ -147,24 +151,37 @@ def build_webapp_data(
             row["draft"] = f"R{rnd} P{pick}"
         return row
 
+    def rookie_seed(r, vet_seeds):
+        rnd, pick = draft.get(r.key, (None, None))
+        idx = round_slot.get(rnd, 30)
+        base = vet_seeds[min(idx, len(vet_seeds) - 1)] if vet_seeds else 0.0
+        return base - (pick or 0) * 0.001  # earlier picks rank a touch higher
+
     out: dict[str, list[dict]] = {}
     for pos in ALL_POSITIONS:
         rows = values.get(pos, [])  # sorted by value desc
         vets = [r for r in rows if not r.is_rookie]
         vet_seeds = [r.basis_value for r in vets]
-        emitted = [emit(r, r.basis_value) for r in vets[: caps.get(pos)]]
+        rookies = [
+            r for r in rows
+            if r.is_rookie and (draft.get(r.key, (99,))[0] or 99) <= rookie_max_round
+        ]
 
-        for r in rows:
-            rnd = draft.get(r.key, (99,))[0]
-            if not (r.is_rookie and rnd and rnd <= rookie_max_round):
-                continue
-            pick = draft.get(r.key, (0, 0))[1] or 0
-            idx = round_slot.get(rnd, 30)
-            base = vet_seeds[min(idx, len(vet_seeds) - 1)] if vet_seeds else 0.0
-            emitted.append(emit(r, base - pick * 0.001))  # earlier picks rank higher
+        if pos in STARTER_POSITIONS:
+            # One per team (the projected starter): best seed per current team.
+            best: dict[str, tuple] = {}
+            for r in vets + rookies:
+                seed = r.basis_value if not r.is_rookie else rookie_seed(r, vet_seeds)
+                team = r.team or r.key
+                if team not in best or seed > best[team][1]:
+                    best[team] = (r, seed)
+            chosen = list(best.values())
+        else:
+            chosen = [(r, r.basis_value) for r in vets[: caps.get(pos)]]
+            chosen += [(r, rookie_seed(r, vet_seeds)) for r in rookies]
 
-        emitted.sort(key=lambda d: d["seed"], reverse=True)
-        out[pos] = emitted
+        chosen.sort(key=lambda x: x[1], reverse=True)
+        out[pos] = [emit(r, s) for r, s in chosen]
     return out
 
 
