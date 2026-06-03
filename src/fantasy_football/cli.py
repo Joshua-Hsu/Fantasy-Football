@@ -306,6 +306,18 @@ def _cmd_load_draft(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_load_byes(args: argparse.Namespace) -> int:
+    import datetime as _dt
+
+    from .ingest import load_byes
+
+    year = args.year or _dt.date.today().year
+    with _open_session(args) as session:
+        n = load_byes(session, year)
+    print(f"Set bye weeks for {n} teams ({year})")
+    return 0
+
+
 def _cmd_load_coaching(args: argparse.Namespace) -> int:
     from .ingest import load_coaching
 
@@ -484,6 +496,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_coachtpl = sub.add_parser("coaching-template", help="Write a coaching CSV to fill in")
     p_coachtpl.add_argument("--out", default="coaching.csv", help="Output CSV path")
     p_coachtpl.set_defaults(func=_cmd_coaching_template)
+
+    p_byes = sub.add_parser("load-byes", help="Set team bye weeks from the schedule")
+    p_byes.add_argument("--year", type=int, default=None, help="Season year (default: current year)")
+    p_byes.set_defaults(func=_cmd_load_byes)
 
     p_coach = sub.add_parser("load-coaching", help="Load team coaching staff from a CSV")
     p_coach.add_argument("--file", required=True, help="CSV: team,head_coach,offensive_coordinator,play_caller")

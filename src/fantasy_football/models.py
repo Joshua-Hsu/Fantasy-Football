@@ -71,6 +71,7 @@ class Team(Base):
     head_coach: Mapped[str | None] = mapped_column(String(64))
     offensive_coordinator: Mapped[str | None] = mapped_column(String(64))
     play_caller: Mapped[str | None] = mapped_column(String(64))
+    bye_week: Mapped[int | None] = mapped_column(Integer)
 
     home_games: Mapped[list[Game]] = relationship(
         back_populates="home_team", foreign_keys="Game.home_team_id"

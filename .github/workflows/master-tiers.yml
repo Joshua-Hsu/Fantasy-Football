@@ -28,6 +28,7 @@ jobs:
           python -m fantasy_football.cli init-db
           python -m fantasy_football.cli load-seasons --start 2020
           python -m fantasy_football.cli load-active --year 2026
+          python -m fantasy_football.cli load-byes --year 2026
           python -m fantasy_football.cli load-draft --year 2026 --max-round 3
           if [ -f coaching.csv ]; then
             python -m fantasy_football.cli load-coaching --file coaching.csv

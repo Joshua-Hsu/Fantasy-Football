@@ -163,6 +163,8 @@ def build_webapp_data(
     pstats = _player_last_year(session, last_year) if last_year else {}
     toff = _team_offense(session, last_year) if last_year else {}
     dstats = _dst_last_year(session, last_year) if last_year else {}
+    ages = _player_ages(session, (last_year or 0) + 1) if last_year else {}
+    byes = _team_byes(session)
 
     # Where a rookie of each round slots into a position's value scale.
     round_slot = {1: 7, 2: 17, 3: 27}
@@ -182,7 +184,7 @@ def build_webapp_data(
             "seed": round(seed, 1), "rookie": r.is_rookie, "hc": hc, "oc": oc, "pc": pc,
             "stat": _format_statline(r.key, r.position, pstats, dstats),
             "tmoff": _format_team_context(r.team, r.position, toff),
-            "cols": _stat_columns(r.key, r.position, r.team, pstats, toff, dstats),
+            "cols": _stat_columns(r.key, r.position, r.team, pstats, toff, dstats, ages, byes),
         }
         # Manual tiers only seed the starting `seed` (above) — the app's Elo
         # refines from there, so we deliberately don't lock a tier here.
@@ -370,15 +372,40 @@ def _format_team_context(team: str, pos: str, toff: dict) -> str:
 
 # Canonical individual stat columns (each sortable) used by the CSVs and app.
 CSV_STAT_HEADERS = [
+    "Bye", "Age",
     "PaYds", "PaTD", "INT", "RuAtt", "RuYds", "RuTD", "Tgt", "Rec", "ReYds", "ReTD",
     "FGM", "FGA", "XPM", "DefPA", "DefSk", "DefINT", "DefTD",
     "TmYds", "TmYdsRk", "TmPlays", "TmPlaysRk", "TmRush", "TmRushRk", "TmPass", "TmPassRk",
 ]
 
 
-def _stat_columns(key: str, pos: str, team: str, pstats: dict, toff: dict, dstats: dict) -> dict:
+def _player_ages(session: Session, year: int) -> dict[str, int]:
+    """{p<id>: age as of Sept 1 of the season year} from birth dates."""
+    import datetime as dt
+
+    from .models import Player
+
+    ref = dt.date(year, 9, 1)
+    out: dict[str, int] = {}
+    for pid, bd in session.execute(select(Player.id, Player.birth_date)):
+        if bd:
+            out[f"p{pid}"] = (ref - bd).days // 365
+    return out
+
+
+def _team_byes(session: Session) -> dict[str, int]:
+    """{team_abbr: bye_week}."""
+    from .models import Team
+
+    return {t.abbreviation: t.bye_week for t in session.scalars(select(Team)) if t.bye_week}
+
+
+def _stat_columns(key: str, pos: str, team: str, pstats: dict, toff: dict, dstats: dict,
+                  ages: dict | None = None, byes: dict | None = None) -> dict:
     """One value per CSV_STAT_HEADERS column for an entity (blank where N/A)."""
     c: dict[str, object] = {h: "" for h in CSV_STAT_HEADERS}
+    c["Age"] = (ages or {}).get(key, "")
+    c["Bye"] = (byes or {}).get(team, "")
     if pos == "DST":
         d = dstats.get(key, {})
         c["DefPA"], c["DefSk"] = d.get("PA", ""), d.get("Sack", "")
@@ -438,6 +465,8 @@ def write_tiers_csv(
     pstats = _player_last_year(session, last_year) if last_year else {}
     toff = _team_offense(session, last_year) if last_year else {}
     dstats = _dst_last_year(session, last_year) if last_year else {}
+    ages = _player_ages(session, (last_year or 0) + 1) if last_year else {}
+    byes = _team_byes(session)
 
     with open(path, "w", newline="") as fh:
         writer = csv.writer(fh)
@@ -446,7 +475,7 @@ def write_tiers_csv(
         for key, tier in tiers.items():
             r = by_key.get(key)
             pos = r.position if r else ""
-            cols = _stat_columns(key, pos, r.team if r else "", pstats, toff, dstats)
+            cols = _stat_columns(key, pos, r.team if r else "", pstats, toff, dstats, ages, byes)
             writer.writerow(
                 [_safe_cell(key), tier, _safe_cell(r.name if r else key), _safe_cell(pos),
                  _safe_cell(r.team if r else ""), r.total if r else "", r.ppg if r else ""]
@@ -485,6 +514,8 @@ def write_cheatsheet(
     player_stats = _player_last_year(session, last_year) if last_year else {}
     team_off = _team_offense(session, last_year) if last_year else {}
     dst_stats = _dst_last_year(session, last_year) if last_year else {}
+    ages = _player_ages(session, (last_year or 0) + 1) if last_year else {}
+    byes = _team_byes(session)
 
     header_font = Font(bold=True)
     center = Alignment(horizontal="center")
@@ -503,7 +534,7 @@ def write_cheatsheet(
         team_headers = []
         for h, _ in _OFFENSE_METRICS:
             team_headers += [h, h + "Rk"]
-        headers = (["Tier", "Rk", "Player", "Tm", "$", "PPG"]
+        headers = (["Tier", "Rk", "Player", "Tm", "Bye", "Age", "$", "PPG"]
                    + [h for h, _ in stat_cols]
                    + (team_headers if show_team else []))
         ws.append(headers)
@@ -513,7 +544,8 @@ def write_cheatsheet(
 
         for r in rows:
             name = r.name + (" (R)" if r.is_rookie else "")
-            line: list = [r.tier, r.pos_rank, name, r.team, r.dollars, r.ppg]
+            line: list = [r.tier, r.pos_rank, name, r.team,
+                          byes.get(r.team, ""), ages.get(r.key, ""), r.dollars, r.ppg]
             src = dst_stats.get(r.key, {}) if pos == "DST" else player_stats.get(r.key, {})
             for _h, attr in stat_cols:
                 line.append(src.get(attr, 0))
@@ -530,7 +562,7 @@ def write_cheatsheet(
         for c in range(1, len(headers) + 1):
             ws.column_dimensions[get_column_letter(c)].width = 20 if c == 3 else 8
         for row in range(2, ws.max_row + 1):
-            ws.cell(row=row, column=5).number_format = '"$"0'  # $ column
+            ws.cell(row=row, column=7).number_format = '"$"0'  # $ column
 
     for pos in ALL_POSITIONS:
         if pos in board:

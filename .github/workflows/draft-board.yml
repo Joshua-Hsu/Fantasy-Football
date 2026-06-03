@@ -57,6 +57,7 @@ jobs:
           python -m fantasy_football.cli init-db
           python -m fantasy_football.cli load-seasons --start "${{ inputs.start_year }}"
           python -m fantasy_football.cli load-active --year "${{ inputs.roster_year }}"
+          python -m fantasy_football.cli load-byes --year "${{ inputs.roster_year }}"
           python -m fantasy_football.cli load-draft --year "${{ inputs.roster_year }}" --max-round 3
 
       - name: Load coaching (real CSV if committed, else HC-only template)

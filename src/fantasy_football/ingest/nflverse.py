@@ -647,6 +647,38 @@ def latest_head_coaches() -> dict[str, str]:
     return coaches
 
 
+def team_byes(year: int) -> dict[str, int]:
+    """{team_abbr: bye_week} for a season, derived from the schedule.
+
+    A team's bye is the regular-season week (1-18) in which it has no game.
+    """
+    df = _fetch_games()
+    df = df[(df["season"] == year) & (df["game_type"] == "REG")]
+    teams = set(df["home_team"]) | set(df["away_team"])
+    byes: dict[str, int] = {}
+    for team in teams:
+        played = set(int(w) for w in df[(df["home_team"] == team) | (df["away_team"] == team)]["week"])
+        missing = [w for w in range(1, 19) if w not in played]
+        abbr = _norm_team(_opt_str(team))
+        if abbr and missing:
+            byes[abbr] = missing[0]
+    return byes
+
+
+def load_byes(session: Session, year: int) -> int:
+    """Set each team's bye week for ``year`` from the schedule. Returns count."""
+    byes = team_byes(year)
+    teams = {t.abbreviation: t for t in session.scalars(select(Team))}
+    updated = 0
+    for abbr, week in byes.items():
+        team = teams.get(abbr)
+        if team is not None:
+            team.bye_week = week
+            updated += 1
+    session.commit()
+    return updated
+
+
 def load_coaching(session: Session, path: str) -> int:
     """Load team coaching staff from a CSV: team,head_coach,offensive_coordinator,play_caller."""
     import csv
