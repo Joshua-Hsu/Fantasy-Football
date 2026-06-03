@@ -113,6 +113,10 @@ DEFAULT_WEBAPP_DEPTH = {"QB": 24, "RB": 60, "WR": 64, "TE": 28, "K": 16, "DST": 
 #: left uncapped (32) so every defense is ranked.
 STARTER_POSITIONS = {"QB", "K"}
 
+#: Positions covered per-team instead of by a global cap, so every team's
+#: starter(s) appear: RB top 2 (covers contested backfields), WR top 3.
+PER_TEAM_DEPTH = {"RB": 2, "WR": 3}
+
 
 def build_webapp_data(
     session: Session,
@@ -221,9 +225,35 @@ def build_webapp_data(
                 if team not in best or seed > best[team][1]:
                     best[team] = (r, seed)
             chosen = list(best.values())
+        elif pos in PER_TEAM_DEPTH:
+            # Union: keep the global depth pool (never drop anyone already in)
+            # AND add top N per team so every team's starter(s) are covered.
+            picked = list(vets[: caps.get(pos)])
+            by_team: dict[str, list] = {}
+            for r in vets:
+                by_team.setdefault(r.team or r.key, []).append(r)
+            for members in by_team.values():
+                members.sort(key=lambda r: r.basis_value, reverse=True)
+                picked += members[: PER_TEAM_DEPTH[pos]]
+            seen: set = set()
+            uniq: list = []
+            for r in picked:
+                if r.key not in seen:
+                    seen.add(r.key)
+                    uniq.append(r)
+            chosen = [(r, seed_for(r, r.basis_value)) for r in uniq]
+            chosen += [(r, seed_for(r, rookie_seed(r, vet_seeds))) for r in rookies]
         else:
             chosen = [(r, seed_for(r, r.basis_value)) for r in vets[: caps.get(pos)]]
             chosen += [(r, seed_for(r, rookie_seed(r, vet_seeds))) for r in rookies]
+
+        # Always include any player you've explicitly tiered (manual_tiers),
+        # even if they fall outside the per-team / depth selection.
+        have = {r.key for r, _ in chosen}
+        for r in rows:
+            if r.key in manual_tiers and r.key not in have:
+                chosen.append((r, seed_for(r, r.basis_value)))
+                have.add(r.key)
 
         chosen.sort(key=lambda x: x[1], reverse=True)
         out[pos] = [emit(r, s) for r, s in chosen]
