@@ -199,6 +199,21 @@ Picks are stored (`comparisons`) and ratings persist (`user_ratings`), so the
 game keeps sharpening tiers across sessions. Matchups favour similarly-rated
 players within a position — where your pick actually moves the order.
 
+### Hosted version (GitHub Pages, no server)
+
+A static, phone-friendly build of the pick game lives in `docs/` and runs
+entirely in the browser (player data baked into `docs/data.js`; picks and Elo
+stored in `localStorage`). Regenerate the data after loading the DB:
+
+```bash
+python -m fantasy_football.cli build-webapp --out docs/data.js
+```
+
+Enable it once under **Settings → Pages → Deploy from a branch → `/docs`**, then
+open `https://<user>.github.io/Fantasy-Football/`. Use the **Export tiers CSV**
+button to download a `tiers.csv` you can feed back in with
+`values --tiers-file tiers.csv`.
+
 ## Draft-board export (live in-draft pricing)
 
 Export a tiered cheat sheet as an Excel workbook (`src/fantasy_football/export.py`):

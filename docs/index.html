@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FF Tier Builder</title>
+<style>
+  :root { color-scheme: light dark; --line:#8884; --accent:#39f; }
+  * { box-sizing: border-box; }
+  body { font-family: system-ui, -apple-system, sans-serif; margin: 0;
+         padding: 1rem; max-width: 820px; margin-inline: auto; }
+  a { color: var(--accent); }
+  h1 { font-size: 1.3rem; margin: .2rem 0 .6rem; }
+  .nav { display:flex; gap:1rem; flex-wrap:wrap; align-items:center; margin-bottom:1rem; }
+  .nav .spacer { flex:1; }
+  button { font: inherit; }
+  .pos-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:.6rem; }
+  .pos-grid button { border:1px solid var(--line); border-radius:12px; padding:.9rem .5rem;
+        background:transparent; cursor:pointer; }
+  .pos-grid b { font-size:1.1rem; } .muted { opacity:.6; font-size:.85rem; }
+  .cards { display:grid; grid-template-columns:1fr 1fr; gap:.8rem; }
+  .card { width:100%; text-align:left; cursor:pointer; border:2px solid var(--line);
+        border-radius:16px; padding:1rem; background:transparent; transition:border-color .1s; }
+  .card:active { border-color:var(--accent); }
+  .card .name { font-size:1.15rem; font-weight:700; }
+  .row { display:flex; justify-content:space-between; padding:.18rem 0; }
+  .row b { font-variant-numeric:tabular-nums; }
+  .vs { text-align:center; opacity:.55; margin:.6rem 0; }
+  table { width:100%; border-collapse:collapse; font-variant-numeric:tabular-nums; }
+  th,td { text-align:right; padding:.3rem .45rem; border-bottom:1px solid var(--line); }
+  th:nth-child(2),td:nth-child(2){ text-align:left; }
+  .btn { border:1px solid var(--line); border-radius:10px; padding:.4rem .7rem;
+        background:transparent; cursor:pointer; }
+  .badge { font-size:.75rem; padding:.05rem .35rem; border:1px solid var(--line);
+        border-radius:6px; margin-left:.3rem; }
+  @media (max-width:520px){ .cards{ grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<div id="app">Loading…</div>
+<script src="data.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

@@ -266,6 +266,21 @@ def _cmd_cheatsheet(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_build_webapp(args: argparse.Namespace) -> int:
+    from .export import write_webapp_data
+    from .scoring import PRESETS
+    from .valuation import LeagueConfig
+
+    config = LeagueConfig(teams=args.teams, budget=args.budget)
+    with _open_session(args) as session:
+        path = write_webapp_data(
+            session, args.out, year=args.year, config=config,
+            rules=PRESETS[args.scoring], basis=args.basis,
+        )
+    print(f"Wrote pick-game data to {path}")
+    return 0
+
+
 def _cmd_serve(args: argparse.Namespace) -> int:
     from .web import create_app
 
@@ -383,6 +398,15 @@ def build_parser() -> argparse.ArgumentParser:
     p_sheet.add_argument("--teams", type=int, default=12)
     p_sheet.add_argument("--budget", type=int, default=200)
     p_sheet.set_defaults(func=_cmd_cheatsheet)
+
+    p_webapp = sub.add_parser("build-webapp", help="Generate docs/data.js for the static pick game")
+    p_webapp.add_argument("--out", default="docs/data.js", help="Output JS data path")
+    p_webapp.add_argument("--year", type=int, default=None)
+    p_webapp.add_argument("--basis", choices=["total", "ppg", "w3yr"], default="w3yr")
+    p_webapp.add_argument("--scoring", choices=["standard", "half_ppr", "ppr"], default="half_ppr")
+    p_webapp.add_argument("--teams", type=int, default=12)
+    p_webapp.add_argument("--budget", type=int, default=200)
+    p_webapp.set_defaults(func=_cmd_build_webapp)
 
     return parser
 
