@@ -164,27 +164,6 @@ def build_webapp_data(
     toff = _team_offense(session, last_year) if last_year else {}
     dstats = _dst_last_year(session, last_year) if last_year else {}
 
-    def statline(key: str, pos: str) -> str:
-        if pos == "DST":
-            d = dstats.get(key, {})
-            return f"{d.get('PA', 0)}PA/g {d.get('Sack', 0)}sk {d.get('INT', 0)}int {d.get('TD', 0)}td"
-        s = pstats.get(key)
-        if not s:
-            return ""
-        if pos == "QB":
-            return (f"{s['pass_yards']}yd {s['pass_touchdowns']}td {s['interceptions_thrown']}int, "
-                    f"{s['rush_attempts']}car {s['rush_yards']}ryd")
-        if pos == "K":
-            return f"{s['field_goals_made']}/{s['field_goals_attempted']}FG {s['extra_points_made']}XP"
-        return (f"{s['receptions']}rec {s['receiving_yards']}yd {s['receiving_touchdowns']}td, "
-                f"{s['rush_attempts']}car {s['rush_yards']}ryd {s['rush_touchdowns']}rtd")
-
-    def team_context(team: str) -> str:
-        o = toff.get(team)
-        if not o:
-            return ""
-        return f"off yds#{o['total_yards_rank']} pass#{o['pass_rank']} rush#{o['rush_rank']}"
-
     # Where a rookie of each round slots into a position's value scale.
     round_slot = {1: 7, 2: 17, 3: 27}
 
@@ -201,8 +180,8 @@ def build_webapp_data(
             "key": r.key, "name": r.name, "team": r.team, "pos": r.position,
             "total": r.total, "ppg": r.ppg, "w3yr": r.w3yr,
             "seed": round(seed, 1), "rookie": r.is_rookie, "hc": hc, "oc": oc, "pc": pc,
-            "stat": statline(r.key, r.position),
-            "tmoff": team_context(r.team) if r.position in TEAM_OFFENSE_POSITIONS else "",
+            "stat": _format_statline(r.key, r.position, pstats, dstats),
+            "tmoff": _format_team_context(r.team, r.position, toff),
         }
         # Manual tiers only seed the starting `seed` (above) — the app's Elo
         # refines from there, so we deliberately don't lock a tier here.
@@ -359,6 +338,72 @@ def _dst_last_year(session: Session, year: int) -> dict[str, dict[str, float]]:
             "INT": int(inte or 0), "TD": int((dtd or 0) + (sttd or 0)),
         }
     return out
+
+
+def _format_statline(key: str, pos: str, pstats: dict, dstats: dict) -> str:
+    """Compact last-year stat line for a player/defense (position-aware)."""
+    if pos == "DST":
+        d = dstats.get(key, {})
+        return f"{d.get('PA', 0)}PA/g {d.get('Sack', 0)}sk {d.get('INT', 0)}int {d.get('TD', 0)}td"
+    s = pstats.get(key)
+    if not s:
+        return ""
+    if pos == "QB":
+        return (f"{s['pass_yards']}yd {s['pass_touchdowns']}td {s['interceptions_thrown']}int, "
+                f"{s['rush_attempts']}car {s['rush_yards']}ryd")
+    if pos == "K":
+        return f"{s['field_goals_made']}/{s['field_goals_attempted']}FG {s['extra_points_made']}XP"
+    return (f"{s['receptions']}rec {s['receiving_yards']}yd {s['receiving_touchdowns']}td, "
+            f"{s['rush_attempts']}car {s['rush_yards']}ryd {s['rush_touchdowns']}rtd")
+
+
+def _format_team_context(team: str, pos: str, toff: dict) -> str:
+    """Team-offense rank summary for offensive players (blank otherwise)."""
+    if pos not in TEAM_OFFENSE_POSITIONS:
+        return ""
+    o = toff.get(team)
+    if not o:
+        return ""
+    return f"off yds#{o['total_yards_rank']} pass#{o['pass_rank']} rush#{o['rush_rank']}"
+
+
+def write_tiers_csv(
+    session: Session,
+    path: str,
+    *,
+    tiers: dict[str, int],
+    prices: dict[str, float] | None = None,
+    year: int | None = None,
+    config: LeagueConfig = DEFAULT_LEAGUE,
+    rules: ScoringRules = DEFAULT_RULES,
+    basis: str = "w3yr",
+) -> str:
+    """Write an enriched tiers CSV (names + last-year stats + prices) for editing."""
+    import csv
+
+    prices = prices or {}
+    last_year = year or _latest_season(session)
+    values = compute_values(session, year=year, config=config, rules=rules, basis=basis)
+    by_key = {r.key: r for rows in values.values() for r in rows}
+    pstats = _player_last_year(session, last_year) if last_year else {}
+    toff = _team_offense(session, last_year) if last_year else {}
+    dstats = _dst_last_year(session, last_year) if last_year else {}
+
+    with open(path, "w", newline="") as fh:
+        writer = csv.writer(fh)
+        writer.writerow(["key", "manual_tier", "name", "pos", "total", "ppg",
+                         "lastyr_stats", "team_offense", "price"])
+        for key, tier in tiers.items():
+            r = by_key.get(key)
+            pos = r.position if r else ""
+            writer.writerow([
+                key, tier, r.name if r else key, pos,
+                r.total if r else "", r.ppg if r else "",
+                _format_statline(key, pos, pstats, dstats),
+                _format_team_context(r.team if r else "", pos, toff),
+                prices.get(key, ""),
+            ])
+    return path
 
 
 def write_cheatsheet(

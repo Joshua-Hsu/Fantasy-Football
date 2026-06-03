@@ -235,26 +235,15 @@ def _cmd_import_tiers(args: argparse.Namespace) -> int:
     Adds player/defense names and preserves any prices already set in the
     output file, so re-importing a fresh export keeps your market anchors.
     """
-    import csv
-
-    from sqlalchemy import select
-
-    from .models import Player, Team
+    from .export import write_tiers_csv
 
     new_tiers = _read_manual_tiers(args.file)
-    existing_prices = _read_fixed_prices(args.out)
+    # Preserve prices from either the output file or the incoming export.
+    existing_prices = {**_read_fixed_prices(args.file), **_read_fixed_prices(args.out)}
 
     with _open_session(args) as session:
-        names = {f"p{p.id}": p.full_name for p in session.scalars(select(Player))}
-        names.update({f"d{t.abbreviation}": t.abbreviation for t in session.scalars(select(Team))})
-
-    with open(args.out, "w", newline="") as fh:
-        writer = csv.writer(fh)
-        writer.writerow(["key", "manual_tier", "name", "price"])
-        for key, tier in new_tiers.items():
-            price = existing_prices.get(key, "")
-            writer.writerow([key, tier, names.get(key, key), price])
-    print(f"Wrote {len(new_tiers)} tiers to {args.out} "
+        write_tiers_csv(session, args.out, tiers=new_tiers, prices=existing_prices)
+    print(f"Wrote {len(new_tiers)} tiers (with names + last-year stats) to {args.out} "
           f"(prices preserved: {len(existing_prices)}). Rebuild the board to apply.")
     return 0
 
