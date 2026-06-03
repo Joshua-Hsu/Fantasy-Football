@@ -56,14 +56,15 @@ def build_board(
 ) -> dict[str, list[BoardRow]]:
     """Per-position rows grouped by tier, with within-tier and overall ranks.
 
-    Tiers come from the head-to-head user ratings. ``manual_tiers`` (hand-set
-    positional tiers) seed those ratings as a *starting point* — picks still move
-    them — rather than hard-locking the tiers. ``fixed_prices`` pins expected
-    market prices for specific players; the field re-prices around them.
+    Tiers come from the head-to-head user ratings; any explicit ``manual_tiers``
+    (hand-set or exported from the pick game) are shown verbatim, taking
+    precedence. ``fixed_prices`` pins expected market prices for specific
+    players; the field re-prices around them.
     """
-    seed_ratings(session, year=year, config=config, rules=rules, basis=basis,
-                 manual_tiers=manual_tiers)
+    seed_ratings(session, year=year, config=config, rules=rules, basis=basis)
     tiers = user_rating_tiers(session)
+    if manual_tiers:
+        tiers = {**tiers, **manual_tiers}
     values = compute_values(
         session, year=year, config=config, rules=rules, basis=basis, manual_tiers=tiers,
         fixed_prices=fixed_prices,
