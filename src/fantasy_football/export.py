@@ -165,6 +165,7 @@ def build_webapp_data(
     dstats = _dst_last_year(session, last_year) if last_year else {}
     ages = _player_ages(session, (last_year or 0) + 1) if last_year else {}
     byes = _team_byes(session)
+    tshares = _target_shares(session, last_year) if last_year else {}
 
     # Where a rookie of each round slots into a position's value scale.
     round_slot = {1: 7, 2: 17, 3: 27}
@@ -184,7 +185,8 @@ def build_webapp_data(
             "seed": round(seed, 1), "rookie": r.is_rookie, "hc": hc, "oc": oc, "pc": pc,
             "stat": _format_statline(r.key, r.position, pstats, dstats),
             "tmoff": _format_team_context(r.team, r.position, toff),
-            "cols": _stat_columns(r.key, r.position, r.team, pstats, toff, dstats, ages, byes),
+            "cols": _stat_columns(r.key, r.position, r.team, pstats, toff, dstats,
+                                  ages, byes, tshares),
         }
         # Manual tiers only seed the starting `seed` (above) — the app's Elo
         # refines from there, so we deliberately don't lock a tier here.
@@ -258,7 +260,7 @@ def write_webapp_data(
 _SKILL_STATS = [
     ("Car", "rush_attempts"), ("RuYds", "rush_yards"), ("RuTD", "rush_touchdowns"),
     ("Tgt", "targets"), ("Rec", "receptions"), ("ReYds", "receiving_yards"),
-    ("ReTD", "receiving_touchdowns"),
+    ("ReTD", "receiving_touchdowns"), ("Tgt%", "__tgtshare"),
 ]
 STAT_COLS: dict[str, list[tuple[str, str]]] = {
     "QB": [("PaAtt", "pass_attempts"), ("PaYds", "pass_yards"), ("PaTD", "pass_touchdowns"),
@@ -276,8 +278,9 @@ def _player_last_year(session: Session, year: int) -> dict[str, dict[str, int]]:
     """{p<id>: {stat: 2025 regular-season total}} for all the stats we display."""
     from .models import Game, Player, PlayerGameStats
 
+    # Only real PlayerGameStats columns (skip DST/target-share sentinels).
     cols = sorted({attr for cols in STAT_COLS.values() for _, attr in cols
-                   if attr not in ("PA", "Sack", "INT", "TD")})
+                   if hasattr(PlayerGameStats, attr)})
     aggs = [func.sum(getattr(PlayerGameStats, c)).label(c) for c in cols]
     query = (
         select(Player.id, *aggs)
@@ -373,7 +376,7 @@ def _format_team_context(team: str, pos: str, toff: dict) -> str:
 # Canonical individual stat columns (each sortable) used by the CSVs and app.
 CSV_STAT_HEADERS = [
     "Bye", "Age",
-    "PaYds", "PaTD", "INT", "RuAtt", "RuYds", "RuTD", "Tgt", "Rec", "ReYds", "ReTD",
+    "PaYds", "PaTD", "INT", "RuAtt", "RuYds", "RuTD", "Tgt", "Rec", "ReYds", "ReTD", "Tgt%",
     "FGM", "FGA", "XPM", "DefPA", "DefSk", "DefINT", "DefTD",
     "TmYds", "TmYdsRk", "TmPlays", "TmPlaysRk", "TmRush", "TmRushRk", "TmPass", "TmPassRk",
 ]
@@ -400,12 +403,47 @@ def _team_byes(session: Session) -> dict[str, int]:
     return {t.abbreviation: t.bye_week for t in session.scalars(select(Team)) if t.bye_week}
 
 
+def _target_shares(session: Session, year: int) -> dict[str, float]:
+    """{p<id>: target share %} = player targets / their team's total targets."""
+    from .models import Game, Player, PlayerGameStats, Team
+
+    team_total: dict[str, int] = {}
+    for abbr, tot in session.execute(
+        select(Team.abbreviation, func.sum(PlayerGameStats.targets))
+        .join(PlayerGameStats, PlayerGameStats.team_id == Team.id)
+        .join(Game, Game.id == PlayerGameStats.game_id)
+        .where(Game.season_year == year, Game.season_type == "regular")
+        .group_by(Team.id)
+    ):
+        team_total[abbr] = int(tot or 0)
+
+    out: dict[str, float] = {}
+    for pid, abbr, tgts in session.execute(
+        select(Player.id, Team.abbreviation, func.sum(PlayerGameStats.targets))
+        .join(PlayerGameStats, PlayerGameStats.player_id == Player.id)
+        .join(Team, Team.id == PlayerGameStats.team_id)
+        .join(Game, Game.id == PlayerGameStats.game_id)
+        .where(Game.season_year == year, Game.season_type == "regular")
+        .group_by(Player.id, Team.id)
+    ):
+        t = int(tgts or 0)
+        tt = team_total.get(abbr, 0)
+        if t > 0 and tt > 0:
+            share = round(t / tt * 100, 1)
+            key = f"p{pid}"
+            if share > out.get(key, 0.0):  # keep the player's primary-team share
+                out[key] = share
+    return out
+
+
 def _stat_columns(key: str, pos: str, team: str, pstats: dict, toff: dict, dstats: dict,
-                  ages: dict | None = None, byes: dict | None = None) -> dict:
+                  ages: dict | None = None, byes: dict | None = None,
+                  tshares: dict | None = None) -> dict:
     """One value per CSV_STAT_HEADERS column for an entity (blank where N/A)."""
     c: dict[str, object] = {h: "" for h in CSV_STAT_HEADERS}
     c["Age"] = (ages or {}).get(key, "")
     c["Bye"] = (byes or {}).get(team, "")
+    c["Tgt%"] = (tshares or {}).get(key, "")
     if pos == "DST":
         d = dstats.get(key, {})
         c["DefPA"], c["DefSk"] = d.get("PA", ""), d.get("Sack", "")
@@ -467,6 +505,7 @@ def write_tiers_csv(
     dstats = _dst_last_year(session, last_year) if last_year else {}
     ages = _player_ages(session, (last_year or 0) + 1) if last_year else {}
     byes = _team_byes(session)
+    tshares = _target_shares(session, last_year) if last_year else {}
 
     with open(path, "w", newline="") as fh:
         writer = csv.writer(fh)
@@ -475,7 +514,8 @@ def write_tiers_csv(
         for key, tier in tiers.items():
             r = by_key.get(key)
             pos = r.position if r else ""
-            cols = _stat_columns(key, pos, r.team if r else "", pstats, toff, dstats, ages, byes)
+            cols = _stat_columns(key, pos, r.team if r else "", pstats, toff, dstats,
+                                 ages, byes, tshares)
             writer.writerow(
                 [_safe_cell(key), tier, _safe_cell(r.name if r else key), _safe_cell(pos),
                  _safe_cell(r.team if r else ""), r.total if r else "", r.ppg if r else ""]
@@ -516,6 +556,7 @@ def write_cheatsheet(
     dst_stats = _dst_last_year(session, last_year) if last_year else {}
     ages = _player_ages(session, (last_year or 0) + 1) if last_year else {}
     byes = _team_byes(session)
+    tshares = _target_shares(session, last_year) if last_year else {}
 
     header_font = Font(bold=True)
     center = Alignment(horizontal="center")
@@ -548,7 +589,10 @@ def write_cheatsheet(
                           byes.get(r.team, ""), ages.get(r.key, ""), r.dollars, r.ppg]
             src = dst_stats.get(r.key, {}) if pos == "DST" else player_stats.get(r.key, {})
             for _h, attr in stat_cols:
-                line.append(src.get(attr, 0))
+                if attr == "__tgtshare":
+                    line.append(tshares.get(r.key, ""))
+                else:
+                    line.append(src.get(attr, 0))
             if show_team:
                 off = team_off.get(r.team, {})
                 for _h, key in _OFFENSE_METRICS:
