@@ -100,8 +100,7 @@
   function esc(s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]; }); }
   function nav(extra) {
     return "<div class='nav'><a href='#/'>&#127944; Home</a>" + (extra || "") +
-      "<span class='spacer'></span><span class='muted'>" + S.picks + " picks</span>" +
-      "<button class='btn' onclick='FF.reset()'>Reset</button></div>";
+      "<span class='spacer'></span><span class='muted'>" + S.picks + " picks</span></div>";
   }
 
   function home() {
