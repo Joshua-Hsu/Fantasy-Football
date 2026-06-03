@@ -93,9 +93,26 @@
     return vals.map(function (v) { return tierOf[nearest(v, c)]; });
   }
   function nearest(v, c) { var bj = 0, bd = Infinity; for (var j = 0; j < c.length; j++) { var d = Math.abs(v - c[j]); if (d < bd) { bd = d; bj = j; } } return bj; }
+  function sizedTiers(n, k, maxSize) {
+    // Tier numbers for ranks 0..n-1: top k-2 tiers capped at maxSize, the
+    // remainder split across the last two (uncapped) tiers.
+    maxSize = maxSize || 7;
+    var labels = new Array(n), capped = Math.max(k - 2, 0), i = 0, t = 0;
+    while (t < capped && i < n) {
+      t++;
+      for (var j = i; j < Math.min(i + maxSize, n); j++) labels[j] = t;
+      i += maxSize;
+    }
+    var rest = n - i;
+    if (rest > 0) {
+      var half = Math.ceil(rest / 2);
+      for (var m = i; m < n; m++) labels[m] = t + 1 + ((m - i) < half ? 0 : 1);
+    }
+    return labels;
+  }
   function tiersFor(pos) {
     var pool = (DATA[pos] || []).slice().sort(function (a, b) { return S.ratings[b.key] - S.ratings[a.key]; });
-    var labels = kmeans1d(pool.map(function (e) { return S.ratings[e.key]; }), TIER_K[pos] || 6);
+    var labels = sizedTiers(pool.length, TIER_K[pos] || 6, 7);
     var out = {}; pool.forEach(function (e, i) { out[e.key] = labels[i]; }); return out;
   }
 

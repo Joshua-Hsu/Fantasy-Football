@@ -187,7 +187,36 @@ def _basis_value(entity: dict, basis: str) -> float:
     return entity["w3yr"]
 
 
-# --- Tiers: 1-D k-means ----------------------------------------------------
+# --- Tiers -----------------------------------------------------------------
+
+#: Max players per tier (the lowest two tiers are exempt - they absorb the rest).
+MAX_TIER_SIZE = 7
+
+
+def assign_sized_tiers(ranked_keys: list[str], k: int, max_size: int = MAX_TIER_SIZE) -> dict[str, int]:
+    """Tier a best->worst ranked list, capping each tier at ``max_size``.
+
+    The top ``k-2`` tiers hold up to ``max_size`` each; everyone below is split
+    across the last two tiers (which have no size cap), so the deep guys you
+    don't sub-rank don't blow up the top tiers.
+    """
+    out: dict[str, int] = {}
+    n = len(ranked_keys)
+    if n == 0:
+        return out
+    capped = max(k - 2, 0)
+    i = tier = 0
+    while tier < capped and i < n:
+        tier += 1
+        for key in ranked_keys[i:i + max_size]:
+            out[key] = tier
+        i += max_size
+    rest = ranked_keys[i:]
+    if rest:
+        half = (len(rest) + 1) // 2
+        for j, key in enumerate(rest):
+            out[key] = tier + 1 + (0 if j < half else 1)
+    return out
 
 
 def kmeans_1d(values: list[float], k: int, *, iters: int = 100) -> list[int]:
@@ -377,10 +406,22 @@ def compute_values(
         by_position.setdefault(ent["position"], []).append(ent)
     for pos, group in by_position.items():
         group.sort(key=lambda e: e["basis_value"], reverse=True)
-        tiers = kmeans_1d([e["basis_value"] for e in group], tier_k.get(pos, 6))
-        for rank, (ent, kt) in enumerate(zip(group, tiers), 1):
-            ent["kmeans_tier"] = kt
-            ent["tier"] = manual_tiers.get(ent["key"], kt)
+        k = tier_k.get(pos, 6)
+        # Auto tier: rank by value, capped at MAX_TIER_SIZE per tier.
+        auto = assign_sized_tiers([e["key"] for e in group], k)
+        # Effective tier: if you've set manual tiers, rank by (your tier, value)
+        # and re-bin with the size cap so there are a few tiers of <=7 then two
+        # unbounded bottom tiers (rather than many tiny tiers).
+        if any(e["key"] in manual_tiers for e in group):
+            ordered = sorted(
+                group, key=lambda e: (manual_tiers.get(e["key"], 999), -e["basis_value"])
+            )
+            eff = assign_sized_tiers([e["key"] for e in ordered], k)
+        else:
+            eff = auto
+        for rank, ent in enumerate(group, 1):
+            ent["kmeans_tier"] = auto.get(ent["key"], 1)
+            ent["tier"] = eff.get(ent["key"], auto.get(ent["key"], 1))
             ent["pos_rank"] = rank
 
     replacement = _replacement_values(by_position, config)

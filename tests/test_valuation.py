@@ -133,13 +133,21 @@ def test_active_filter_and_rookie_placeholder(session):
     assert rook.team == "GB"
 
 
-def test_manual_tiers_override_kmeans(session):
-    _seed(session)
-    # Force the top RB into tier 5; its k-means tier should differ.
-    top_key = compute_values(session, year=2025, config=LeagueConfig(teams=1))["RB"][0].key
-    overridden = compute_values(
-        session, year=2025, config=LeagueConfig(teams=1), manual_tiers={top_key: 5}
-    )
-    row = next(r for r in overridden["RB"] if r.key == top_key)
-    assert row.tier == 5
-    assert row.kmeans_tier == 1  # automated rating still recorded
+def test_manual_tiers_reorder():
+    from fantasy_football.valuation import assign_sized_tiers
+
+    order = [f"k{i}" for i in range(20)]
+    base = assign_sized_tiers(order, k=4)
+    promoted = ["k19"] + [k for k in order if k != "k19"]
+    moved = assign_sized_tiers(promoted, k=4)
+    assert moved["k19"] < base["k19"]  # promoting in the ranking improves the tier
+
+
+def test_tiers_capped_at_max_size():
+    import collections
+
+    from fantasy_football.valuation import MAX_TIER_SIZE, assign_sized_tiers
+
+    sizes = collections.Counter(assign_sized_tiers([f"k{i}" for i in range(40)], k=8).values())
+    top_tiers = sorted(sizes)[:-2]  # all but the bottom two
+    assert all(sizes[t] <= MAX_TIER_SIZE for t in top_tiers)
