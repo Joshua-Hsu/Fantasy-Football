@@ -235,6 +235,39 @@ def assign_sized_tiers(ranked_keys: list[str], values: list[float], k: int,
     return out
 
 
+def group_manual_tiers(ordered: list[dict], manual_tiers: dict[str, int],
+                       max_size: int = MAX_TIER_SIZE) -> dict[str, int]:
+    """Effective tiers that **honor** the manual grouping.
+
+    Players the user placed in the same manual tier stay together (the tiers are
+    densely renumbered 1..n by manual order), so the tool never re-splits a
+    deliberate grouping by value gaps. A manual tier is only broken up when it
+    exceeds ``max_size`` (split into consecutive sub-tiers); the lowest two
+    manual tiers are exempt from the cap so the deep field can absorb the rest.
+    ``ordered`` must already be sorted by (manual tier, -value); entities with no
+    manual tier sort last and are treated as the uncapped bottom.
+    """
+    out: dict[str, int] = {}
+    if not ordered:
+        return out
+    # The two deepest manual tiers (plus the unmanaged tail) stay uncapped.
+    manual_vals = sorted({manual_tiers[e["key"]] for e in ordered if e["key"] in manual_tiers})
+    uncapped = set(manual_vals[-2:])
+    eff = 0
+    prev: object = object()
+    count = 0
+    for e in ordered:
+        m = manual_tiers.get(e["key"], None)
+        capped = m is not None and m not in uncapped
+        if m != prev or (capped and count >= max_size):
+            eff += 1
+            count = 0
+            prev = m
+        out[e["key"]] = eff
+        count += 1
+    return out
+
+
 def kmeans_1d(values: list[float], k: int, *, iters: int = 100) -> list[int]:
     """Cluster ``values`` into ``k`` tiers; returns a tier (1=best) per input value.
 
@@ -432,11 +465,9 @@ def compute_values(
         # unbounded bottom tiers (rather than many tiny tiers).
         if any(e["key"] in manual_tiers for e in group):
             ordered = sorted(
-                group, key=lambda e: (manual_tiers.get(e["key"], 999), -e["basis_value"])
+                group, key=lambda e: (manual_tiers.get(e["key"], 10 ** 9), -e["basis_value"])
             )
-            eff = assign_sized_tiers(
-                [e["key"] for e in ordered], [e["basis_value"] for e in ordered], k
-            )
+            eff = group_manual_tiers(ordered, manual_tiers)
         else:
             eff = auto
         for rank, ent in enumerate(group, 1):
