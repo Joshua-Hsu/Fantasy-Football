@@ -8,7 +8,10 @@
   var DATA = (window.FF_DATA || { positions: {} }).positions;
   var ORDER = ["QB", "RB", "WR", "TE", "K", "DST"];
   var TIER_K = { QB: 6, RB: 8, WR: 8, TE: 6, K: 5, DST: 6 };
-  var SCALE = 400, K = 24, NEAR = 4, NUDGE = 10;
+  // SCALE governs how decisive a pick is; K is the per-pick rating step. Tiers
+  // are seeded ~100 points apart (one tier per band), so K must be a healthy
+  // fraction of that or picks can't move a player across a tier in a few clicks.
+  var SCALE = 400, K = 48, NEAR = 4, NUDGE = 20;
   var STORE = "ff_tier_state_v1";
 
   // Flatten + index.
