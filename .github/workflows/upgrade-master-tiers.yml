@@ -1,12 +1,11 @@
 name: Upgrade Master Tiers
 
-# Re-processes your newest committed master_tiers.*.csv through the current
-# pipeline: refreshes last-year stats and adds any new columns (Tgt%, RZ, bye,
-# age, ...), keeping your tiers and prices. Writes a new dated master, commits
-# it (old ones kept as history), and uploads it as a downloadable artifact.
-#
-# Use this after the toolkit's CSV format changes; use "Master Tiers" instead
-# when you have new picks (app_tiers.csv) to fold in.
+# Takes a master-tiers file you provide (upload it as incoming_tiers.csv) and
+# incorporates its rankings into a new dated master_tiers.<today>.csv, refreshed
+# through the current pipeline (latest stats + any new columns), keeping your
+# tiers and prices. The previous master_tiers.*.csv files are kept as a growing
+# collection of masters used. If no incoming_tiers.csv is uploaded, it simply
+# re-processes the newest master in place.
 on:
   workflow_dispatch:
 
@@ -39,28 +38,34 @@ jobs:
             python -m fantasy_football.cli load-coaching --file coaching.csv
           fi
 
-      - name: Upgrade newest master tiers
+      - name: Incorporate the provided master tiers
         run: |
           PREV=$(ls -1 master_tiers.*.csv 2>/dev/null | sort | tail -1)
-          if [ -z "$PREV" ]; then
-            echo "::error::no master_tiers.*.csv found to upgrade"; exit 1
+          # Prefer an uploaded master-tiers file; else re-process the newest master.
+          if [ -f incoming_tiers.csv ]; then SRC=incoming_tiers.csv; else SRC="$PREV"; fi
+          if [ -z "$SRC" ]; then
+            echo "::error::upload incoming_tiers.csv (or have a master_tiers.*.csv to refresh)"; exit 1
           fi
           OUT="master_tiers.$(date +%F).csv"
-          echo "Upgrading $PREV -> $OUT (tiers + prices preserved)"
-          python -m fantasy_football.cli import-tiers --file "$PREV" --out "$OUT" --prices-from "$PREV"
+          echo "Incorporating $SRC -> $OUT (prices carried from ${PREV:-none}); keeping previous masters"
+          python -m fantasy_football.cli import-tiers --file "$SRC" --out "$OUT" \
+            ${PREV:+--prices-from "$PREV"}
+          # Consume the uploaded file so it isn't re-incorporated next run.
+          if [ "$SRC" = incoming_tiers.csv ]; then git rm -q incoming_tiers.csv; fi
           echo "OUT=$OUT" >> "$GITHUB_ENV"
 
-      - name: Commit upgraded master (history)
+      - name: Commit (new master added, previous ones kept as history)
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add "$OUT"
-          git commit -m "Upgrade master tiers $OUT" || echo "no changes to commit"
+          git add -A
+          git commit -m "Incorporate master tiers -> $OUT" || echo "no changes to commit"
           git push
 
-      - name: Upload upgraded master tiers
+      - name: Upload master tiers
         uses: actions/upload-artifact@v4
         with:
           name: master-tiers
           path: ${{ env.OUT }}
           retention-days: 90
+
