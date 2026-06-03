@@ -99,22 +99,25 @@ def _latest_season(session: Session) -> int | None:
 def _active_players(session: Session) -> dict[str, tuple[str, str, str, int | None]]:
     """{key: (name, position, current_team, rookie_year)} for active offensive players."""
     rows = session.execute(
-        select(Player.id, Player.full_name, Player.position, Player.current_team, Player.rookie_year)
+        select(Player.slug, Player.full_name, Player.position, Player.current_team, Player.rookie_year)
         .where(Player.active == 1)
     )
     return {
-        f"p{pid}": (name, pos, team or "", rk)
-        for pid, name, pos, team, rk in rows
-        if pos in OFFENSE_POSITIONS
+        f"p{slug}": (name, pos, team or "", rk)
+        for slug, name, pos, team, rk in rows
+        if pos in OFFENSE_POSITIONS and slug
     }
 
 
 def _player_entities(session: Session, years: list[int], rules: ScoringRules) -> dict[str, dict]:
-    """{key: entity} for offensive players, with per-season (games, points)."""
+    """{key: entity} for offensive players, with per-season (games, points).
+
+    Keyed on the player's stable nflverse id (slug) so keys survive DB rebuilds.
+    """
     expr = score_expression(rules)
     query = (
         select(
-            Player.id,
+            Player.slug,
             Player.full_name,
             Player.position,
             Game.season_year,
@@ -124,13 +127,13 @@ def _player_entities(session: Session, years: list[int], rules: ScoringRules) ->
         .join(PlayerGameStats, PlayerGameStats.player_id == Player.id)
         .join(Game, Game.id == PlayerGameStats.game_id)
         .where(Game.season_year.in_(years), Game.season_type == "regular")
-        .group_by(Player.id, Game.season_year)
+        .group_by(Player.slug, Game.season_year)
     )
     entities: dict[str, dict] = {}
-    for pid, name, pos, year, games, points in session.execute(query):
-        if pos not in OFFENSE_POSITIONS:
+    for slug, name, pos, year, games, points in session.execute(query):
+        if pos not in OFFENSE_POSITIONS or not slug:
             continue
-        key = f"p{pid}"
+        key = f"p{slug}"
         ent = entities.setdefault(
             key, {"key": key, "name": name, "position": pos, "seasons": {}}
         )

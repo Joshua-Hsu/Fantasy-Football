@@ -153,10 +153,11 @@ def build_webapp_data(
         for t in session.scalars(select(Team))
     }
     draft = {
-        f"p{pid}": (rnd, pick)
-        for pid, rnd, pick in session.execute(
-            select(Player.id, Player.draft_round, Player.draft_pick).where(Player.draft_round.isnot(None))
+        f"p{slug}": (rnd, pick)
+        for slug, rnd, pick in session.execute(
+            select(Player.slug, Player.draft_round, Player.draft_pick).where(Player.draft_round.isnot(None))
         )
+        if slug
     }
     # Last-year stat lines for the cards / CSV export.
     last_year = year or _latest_season(session)
@@ -284,15 +285,16 @@ def _player_last_year(session: Session, year: int) -> dict[str, dict[str, int]]:
                    if hasattr(PlayerGameStats, attr)})
     aggs = [func.sum(getattr(PlayerGameStats, c)).label(c) for c in cols]
     query = (
-        select(Player.id, *aggs)
+        select(Player.slug, *aggs)
         .join(PlayerGameStats, PlayerGameStats.player_id == Player.id)
         .join(Game, Game.id == PlayerGameStats.game_id)
         .where(Game.season_year == year, Game.season_type == "regular")
-        .group_by(Player.id)
+        .group_by(Player.slug)
     )
     out: dict[str, dict[str, int]] = {}
     for row in session.execute(query):
-        out[f"p{row[0]}"] = {c: int(v or 0) for c, v in zip(cols, row[1:])}
+        if row[0]:
+            out[f"p{row[0]}"] = {c: int(v or 0) for c, v in zip(cols, row[1:])}
     return out
 
 
@@ -391,9 +393,9 @@ def _player_ages(session: Session, year: int) -> dict[str, int]:
 
     ref = dt.date(year, 9, 1)
     out: dict[str, int] = {}
-    for pid, bd in session.execute(select(Player.id, Player.birth_date)):
-        if bd:
-            out[f"p{pid}"] = (ref - bd).days // 365
+    for slug, bd in session.execute(select(Player.slug, Player.birth_date)):
+        if bd and slug:
+            out[f"p{slug}"] = (ref - bd).days // 365
     return out
 
 
@@ -413,28 +415,29 @@ def _target_shares(session: Session, year: int) -> dict[str, float]:
     """
     from collections import defaultdict
 
-    from .models import Game, PlayerGameStats
+    from .models import Game, Player, PlayerGameStats
 
     rows = session.execute(
-        select(PlayerGameStats.player_id, PlayerGameStats.game_id,
+        select(Player.slug, PlayerGameStats.game_id,
                PlayerGameStats.team_id, PlayerGameStats.targets)
+        .join(PlayerGameStats, PlayerGameStats.player_id == Player.id)
         .join(Game, Game.id == PlayerGameStats.game_id)
         .where(Game.season_year == year, Game.season_type == "regular")
     ).all()
 
     team_game_targets: dict[tuple, int] = defaultdict(int)
-    for _pid, gid, tid, tg in rows:
+    for _slug, gid, tid, tg in rows:
         team_game_targets[(tid, gid)] += int(tg or 0)
 
-    per_game: dict[int, list[float]] = defaultdict(list)
-    for pid, gid, tid, tg in rows:
+    per_game: dict[str, list[float]] = defaultdict(list)
+    for slug, gid, tid, tg in rows:
         tt = team_game_targets[(tid, gid)]
-        if tt > 0:
-            per_game[pid].append(int(tg or 0) / tt)
+        if tt > 0 and slug:
+            per_game[slug].append(int(tg or 0) / tt)
 
     return {
-        f"p{pid}": round(sum(shares) / len(shares) * 100, 1)
-        for pid, shares in per_game.items() if shares
+        f"p{slug}": round(sum(shares) / len(shares) * 100, 1)
+        for slug, shares in per_game.items() if shares
     }
 
 
