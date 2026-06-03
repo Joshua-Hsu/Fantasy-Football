@@ -55,14 +55,13 @@ def build_board(
 ) -> dict[str, list[BoardRow]]:
     """Per-position rows grouped by tier, with within-tier and overall ranks.
 
-    Tiers come from the head-to-head user ratings, with any explicit
-    ``manual_tiers`` (e.g. hand-set positional tiers) taking precedence. Ratings
-    are seeded if missing, so this works before any picks.
+    Tiers come from the head-to-head user ratings. ``manual_tiers`` (hand-set
+    positional tiers) seed those ratings as a *starting point* — picks still move
+    them — rather than hard-locking the tiers.
     """
-    seed_ratings(session, year=year, config=config, rules=rules, basis=basis)
+    seed_ratings(session, year=year, config=config, rules=rules, basis=basis,
+                 manual_tiers=manual_tiers)
     tiers = user_rating_tiers(session)
-    if manual_tiers:
-        tiers = {**tiers, **manual_tiers}
     values = compute_values(
         session, year=year, config=config, rules=rules, basis=basis, manual_tiers=tiers
     )
@@ -165,8 +164,8 @@ def build_webapp_data(
             "total": r.total, "ppg": r.ppg, "w3yr": r.w3yr,
             "seed": round(seed, 1), "rookie": r.is_rookie, "hc": hc, "oc": oc, "pc": pc,
         }
-        if r.key in manual_tiers:
-            row["tier"] = manual_tiers[r.key]   # hard-set tier (app locks this)
+        # Manual tiers only seed the starting `seed` (above) — the app's Elo
+        # refines from there, so we deliberately don't lock a tier here.
         if r.is_rookie and rnd:
             row["draft"] = f"R{rnd} P{pick}"
         return row

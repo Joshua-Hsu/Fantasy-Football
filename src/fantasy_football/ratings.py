@@ -38,30 +38,42 @@ def seed_ratings(
     config: LeagueConfig = DEFAULT_LEAGUE,
     rules: ScoringRules = DEFAULT_RULES,
     basis: str = "w3yr",
+    manual_tiers: dict[str, int] | None = None,
     force: bool = False,
 ) -> int:
     """Create user ratings for every valued entity, seeded from its value.
 
-    Existing ratings are left alone (so picks already made survive re-seeding)
-    unless ``force`` resets them to the computed value. Returns rows created.
+    ``manual_tiers`` provides a hand-set *starting point*: those players are
+    seeded by their tier (within position) rather than by value, so the game
+    begins from your ranking — but picks still move them (it's a seed, not a
+    lock). Existing ratings are left alone (picks survive) except that manual-tier
+    players are re-anchored to the latest given tier. ``force`` resets everything
+    to the computed value. Returns rows created.
     """
+    manual_tiers = manual_tiers or {}
     values = compute_values(session, year=year, config=config, rules=rules, basis=basis)
     existing = {r.key: r for r in session.scalars(select(UserRating))}
+
+    def seed_value(row) -> float:
+        tier = manual_tiers.get(row.key)
+        if tier is not None:
+            # Tier 1 highest; value as a within-tier tiebreak. Picks can still
+            # overcome the ~100-pt gap between tiers over several comparisons.
+            return (8 - tier) * 100 + min(row.basis_value, 99) * 0.001
+        return float(row.basis_value)
+
     created = 0
     for rows in values.values():
         for row in rows:
             current = existing.get(row.key)
             if current is None:
                 session.add(
-                    UserRating(
-                        key=row.key, name=row.name, position=row.position,
-                        rating=float(row.basis_value),
-                    )
+                    UserRating(key=row.key, name=row.name, position=row.position,
+                               rating=seed_value(row))
                 )
                 created += 1
-            elif force:
-                current.rating = float(row.basis_value)
-                current.comparisons = 0
+            elif force or row.key in manual_tiers:
+                current.rating = seed_value(row)
                 current.name = row.name
     session.commit()
     return created
