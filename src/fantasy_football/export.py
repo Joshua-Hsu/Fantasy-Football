@@ -404,36 +404,37 @@ def _team_byes(session: Session) -> dict[str, int]:
 
 
 def _target_shares(session: Session, year: int) -> dict[str, float]:
-    """{p<id>: target share %} = player targets / their team's total targets."""
-    from .models import Game, Player, PlayerGameStats, Team
+    """{p<id>: average per-game target share %}.
 
-    team_total: dict[str, int] = {}
-    for abbr, tot in session.execute(
-        select(Team.abbreviation, func.sum(PlayerGameStats.targets))
-        .join(PlayerGameStats, PlayerGameStats.team_id == Team.id)
+    For each game a player appeared in, target share = his targets / his team's
+    targets that game; we average those across the games he played (so missed
+    games don't dilute it).
+    """
+    from collections import defaultdict
+
+    from .models import Game, PlayerGameStats
+
+    rows = session.execute(
+        select(PlayerGameStats.player_id, PlayerGameStats.game_id,
+               PlayerGameStats.team_id, PlayerGameStats.targets)
         .join(Game, Game.id == PlayerGameStats.game_id)
         .where(Game.season_year == year, Game.season_type == "regular")
-        .group_by(Team.id)
-    ):
-        team_total[abbr] = int(tot or 0)
+    ).all()
 
-    out: dict[str, float] = {}
-    for pid, abbr, tgts in session.execute(
-        select(Player.id, Team.abbreviation, func.sum(PlayerGameStats.targets))
-        .join(PlayerGameStats, PlayerGameStats.player_id == Player.id)
-        .join(Team, Team.id == PlayerGameStats.team_id)
-        .join(Game, Game.id == PlayerGameStats.game_id)
-        .where(Game.season_year == year, Game.season_type == "regular")
-        .group_by(Player.id, Team.id)
-    ):
-        t = int(tgts or 0)
-        tt = team_total.get(abbr, 0)
-        if t > 0 and tt > 0:
-            share = round(t / tt * 100, 1)
-            key = f"p{pid}"
-            if share > out.get(key, 0.0):  # keep the player's primary-team share
-                out[key] = share
-    return out
+    team_game_targets: dict[tuple, int] = defaultdict(int)
+    for _pid, gid, tid, tg in rows:
+        team_game_targets[(tid, gid)] += int(tg or 0)
+
+    per_game: dict[int, list[float]] = defaultdict(list)
+    for pid, gid, tid, tg in rows:
+        tt = team_game_targets[(tid, gid)]
+        if tt > 0:
+            per_game[pid].append(int(tg or 0) / tt)
+
+    return {
+        f"p{pid}": round(sum(shares) / len(shares) * 100, 1)
+        for pid, shares in per_game.items() if shares
+    }
 
 
 def _stat_columns(key: str, pos: str, team: str, pstats: dict, toff: dict, dstats: dict,
