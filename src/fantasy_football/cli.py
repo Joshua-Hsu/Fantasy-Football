@@ -275,7 +275,7 @@ def _cmd_build_webapp(args: argparse.Namespace) -> int:
     with _open_session(args) as session:
         path = write_webapp_data(
             session, args.out, year=args.year, config=config,
-            rules=PRESETS[args.scoring], basis=args.basis,
+            rules=PRESETS[args.scoring], basis=args.basis, depth=args.depth,
         )
     print(f"Wrote pick-game data to {path}")
     return 0
@@ -406,6 +406,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_webapp.add_argument("--scoring", choices=["standard", "half_ppr", "ppr"], default="half_ppr")
     p_webapp.add_argument("--teams", type=int, default=12)
     p_webapp.add_argument("--budget", type=int, default=200)
+    p_webapp.add_argument(
+        "--depth", type=int, default=None,
+        help="Max players per position in the pick game (default: draftable depth per position)",
+    )
     p_webapp.set_defaults(func=_cmd_build_webapp)
 
     return parser
