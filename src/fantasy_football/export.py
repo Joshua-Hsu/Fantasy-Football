@@ -51,14 +51,18 @@ def build_board(
     config: LeagueConfig = DEFAULT_LEAGUE,
     rules: ScoringRules = DEFAULT_RULES,
     basis: str = "w3yr",
+    manual_tiers: dict[str, int] | None = None,
 ) -> dict[str, list[BoardRow]]:
-    """Per-position rows ordered by user rating, with tier and within-tier rank.
+    """Per-position rows grouped by tier, with within-tier and overall ranks.
 
-    Ratings are seeded if missing, so this works before any picks (tiers then
-    equal the initial k-means tiers).
+    Tiers come from the head-to-head user ratings, with any explicit
+    ``manual_tiers`` (e.g. hand-set positional tiers) taking precedence. Ratings
+    are seeded if missing, so this works before any picks.
     """
     seed_ratings(session, year=year, config=config, rules=rules, basis=basis)
     tiers = user_rating_tiers(session)
+    if manual_tiers:
+        tiers = {**tiers, **manual_tiers}
     values = compute_values(
         session, year=year, config=config, rules=rules, basis=basis, manual_tiers=tiers
     )
@@ -69,7 +73,8 @@ def build_board(
         rows = values.get(pos, [])
         if not rows:
             continue
-        ranked = sorted(rows, key=lambda r: ratings.get(r.key, r.basis_value), reverse=True)
+        # Group by tier (contiguous), best rating first within each tier.
+        ranked = sorted(rows, key=lambda r: (r.tier, -ratings.get(r.key, r.basis_value)))
         per_tier_seen: dict[int, int] = {}
         out: list[BoardRow] = []
         for i, r in enumerate(ranked, 1):
@@ -108,6 +113,7 @@ def build_webapp_data(
     basis: str = "w3yr",
     depth: int | dict[str, int] | None = None,
     rookie_max_round: int = 3,
+    manual_tiers: dict[str, int] | None = None,
 ) -> dict[str, list[dict]]:
     """Per-position player data for the static pick game (browser app).
 
@@ -118,15 +124,20 @@ def build_webapp_data(
     so the long tail of undraftable players is left out. Incoming rookies drafted
     in rounds 1..``rookie_max_round`` are added on top (seeded by draft capital so
     they interleave with veterans), since they have no stats to rank them.
+    ``manual_tiers`` (hand-set tiers, by key) pins those players to their tier and
+    seeds them by it so the game/ranking reflect the hard-set order.
     """
     from .models import Player, Team
 
+    manual_tiers = manual_tiers or {}
     if isinstance(depth, int):
         caps = {pos: depth for pos in ALL_POSITIONS}
     else:
         caps = {**DEFAULT_WEBAPP_DEPTH, **(depth or {})}
 
-    values = compute_values(session, year=year, config=config, rules=rules, basis=basis)
+    values = compute_values(
+        session, year=year, config=config, rules=rules, basis=basis, manual_tiers=manual_tiers
+    )
     coaching = {
         t.abbreviation: (t.head_coach or "", t.offensive_coordinator or "", t.play_caller or "")
         for t in session.scalars(select(Team))
@@ -140,6 +151,12 @@ def build_webapp_data(
     # Where a rookie of each round slots into a position's value scale.
     round_slot = {1: 7, 2: 17, 3: 27}
 
+    def seed_for(r, fallback):
+        # Hand-set tiers pin the seed by tier (tier 1 highest), value as tiebreak.
+        if r.key in manual_tiers:
+            return (8 - manual_tiers[r.key]) * 100 + min(r.basis_value, 99) * 0.001
+        return fallback
+
     def emit(r, seed):
         hc, oc, pc = coaching.get(r.team, ("", "", ""))
         rnd, pick = draft.get(r.key, (None, None))
@@ -148,6 +165,8 @@ def build_webapp_data(
             "total": r.total, "ppg": r.ppg, "w3yr": r.w3yr,
             "seed": round(seed, 1), "rookie": r.is_rookie, "hc": hc, "oc": oc, "pc": pc,
         }
+        if r.key in manual_tiers:
+            row["tier"] = manual_tiers[r.key]   # hard-set tier (app locks this)
         if r.is_rookie and rnd:
             row["draft"] = f"R{rnd} P{pick}"
         return row
@@ -172,14 +191,15 @@ def build_webapp_data(
             # One per team (the projected starter): best seed per current team.
             best: dict[str, tuple] = {}
             for r in vets + rookies:
-                seed = r.basis_value if not r.is_rookie else rookie_seed(r, vet_seeds)
+                base = r.basis_value if not r.is_rookie else rookie_seed(r, vet_seeds)
+                seed = seed_for(r, base)
                 team = r.team or r.key
                 if team not in best or seed > best[team][1]:
                     best[team] = (r, seed)
             chosen = list(best.values())
         else:
-            chosen = [(r, r.basis_value) for r in vets[: caps.get(pos)]]
-            chosen += [(r, rookie_seed(r, vet_seeds)) for r in rookies]
+            chosen = [(r, seed_for(r, r.basis_value)) for r in vets[: caps.get(pos)]]
+            chosen += [(r, seed_for(r, rookie_seed(r, vet_seeds))) for r in rookies]
 
         chosen.sort(key=lambda x: x[1], reverse=True)
         out[pos] = [emit(r, s) for r, s in chosen]
@@ -195,12 +215,14 @@ def write_webapp_data(
     rules: ScoringRules = DEFAULT_RULES,
     basis: str = "w3yr",
     depth: int | dict[str, int] | None = None,
+    manual_tiers: dict[str, int] | None = None,
 ) -> str:
     """Write the pick-game data as ``docs/data.js`` (``window.FF_DATA = {...}``)."""
     import json
 
     data = build_webapp_data(
-        session, year=year, config=config, rules=rules, basis=basis, depth=depth
+        session, year=year, config=config, rules=rules, basis=basis, depth=depth,
+        manual_tiers=manual_tiers,
     )
     payload = {"basis": basis, "positions": data}
     with open(path, "w") as fh:
@@ -219,6 +241,7 @@ def write_cheatsheet(
     config: LeagueConfig = DEFAULT_LEAGUE,
     rules: ScoringRules = DEFAULT_RULES,
     basis: str = "w3yr",
+    manual_tiers: dict[str, int] | None = None,
 ) -> str:
     """Write the tiered draft board to an .xlsx file. Returns the path.
 
@@ -230,7 +253,9 @@ def write_cheatsheet(
     from openpyxl.styles import Alignment, Font, PatternFill
     from openpyxl.utils import get_column_letter
 
-    board = build_board(session, year=year, config=config, rules=rules, basis=basis)
+    board = build_board(
+        session, year=year, config=config, rules=rules, basis=basis, manual_tiers=manual_tiers
+    )
     header_font = Font(bold=True)
     center = Alignment(horizontal="center")
 

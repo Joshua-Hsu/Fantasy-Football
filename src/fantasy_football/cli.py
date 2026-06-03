@@ -269,10 +269,11 @@ def _cmd_cheatsheet(args: argparse.Namespace) -> int:
     from .valuation import LeagueConfig
 
     config = LeagueConfig(teams=args.teams, budget=args.budget)
+    manual = _read_manual_tiers(getattr(args, "tiers_file", None))
     with _open_session(args) as session:
         path = write_cheatsheet(
             session, args.out, year=args.year, config=config,
-            rules=PRESETS[args.scoring], basis=args.basis,
+            rules=PRESETS[args.scoring], basis=args.basis, manual_tiers=manual,
         )
     print(f"Wrote tiered draft board to {path}")
     return 0
@@ -284,10 +285,12 @@ def _cmd_build_webapp(args: argparse.Namespace) -> int:
     from .valuation import LeagueConfig
 
     config = LeagueConfig(teams=args.teams, budget=args.budget)
+    manual = _read_manual_tiers(getattr(args, "tiers_file", None))
     with _open_session(args) as session:
         path = write_webapp_data(
             session, args.out, year=args.year, config=config,
             rules=PRESETS[args.scoring], basis=args.basis, depth=args.depth,
+            manual_tiers=manual,
         )
     print(f"Wrote pick-game data to {path}")
     return 0
@@ -415,6 +418,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_sheet.add_argument("--scoring", choices=["standard", "half_ppr", "ppr"], default="half_ppr")
     p_sheet.add_argument("--teams", type=int, default=12)
     p_sheet.add_argument("--budget", type=int, default=200)
+    p_sheet.add_argument("--tiers-file", default=None, dest="tiers_file",
+                        help="CSV of hard-set tiers (key,manual_tier) to override computed tiers")
     p_sheet.set_defaults(func=_cmd_cheatsheet)
 
     p_webapp = sub.add_parser("build-webapp", help="Generate docs/data.js for the static pick game")
@@ -428,6 +433,8 @@ def build_parser() -> argparse.ArgumentParser:
         "--depth", type=int, default=None,
         help="Max players per position in the pick game (default: draftable depth per position)",
     )
+    p_webapp.add_argument("--tiers-file", default=None, dest="tiers_file",
+                         help="CSV of hard-set tiers (key,manual_tier) to pin in the game")
     p_webapp.set_defaults(func=_cmd_build_webapp)
 
     return parser
