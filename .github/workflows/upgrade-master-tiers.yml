@@ -1,0 +1,66 @@
+name: Upgrade Master Tiers
+
+# Re-processes your newest committed master_tiers.*.csv through the current
+# pipeline: refreshes last-year stats and adds any new columns (Tgt%, RZ, bye,
+# age, ...), keeping your tiers and prices. Writes a new dated master, commits
+# it (old ones kept as history), and uploads it as a downloadable artifact.
+#
+# Use this after the toolkit's CSV format changes; use "Master Tiers" instead
+# when you have new picks (app_tiers.csv) to fold in.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install (ingest + export extras)
+        run: pip install -e ".[ingest,export]"
+
+      - name: Build database from nflverse
+        run: |
+          python -m fantasy_football.cli init-db
+          python -m fantasy_football.cli load-seasons --start 2020
+          python -m fantasy_football.cli load-active --year 2026
+          python -m fantasy_football.cli load-byes --year 2026
+          python -m fantasy_football.cli load-redzone
+          python -m fantasy_football.cli load-draft --year 2026 --max-round 3
+          if [ -f coaching.csv ]; then
+            python -m fantasy_football.cli load-coaching --file coaching.csv
+          fi
+
+      - name: Upgrade newest master tiers
+        run: |
+          PREV=$(ls -1 master_tiers.*.csv 2>/dev/null | sort | tail -1)
+          if [ -z "$PREV" ]; then
+            echo "::error::no master_tiers.*.csv found to upgrade"; exit 1
+          fi
+          OUT="master_tiers.$(date +%F).csv"
+          echo "Upgrading $PREV -> $OUT (tiers + prices preserved)"
+          python -m fantasy_football.cli import-tiers --file "$PREV" --out "$OUT" --prices-from "$PREV"
+          echo "OUT=$OUT" >> "$GITHUB_ENV"
+
+      - name: Commit upgraded master (history)
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "$OUT"
+          git commit -m "Upgrade master tiers $OUT" || echo "no changes to commit"
+          git push
+
+      - name: Upload upgraded master tiers
+        uses: actions/upload-artifact@v4
+        with:
+          name: master-tiers
+          path: ${{ env.OUT }}
+          retention-days: 90

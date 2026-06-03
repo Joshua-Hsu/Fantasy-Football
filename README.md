@@ -231,6 +231,9 @@ Two GitHub Actions drive this in the cloud:
 - **Master Tiers** — folds a committed `app_tiers.csv` into a new dated
   `master_tiers.<today>.csv`, **commits it** (old ones are kept as history), and
   uploads it as a downloadable artifact.
+- **Upgrade Master Tiers** — re-processes your newest `master_tiers.*.csv`
+  through the current pipeline (refreshes stats, adds any new columns), keeping
+  your tiers/prices — for when the CSV format changes but you have no new picks.
 - **Draft Board** — builds `draft_board.xlsx` from the **newest**
   `master_tiers.*.csv` and uploads it.
 
