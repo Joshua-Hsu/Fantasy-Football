@@ -8,7 +8,7 @@
   var DATA = (window.FF_DATA || { positions: {} }).positions;
   var ORDER = ["QB", "RB", "WR", "TE", "K", "DST"];
   var TIER_K = { QB: 6, RB: 8, WR: 8, TE: 6, K: 5, DST: 6 };
-  var SCALE = 400, K = 24, NEAR = 4, NUDGE = 10;
+  var SCALE = 400, K = 24, NEAR = 4;
   var STORE = "ff_tier_state_v1";
 
   // Flatten + index.
@@ -43,13 +43,17 @@
     save(S);
   }
 
-  function matchup(pos) {
+  var lastPair = [];
+  function matchup(pos, avoid) {
+    avoid = avoid || [];
     var pool = (DATA[pos] || []).slice();
     if (pool.length < 2) return null;
-    var fewest = Math.min.apply(null, pool.map(function (e) { return S.comps[e.key]; }));
-    var cands = pool.filter(function (e) { return S.comps[e.key] <= fewest + 1; });
+    var elig = pool.filter(function (e) { return avoid.indexOf(e.key) < 0; });
+    if (elig.length < 2) elig = pool;  // tiny pool: can't avoid
+    var fewest = Math.min.apply(null, elig.map(function (e) { return S.comps[e.key]; }));
+    var cands = elig.filter(function (e) { return S.comps[e.key] <= fewest + 1; });
     var a = cands[Math.floor(Math.random() * cands.length)];
-    var others = pool.filter(function (e) { return e.key !== a.key; })
+    var others = elig.filter(function (e) { return e.key !== a.key; })
       .sort(function (x, y) {
         return Math.abs(S.ratings[x.key] - S.ratings[a.key]) -
                Math.abs(S.ratings[y.key] - S.ratings[a.key]);
@@ -140,9 +144,10 @@
   }
 
   function play(pos) {
-    var m = matchup(pos);
+    var m = matchup(pos, lastPair);
     if (!m) { app.innerHTML = nav() + "<h1>" + pos + "</h1><p>Not enough " + pos + " players.</p>"; return; }
     var a = m[0], b = m[1];
+    lastPair = [a.key, b.key];  // next pair will avoid these two
     app.innerHTML = nav(" &middot; <a href='#/rank/" + pos + "'>" + pos + " ranking</a>") +
       "<h1>" + pos + " &mdash; who'd you rather?</h1>" +
       "<div class='cards'>" +
@@ -150,8 +155,8 @@
         "<button class='card' onclick=\"FF.choose('" + b.key + "','" + a.key + "','" + pos + "')\">" + statBlock(b) + "</button>" +
       "</div><p class='vs'>" +
         "<button class='btn' onclick=\"FF.again('" + pos + "')\">&#8635; different pair</button> " +
-        "<button class='btn' onclick=\"FF.bothLower('" + a.key + "','" + b.key + "','" + pos + "')\">" +
-        "&#8595; both lower</button>" +
+        "<button class='btn' onclick=\"FF.noPick('" + a.key + "','" + b.key + "','" + pos + "')\">" +
+        "&#8856; no pick</button>" +
       "</p>";
   }
 
@@ -172,10 +177,9 @@
   window.FF = {
     choose: function (winner, loser, pos) { pick(winner, loser); play(pos); },
     again: function (pos) { play(pos); },
-    bothLower: function (a, b, pos) {
-      // Neither interests you: nudge both down a little and count it as a
-      // "no pick" comparison for both (so the rotation moves on). Not a pick.
-      S.ratings[a] -= NUDGE; S.ratings[b] -= NUDGE;
+    noPick: function (a, b, pos) {
+      // Neither interests you: no winner, no rating change. Count it as a
+      // comparison for both so the rotation moves on, then show a new pair.
       S.comps[a]++; S.comps[b]++;
       save(S); play(pos);
     },
