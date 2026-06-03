@@ -52,18 +52,21 @@ def build_board(
     rules: ScoringRules = DEFAULT_RULES,
     basis: str = "w3yr",
     manual_tiers: dict[str, int] | None = None,
+    fixed_prices: dict[str, float] | None = None,
 ) -> dict[str, list[BoardRow]]:
     """Per-position rows grouped by tier, with within-tier and overall ranks.
 
     Tiers come from the head-to-head user ratings. ``manual_tiers`` (hand-set
     positional tiers) seed those ratings as a *starting point* — picks still move
-    them — rather than hard-locking the tiers.
+    them — rather than hard-locking the tiers. ``fixed_prices`` pins expected
+    market prices for specific players; the field re-prices around them.
     """
     seed_ratings(session, year=year, config=config, rules=rules, basis=basis,
                  manual_tiers=manual_tiers)
     tiers = user_rating_tiers(session)
     values = compute_values(
-        session, year=year, config=config, rules=rules, basis=basis, manual_tiers=tiers
+        session, year=year, config=config, rules=rules, basis=basis, manual_tiers=tiers,
+        fixed_prices=fixed_prices,
     )
     ratings = {r.key: r.rating for r in session.scalars(select(UserRating))}
 
@@ -241,6 +244,7 @@ def write_cheatsheet(
     rules: ScoringRules = DEFAULT_RULES,
     basis: str = "w3yr",
     manual_tiers: dict[str, int] | None = None,
+    fixed_prices: dict[str, float] | None = None,
 ) -> str:
     """Write the tiered draft board to an .xlsx file. Returns the path.
 
@@ -253,7 +257,8 @@ def write_cheatsheet(
     from openpyxl.utils import get_column_letter
 
     board = build_board(
-        session, year=year, config=config, rules=rules, basis=basis, manual_tiers=manual_tiers
+        session, year=year, config=config, rules=rules, basis=basis,
+        manual_tiers=manual_tiers, fixed_prices=fixed_prices,
     )
     header_font = Font(bold=True)
     center = Alignment(horizontal="center")

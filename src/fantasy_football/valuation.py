@@ -256,16 +256,29 @@ def _replacement_values(
     return replacement
 
 
-def _assign_prices(entities: list[dict], config: LeagueConfig, *, tier_smoothing: float) -> None:
+def _assign_prices(
+    entities: list[dict], config: LeagueConfig, *, tier_smoothing: float,
+    fixed_prices: dict[str, float] | None = None,
+) -> None:
     """Compute VOR (smoothed within tier) and the dollar value for each entity.
 
     Mutates each entity with ``vor`` and ``dollars``. The budget pool, minus a $1
-    reserve per roster slot, is distributed across positive smoothed-VOR.
+    reserve per roster slot, is distributed across positive smoothed-VOR. Any
+    ``fixed_prices`` (expected/market prices, by key) are honored exactly and
+    removed from the pool first, so the rest re-price around what's left.
     """
+    fixed = {
+        e["key"]: max(float(fixed_prices[e["key"]]), 1.0)
+        for e in entities
+        if fixed_prices and e["key"] in fixed_prices
+    }
+
     # Smooth positive VOR toward the (position, tier) mean to flatten within-tier
     # differences, per the league's "smoothed by tier" pricing choice.
     groups: dict[tuple[str, int], list[dict]] = {}
     for ent in entities:
+        if ent["key"] in fixed:
+            continue
         groups.setdefault((ent["position"], ent["tier"]), []).append(ent)
     for members in groups.values():
         pos_vor = [max(m["vor"], 0.0) for m in members]
@@ -274,12 +287,16 @@ def _assign_prices(entities: list[dict], config: LeagueConfig, *, tier_smoothing
             raw = max(m["vor"], 0.0)
             m["_svor"] = tier_smoothing * mean + (1 - tier_smoothing) * raw
 
-    total_svor = sum(m["_svor"] for m in entities)
     n_rostered = config.teams * config.roster_size
-    discretionary = max(config.pool - n_rostered, 0)
+    reserve = max(n_rostered - len(fixed), 0)            # $1 per non-fixed slot
+    discretionary = max(config.pool - sum(fixed.values()) - reserve, 0)
+    total_svor = sum(e["_svor"] for e in entities if e["key"] not in fixed)
     for ent in entities:
-        share = (ent["_svor"] / total_svor) if total_svor > 0 else 0.0
-        ent["dollars"] = round(1 + share * discretionary, 1)
+        if ent["key"] in fixed:
+            ent["dollars"] = round(fixed[ent["key"]], 1)
+        else:
+            share = (ent["_svor"] / total_svor) if total_svor > 0 else 0.0
+            ent["dollars"] = round(1 + share * discretionary, 1)
         ent.pop("_svor", None)
 
 
@@ -298,6 +315,7 @@ def compute_values(
     manual_tiers: dict[str, int] | None = None,
     tier_smoothing: float = 0.5,
     active_only: bool | None = None,
+    fixed_prices: dict[str, float] | None = None,
 ) -> dict[str, list[ValueRow]]:
     """Compute tiers and auction values, grouped by position.
 
@@ -365,7 +383,7 @@ def compute_values(
     replacement = _replacement_values(by_position, config)
     for ent in entities:
         ent["vor"] = ent["basis_value"] - replacement.get(ent["position"], 0.0)
-    _assign_prices(entities, config, tier_smoothing=tier_smoothing)
+    _assign_prices(entities, config, tier_smoothing=tier_smoothing, fixed_prices=fixed_prices)
 
     # Overall rank across all positions, by value.
     for rank, ent in enumerate(sorted(entities, key=lambda e: e["basis_value"], reverse=True), 1):

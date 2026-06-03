@@ -144,6 +144,25 @@ def _read_manual_tiers(path: str | None) -> dict[str, int]:
     return tiers
 
 
+def _read_fixed_prices(path: str | None) -> dict[str, float]:
+    """Read expected/market prices from a CSV's optional ``price`` column."""
+    if not path:
+        return {}
+    import csv
+
+    prices: dict[str, float] = {}
+    with open(path, newline="") as fh:
+        reader = csv.DictReader(fh)
+        if "price" not in (reader.fieldnames or []):
+            return {}
+        for row in reader:
+            key = (row.get("key") or "").strip()
+            value = (row.get("price") or "").strip()
+            if key and value:
+                prices[key] = float(value)
+    return prices
+
+
 def _cmd_values(args: argparse.Namespace) -> int:
     import csv
 
@@ -152,6 +171,7 @@ def _cmd_values(args: argparse.Namespace) -> int:
 
     config = LeagueConfig(teams=args.teams, budget=args.budget)
     manual_tiers = _read_manual_tiers(args.tiers_file)
+    fixed_prices = _read_fixed_prices(args.tiers_file)
 
     with _open_session(args) as session:
         if args.use_user_ratings:
@@ -166,6 +186,7 @@ def _cmd_values(args: argparse.Namespace) -> int:
             basis=args.basis,
             manual_tiers=manual_tiers,
             active_only=False if args.all_players else None,
+            fixed_prices=fixed_prices,
         )
 
     positions = [args.position.upper()] if args.position else list(ALL_POSITIONS)
@@ -270,10 +291,12 @@ def _cmd_cheatsheet(args: argparse.Namespace) -> int:
 
     config = LeagueConfig(teams=args.teams, budget=args.budget)
     manual = _read_manual_tiers(getattr(args, "tiers_file", None))
+    prices = _read_fixed_prices(getattr(args, "tiers_file", None))
     with _open_session(args) as session:
         path = write_cheatsheet(
             session, args.out, year=args.year, config=config,
-            rules=PRESETS[args.scoring], basis=args.basis, manual_tiers=manual,
+            rules=PRESETS[args.scoring], basis=args.basis,
+            manual_tiers=manual, fixed_prices=prices,
         )
     print(f"Wrote tiered draft board to {path}")
     return 0

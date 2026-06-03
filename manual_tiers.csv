@@ -1,30 +1,30 @@
-key,manual_tier,name
-p3487,1,Ja'Marr Chase
-p4986,1,Puka Nacua
-p4521,1,Jaxon Smith-Njigba
-p3547,1,Amon-Ra St. Brown
-p2932,2,Justin Jefferson
-p2968,2,CeeDee Lamb
-p2421,2,A.J. Brown
-p3191,2,Nico Collins
-p3805,3,Drake London
-p5871,3,Tetairoa McMillan
-p3499,3,DeVonta Smith
-p5723,3,Ladd McConkey
-p4980,3,Rashee Rice
-p3807,4,Jameson Williams
-p3814,4,George Pickens
-p4977,4,Zay Flowers
-p3020,4,Tee Higgins
-p3806,4,Chris Olave
-p2406,4,Terry McLaurin
-p4214,5,Garrett Wilson
-p3240,5,Jaylen Waddle
-p1924,5,DJ Moore
-p5727,5,Rome Odunze
-p4321,5,Christian Watson
-p654,6,Mike Evans
-p4206,6,Alec Pierce
-p4522,6,Quentin Johnston
-p5158,6,Malik Nabers
-p5659,7,Marvin Harrison Jr.
+key,manual_tier,name,price
+p3487,1,Ja'Marr Chase,80
+p4986,1,Puka Nacua,
+p4521,1,Jaxon Smith-Njigba,
+p3547,1,Amon-Ra St. Brown,
+p2932,2,Justin Jefferson,
+p2968,2,CeeDee Lamb,
+p2421,2,A.J. Brown,
+p3191,2,Nico Collins,
+p3805,3,Drake London,
+p5871,3,Tetairoa McMillan,
+p3499,3,DeVonta Smith,
+p5723,3,Ladd McConkey,
+p4980,3,Rashee Rice,
+p3807,4,Jameson Williams,
+p3814,4,George Pickens,
+p4977,4,Zay Flowers,
+p3020,4,Tee Higgins,
+p3806,4,Chris Olave,
+p2406,4,Terry McLaurin,
+p4214,5,Garrett Wilson,
+p3240,5,Jaylen Waddle,
+p1924,5,DJ Moore,
+p5727,5,Rome Odunze,
+p4321,5,Christian Watson,
+p654,6,Mike Evans,
+p4206,6,Alec Pierce,
+p4522,6,Quentin Johnston,
+p5158,6,Malik Nabers,
+p5659,7,Marvin Harrison Jr.,
