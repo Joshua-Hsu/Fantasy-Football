@@ -52,12 +52,21 @@ DRAFT_URL = (
     "draft_picks/draft_picks.parquet"
 )
 
-# Pro-Football-Reference team codes (used in draft_picks) -> nflverse codes.
-_PFR_TEAM = {
-    "GNB": "GB", "KAN": "KC", "LVR": "LV", "NOR": "NO", "NWE": "NE",
-    "SFO": "SF", "TAM": "TB", "LAR": "LA", "SDG": "LAC", "OAK": "LV",
-    "STL": "LA", "RAM": "LA",
+# Team-code aliases: roster/draft sources use a few codes that differ from the
+# canonical nflverse stats codes. Normalize so current_team/team join correctly.
+_TEAM_ALIASES = {
+    "AZ": "ARI", "ARZ": "ARI", "LAR": "LA", "STL": "LA", "RAM": "LA",
+    "SD": "LAC", "SDG": "LAC", "OAK": "LV", "LVR": "LV", "BLT": "BAL",
+    "CLV": "CLE", "HST": "HOU", "GNB": "GB", "KAN": "KC", "NWE": "NE",
+    "NOR": "NO", "SFO": "SF", "TAM": "TB",
 }
+
+
+def _norm_team(code: str | None) -> str | None:
+    """Map a source team code to the canonical nflverse abbreviation."""
+    if not code:
+        return code
+    return _TEAM_ALIASES.get(code.upper(), code)
 
 #: nflverse weekly/roster data begins in 1999; weekly *player* stats are
 #: reliable from the early 2000s. Used as a floor for season ranges.
@@ -182,8 +191,7 @@ def load_draft_rookies(session: Session, year: int, *, max_round: int = 3) -> in
         )
         if not slug:
             continue
-        team = _opt_str(getattr(row, "team", None))
-        team = _PFR_TEAM.get(team, team)
+        team = _norm_team(_opt_str(getattr(row, "team", None)))
         player = existing.get(slug)
         if player is None:
             player = Player(slug=slug, full_name=_opt_str(row.pfr_player_name) or slug)
@@ -601,7 +609,7 @@ def load_active_roster(session: Session, year: int) -> int:
             session.add(player)
             existing[slug] = player
         # Roster is the source of truth for current team/position.
-        player.current_team = _opt_str(getattr(row, "team", None))
+        player.current_team = _norm_team(_opt_str(getattr(row, "team", None)))
         player.status = status
         player.active = is_active
         player.position = _opt_str(getattr(row, "position", None)) or player.position
