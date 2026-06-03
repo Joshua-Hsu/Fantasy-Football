@@ -167,7 +167,6 @@
   // ---- public actions ----
   window.FF = {
     choose: function (winner, loser, pos) { pick(winner, loser); play(pos); },
-    reset: function () { if (confirm("Clear all picks and ratings?")) { localStorage.removeItem(STORE); S = load(); route(); } },
     exportTiers: function () {
       // key + manual_tier first (so the CLI/Action can read it), then human
       // columns (name/pos/rookie) so you can edit it by hand in a spreadsheet.
