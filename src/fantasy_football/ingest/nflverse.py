@@ -47,6 +47,17 @@ TEAM_WEEK_URL = (
     "https://github.com/nflverse/nflverse-data/releases/download/"
     "stats_team/stats_team_week_{year}.parquet"
 )
+DRAFT_URL = (
+    "https://github.com/nflverse/nflverse-data/releases/download/"
+    "draft_picks/draft_picks.parquet"
+)
+
+# Pro-Football-Reference team codes (used in draft_picks) -> nflverse codes.
+_PFR_TEAM = {
+    "GNB": "GB", "KAN": "KC", "LVR": "LV", "NOR": "NO", "NWE": "NE",
+    "SFO": "SF", "TAM": "TB", "LAR": "LA", "SDG": "LAC", "OAK": "LV",
+    "STL": "LA", "RAM": "LA",
+}
 
 #: nflverse weekly/roster data begins in 1999; weekly *player* stats are
 #: reliable from the early 2000s. Used as a floor for season ranges.
@@ -142,6 +153,56 @@ def _fetch_roster(year: int) -> pd.DataFrame:
 
 def _fetch_team_week(year: int) -> pd.DataFrame:
     return _read(lambda: pd.read_parquet(TEAM_WEEK_URL.format(year=year)))
+
+
+def _fetch_draft() -> pd.DataFrame:
+    return _read(lambda: pd.read_parquet(DRAFT_URL))
+
+
+FANTASY_DRAFT_POSITIONS = {"QB", "RB", "WR", "TE"}
+
+
+def load_draft_rookies(session: Session, year: int, *, max_round: int = 3) -> int:
+    """Add incoming rookies (drafted in rounds 1..``max_round``) to the pool.
+
+    Drafted rookies aren't in the stats/roster files yet, so they're created here
+    from ``draft_picks`` as active placeholders (no stats) with their draft round
+    and pick. Only fantasy-relevant positions are added. Returns rows written.
+    """
+    df = _fetch_draft()
+    df = df[(df["season"] == year) & (df["round"] <= max_round)]
+    existing = {p.slug: p for p in session.scalars(select(Player)) if p.slug}
+    written = 0
+    for row in df.itertuples():
+        pos = _opt_str(getattr(row, "position", None))
+        if pos not in FANTASY_DRAFT_POSITIONS:
+            continue
+        slug = _opt_str(getattr(row, "gsis_id", None)) or _opt_str(
+            getattr(row, "pfr_player_id", None)
+        )
+        if not slug:
+            continue
+        team = _opt_str(getattr(row, "team", None))
+        team = _PFR_TEAM.get(team, team)
+        player = existing.get(slug)
+        if player is None:
+            player = Player(slug=slug, full_name=_opt_str(row.pfr_player_name) or slug)
+            session.add(player)
+            existing[slug] = player
+        if _opt_str(getattr(row, "pfr_player_name", None)):
+            player.full_name = _opt_str(row.pfr_player_name)
+        player.position = pos
+        player.current_team = team
+        player.status = player.status or "ROOKIE"
+        player.active = True
+        player.rookie_year = year
+        player.draft_round = _opt_int(getattr(row, "round", None))
+        player.draft_pick = _opt_int(getattr(row, "pick", None))
+        if player.college is None:
+            player.college = _opt_str(getattr(row, "college", None))
+        written += 1
+    session.commit()
+    return written
 
 
 def season_has_data(year: int) -> bool:

@@ -102,18 +102,19 @@ def build_webapp_data(
     rules: ScoringRules = DEFAULT_RULES,
     basis: str = "w3yr",
     depth: int | dict[str, int] | None = None,
+    rookie_max_round: int = 3,
 ) -> dict[str, list[dict]]:
     """Per-position player data for the static pick game (browser app).
 
     Each entity carries the three comparison stats, a seed value (for the
     in-browser Elo), current team, and coaching. No DB needed at play time.
 
-    ``depth`` caps how many players per position are included (top N by value),
-    so the long tail of undraftable players is left out. Pass an int to apply one
-    cap to every position, a dict for per-position caps, or ``None`` for the
-    sensible defaults.
+    ``depth`` caps how many *veterans* per position are included (top N by value),
+    so the long tail of undraftable players is left out. Incoming rookies drafted
+    in rounds 1..``rookie_max_round`` are added on top (seeded by draft capital so
+    they interleave with veterans), since they have no stats to rank them.
     """
-    from .models import Team
+    from .models import Player, Team
 
     if isinstance(depth, int):
         caps = {pos: depth for pos in ALL_POSITIONS}
@@ -125,19 +126,45 @@ def build_webapp_data(
         t.abbreviation: (t.head_coach or "", t.offensive_coordinator or "", t.play_caller or "")
         for t in session.scalars(select(Team))
     }
+    draft = {
+        f"p{pid}": (rnd, pick)
+        for pid, rnd, pick in session.execute(
+            select(Player.id, Player.draft_round, Player.draft_pick).where(Player.draft_round.isnot(None))
+        )
+    }
+    # Where a rookie of each round slots into a position's value scale.
+    round_slot = {1: 7, 2: 17, 3: 27}
+
+    def emit(r, seed):
+        hc, oc, pc = coaching.get(r.team, ("", "", ""))
+        rnd, pick = draft.get(r.key, (None, None))
+        row = {
+            "key": r.key, "name": r.name, "team": r.team, "pos": r.position,
+            "total": r.total, "ppg": r.ppg, "w3yr": r.w3yr,
+            "seed": round(seed, 1), "rookie": r.is_rookie, "hc": hc, "oc": oc, "pc": pc,
+        }
+        if r.is_rookie and rnd:
+            row["draft"] = f"R{rnd} P{pick}"
+        return row
+
     out: dict[str, list[dict]] = {}
     for pos in ALL_POSITIONS:
-        rows = []
-        # compute_values returns each position sorted by value (dollars) desc.
-        for r in values.get(pos, [])[: caps.get(pos)]:
-            hc, oc, pc = coaching.get(r.team, ("", "", ""))
-            rows.append({
-                "key": r.key, "name": r.name, "team": r.team, "pos": r.position,
-                "total": r.total, "ppg": r.ppg, "w3yr": r.w3yr,
-                "seed": r.basis_value, "rookie": r.is_rookie,
-                "hc": hc, "oc": oc, "pc": pc,
-            })
-        out[pos] = rows
+        rows = values.get(pos, [])  # sorted by value desc
+        vets = [r for r in rows if not r.is_rookie]
+        vet_seeds = [r.basis_value for r in vets]
+        emitted = [emit(r, r.basis_value) for r in vets[: caps.get(pos)]]
+
+        for r in rows:
+            rnd = draft.get(r.key, (99,))[0]
+            if not (r.is_rookie and rnd and rnd <= rookie_max_round):
+                continue
+            pick = draft.get(r.key, (0, 0))[1] or 0
+            idx = round_slot.get(rnd, 30)
+            base = vet_seeds[min(idx, len(vet_seeds) - 1)] if vet_seeds else 0.0
+            emitted.append(emit(r, base - pick * 0.001))  # earlier picks rank higher
+
+        emitted.sort(key=lambda d: d["seed"], reverse=True)
+        out[pos] = emitted
     return out
 
 

@@ -8,6 +8,7 @@ files and loads them into our schema.
 from .nflverse import (
     load_active_roster,
     load_coaching,
+    load_draft_rookies,
     load_games,
     load_players,
     load_season,
@@ -26,6 +27,7 @@ __all__ = [
     "load_team_stats",
     "load_active_roster",
     "load_coaching",
+    "load_draft_rookies",
     "latest_head_coaches",
     "load_season",
     "load_seasons",

@@ -120,14 +120,18 @@
   function statBlock(e) {
     if (!e) return "<div class='muted'>no data</div>";
     var rookie = e.rookie ? "<span class='badge'>R</span>" : "";
+    var stat = function (v) { return e.rookie ? "&mdash;" : v.toFixed(1); };
+    var draftLine = e.rookie
+      ? "<div class='muted'>Rookie" + (e.draft ? " &middot; " + esc(e.draft) : "") + "</div>"
+      : "";
     return "<div class='name'>" + esc(e.name) + rookie + "</div>" +
       "<div class='muted'>" + esc(e.pos) + " &middot; " + esc(e.team || "TBD") +
       " &middot; Pos #" + posRank(e) + " &middot; Ovr #" + overallRank(e) + "</div>" +
       "<div class='muted'>HC " + esc(e.hc || "TBD") + " &middot; OC " + esc(e.oc || "TBD") +
-      " &middot; PC " + esc(e.pc || "TBD") + "</div>" +
-      "<div class='row'><span>Last-yr total</span><b>" + e.total.toFixed(1) + "</b></div>" +
-      "<div class='row'><span>Last-yr PPG</span><b>" + e.ppg.toFixed(1) + "</b></div>" +
-      "<div class='row'><span>3-yr weighted</span><b>" + e.w3yr.toFixed(1) + "</b></div>";
+      " &middot; PC " + esc(e.pc || "TBD") + "</div>" + draftLine +
+      "<div class='row'><span>Last-yr total</span><b>" + stat(e.total) + "</b></div>" +
+      "<div class='row'><span>Last-yr PPG</span><b>" + stat(e.ppg) + "</b></div>" +
+      "<div class='row'><span>3-yr weighted</span><b>" + stat(e.w3yr) + "</b></div>";
   }
 
   function play(pos) {

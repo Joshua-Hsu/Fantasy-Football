@@ -220,6 +220,18 @@ def _cmd_load_active(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_load_draft(args: argparse.Namespace) -> int:
+    import datetime as _dt
+
+    from .ingest import load_draft_rookies
+
+    year = args.year or _dt.date.today().year
+    with _open_session(args) as session:
+        n = load_draft_rookies(session, year, max_round=args.max_round)
+    print(f"Added {n} rookies (rounds 1-{args.max_round}) from the {year} draft")
+    return 0
+
+
 def _cmd_load_coaching(args: argparse.Namespace) -> int:
     from .ingest import load_coaching
 
@@ -376,6 +388,12 @@ def build_parser() -> argparse.ArgumentParser:
     p_active = sub.add_parser("load-active", help="Mark the active draft pool from a season roster")
     p_active.add_argument("--year", type=int, default=None, help="Roster year (default: current year)")
     p_active.set_defaults(func=_cmd_load_active)
+
+    p_draft = sub.add_parser("load-draft", help="Add incoming rookies (top rounds) to the pool")
+    p_draft.add_argument("--year", type=int, default=None, help="Draft year (default: current year)")
+    p_draft.add_argument("--max-round", type=int, default=3, dest="max_round",
+                         help="Include rookies drafted in rounds 1..N (default 3)")
+    p_draft.set_defaults(func=_cmd_load_draft)
 
     p_coachtpl = sub.add_parser("coaching-template", help="Write a coaching CSV to fill in")
     p_coachtpl.add_argument("--out", default="coaching.csv", help="Output CSV path")

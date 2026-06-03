@@ -126,6 +126,8 @@ class Player(Base):
     status: Mapped[str | None] = mapped_column(String(8))
     active: Mapped[bool] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     rookie_year: Mapped[int | None] = mapped_column(Integer)
+    draft_round: Mapped[int | None] = mapped_column(Integer)
+    draft_pick: Mapped[int | None] = mapped_column(Integer)
 
     game_stats: Mapped[list[PlayerGameStats]] = relationship(back_populates="player")
 
