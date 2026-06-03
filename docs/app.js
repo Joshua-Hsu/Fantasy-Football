@@ -8,7 +8,7 @@
   var DATA = (window.FF_DATA || { positions: {} }).positions;
   var ORDER = ["QB", "RB", "WR", "TE", "K", "DST"];
   var TIER_K = { QB: 6, RB: 8, WR: 8, TE: 6, K: 5, DST: 6 };
-  var SCALE = 400, K = 24, NEAR = 4;
+  var SCALE = 400, K = 24, NEAR = 4, NUDGE = 10;
   var STORE = "ff_tier_state_v1";
 
   // Flatten + index.
@@ -173,9 +173,10 @@
     choose: function (winner, loser, pos) { pick(winner, loser); play(pos); },
     again: function (pos) { play(pos); },
     bothLower: function (a, b, pos) {
-      // Push both players down (neither deserves their current spot).
-      S.ratings[a] -= K; S.ratings[b] -= K;
-      S.comps[a]++; S.comps[b]++; S.picks++;
+      // Neither interests you: nudge both down a little and count it as a
+      // "no pick" comparison for both (so the rotation moves on). Not a pick.
+      S.ratings[a] -= NUDGE; S.ratings[b] -= NUDGE;
+      S.comps[a]++; S.comps[b]++;
       save(S); play(pos);
     },
     exportTiers: function () {
