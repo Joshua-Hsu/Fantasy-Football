@@ -173,15 +173,18 @@
       // key + manual_tier first (so the CLI/Action can read it), then human
       // columns (name/pos/rookie) so you can edit it by hand in a spreadsheet.
       var q = function (s) { return '"' + String(s == null ? "" : s).replace(/"/g, '""') + '"'; };
-      var lines = ["key,manual_tier,name,pos,rookie,total,ppg,lastyr_stats,team_offense"];
+      var HEADERS = (window.FF_DATA && window.FF_DATA.stat_headers) || [];
+      var lines = [["key,manual_tier,name,pos,rookie,total,ppg"].concat(HEADERS).join(",")];
       ORDER.forEach(function (p) {
         var t = tiersFor(p);
         var pool = (DATA[p] || []).slice().sort(function (a, b) {
           return (t[a.key] - t[b.key]) || (S.ratings[b.key] - S.ratings[a.key]);
         });
         pool.forEach(function (e) {
-          lines.push([e.key, t[e.key], q(e.name), e.pos, e.rookie ? 1 : 0,
-            e.total, e.ppg, q(e.stat || ""), q(e.tmoff || "")].join(","));
+          var c = e.cols || {};
+          var row = [e.key, t[e.key], q(e.name), e.pos, e.rookie ? 1 : 0, e.total, e.ppg];
+          HEADERS.forEach(function (h) { row.push(c[h] == null ? "" : c[h]); });
+          lines.push(row.join(","));
         });
       });
       var blob = new Blob([lines.join("\n") + "\n"], { type: "text/csv" });
