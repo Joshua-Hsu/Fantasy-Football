@@ -176,9 +176,10 @@ def build_webapp_data(
     round_slot = {1: 7, 2: 17, 3: 27}
 
     def seed_for(r, fallback):
-        # Hand-set tiers pin the seed by tier (tier 1 highest), value as tiebreak.
-        if r.key in manual_tiers:
-            return (8 - manual_tiers[r.key]) * 100 + min(r.basis_value, 99) * 0.001
+        # Value-seeded: every player sits on one continuous value scale, so the
+        # gap between two players reflects their real projected-value difference
+        # (not a fixed tier band). The app's Elo then refines from there, so the
+        # ranking is driven by your head-to-head picks rather than the seed tier.
         return fallback
 
     def emit(r, seed):

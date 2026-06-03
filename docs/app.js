@@ -8,12 +8,12 @@
   var DATA = (window.FF_DATA || { positions: {} }).positions;
   var ORDER = ["QB", "RB", "WR", "TE", "K", "DST"];
   var TIER_K = { QB: 6, RB: 8, WR: 8, TE: 6, K: 5, DST: 6 };
-  // SCALE governs how decisive a pick is; K is the per-pick rating step. Tiers
-  // are seeded ~100 points apart (one tier per band), so K must be a healthy
-  // fraction of that or picks can't move a player across a tier in a few clicks.
-  var SCALE = 400, K = 48, NEAR = 4, NUDGE = 20;
-  var STORE = "ff_tier_state_v1";
-
+  // SCALE governs how decisive a pick is; K is the per-pick rating step. Players
+  // are seeded on a continuous value scale (adjacent players ~10-30 apart), so a
+  // pick (~K/2 points) moves you past your neighbours - the ranking is driven by
+  // the head-to-head relations, not the seed.
+  var SCALE = 400, K = 24, NEAR = 4, NUDGE = 10;
+  var STORE = "ff_tier_state_v2";  // v2: continuous value seeds (was tier-banded)
   // Flatten + index.
   var ALL = [];
   ORDER.forEach(function (p) { (DATA[p] || []).forEach(function (e) { ALL.push(e); }); });
@@ -254,8 +254,9 @@
           var tier = parseInt(parts[1], 10);
           if (!key || !tier || !(key in S.ratings)) continue;
           var e = BYKEY[key];
-          // Anchor rating by the imported tier (value as a within-tier tiebreak).
-          S.ratings[key] = (8 - tier) * 100 + (e ? Math.min(e.seed, 99) * 0.001 : 0);
+          // Anchor by the imported tier on the value scale (~40/tier so a few
+          // picks can still cross), value as the within-tier tiebreak.
+          S.ratings[key] = (8 - tier) * 40 + (e ? e.seed * 0.001 : 0);
           n++;
         }
         save(S);
