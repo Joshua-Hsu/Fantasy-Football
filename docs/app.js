@@ -148,7 +148,11 @@
       "<div class='cards'>" +
         "<button class='card' onclick=\"FF.choose('" + a.key + "','" + b.key + "','" + pos + "')\">" + statBlock(a) + "</button>" +
         "<button class='card' onclick=\"FF.choose('" + b.key + "','" + a.key + "','" + pos + "')\">" + statBlock(b) + "</button>" +
-      "</div><p class='vs'><a href='#/play/" + pos + "'>&#8635; different pair</a></p>";
+      "</div><p class='vs'>" +
+        "<button class='btn' onclick=\"FF.again('" + pos + "')\">&#8635; different pair</button> " +
+        "<button class='btn' onclick=\"FF.bothLower('" + a.key + "','" + b.key + "','" + pos + "')\">" +
+        "&#8595; both lower</button>" +
+      "</p>";
   }
 
   function rank(pos) {
@@ -167,6 +171,13 @@
   // ---- public actions ----
   window.FF = {
     choose: function (winner, loser, pos) { pick(winner, loser); play(pos); },
+    again: function (pos) { play(pos); },
+    bothLower: function (a, b, pos) {
+      // Push both players down (neither deserves their current spot).
+      S.ratings[a] -= K; S.ratings[b] -= K;
+      S.comps[a]++; S.comps[b]++; S.picks++;
+      save(S); play(pos);
+    },
     exportTiers: function () {
       // key + manual_tier first (so the CLI/Action can read it), then human
       // columns (name/pos/rookie) so you can edit it by hand in a spreadsheet.
