@@ -137,9 +137,11 @@ def test_manual_tiers_reorder():
     from fantasy_football.valuation import assign_sized_tiers
 
     order = [f"k{i}" for i in range(20)]
-    base = assign_sized_tiers(order, k=4)
+    vals = [float(20 - i) for i in range(20)]  # smoothly descending, no big gaps
+    base = assign_sized_tiers(order, vals, k=4)
     promoted = ["k19"] + [k for k in order if k != "k19"]
-    moved = assign_sized_tiers(promoted, k=4)
+    pvals = [vals[19]] + [vals[i] for i in range(20) if i != 19]
+    moved = assign_sized_tiers(promoted, pvals, k=4)
     assert moved["k19"] < base["k19"]  # promoting in the ranking improves the tier
 
 
@@ -148,6 +150,8 @@ def test_tiers_capped_at_max_size():
 
     from fantasy_football.valuation import MAX_TIER_SIZE, assign_sized_tiers
 
-    sizes = collections.Counter(assign_sized_tiers([f"k{i}" for i in range(40)], k=8).values())
+    keys = [f"k{i}" for i in range(40)]
+    vals = [float(40 - i) for i in range(40)]  # smoothly descending
+    sizes = collections.Counter(assign_sized_tiers(keys, vals, k=8).values())
     top_tiers = sorted(sizes)[:-2]  # all but the bottom two
     assert all(sizes[t] <= MAX_TIER_SIZE for t in top_tiers)

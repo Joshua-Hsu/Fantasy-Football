@@ -193,24 +193,40 @@ def _basis_value(entity: dict, basis: str) -> float:
 MAX_TIER_SIZE = 7
 
 
-def assign_sized_tiers(ranked_keys: list[str], k: int, max_size: int = MAX_TIER_SIZE) -> dict[str, int]:
-    """Tier a best->worst ranked list, capping each tier at ``max_size``.
+def assign_sized_tiers(ranked_keys: list[str], values: list[float], k: int,
+                       max_size: int = MAX_TIER_SIZE) -> dict[str, int]:
+    """Tier a best->worst ranked list using value gaps, capped at ``max_size``.
 
-    The top ``k-2`` tiers hold up to ``max_size`` each; everyone below is split
-    across the last two tiers (which have no size cap), so the deep guys you
-    don't sub-rank don't blow up the top tiers.
+    Starts a new tier at a notable drop in value (so elite players break out into
+    their own small tiers), while never exceeding ``max_size`` per tier. The top
+    ``k-2`` tiers are formed this way; everyone below is split across the last two
+    (uncapped) tiers, so the deep guys don't bloat the meaningful tiers.
     """
     out: dict[str, int] = {}
     n = len(ranked_keys)
     if n == 0:
         return out
-    capped = max(k - 2, 0)
-    i = tier = 0
-    while tier < capped and i < n:
-        tier += 1
-        for key in ranked_keys[i:i + max_size]:
-            out[key] = tier
-        i += max_size
+    capped = max(k - 2, 1)
+    gaps = [values[j] - values[j + 1] for j in range(n - 1)]
+    positive = sorted(g for g in gaps if g > 0)
+    # A "notable" drop = top quartile of gaps; these become tier boundaries.
+    thr = positive[int(0.75 * (len(positive) - 1))] if positive else float("inf")
+
+    tier = 1
+    count = 0
+    i = 0
+    while i < n:
+        out[ranked_keys[i]] = tier
+        count += 1
+        last_capped = tier >= capped
+        gap_break = i < n - 1 and gaps[i] >= thr
+        i += 1
+        if last_capped:
+            if count >= max_size:
+                break  # fill the last capped tier, then dump the rest
+        elif count >= max_size or gap_break:
+            tier += 1
+            count = 0
     rest = ranked_keys[i:]
     if rest:
         half = (len(rest) + 1) // 2
@@ -408,7 +424,9 @@ def compute_values(
         group.sort(key=lambda e: e["basis_value"], reverse=True)
         k = tier_k.get(pos, 6)
         # Auto tier: rank by value, capped at MAX_TIER_SIZE per tier.
-        auto = assign_sized_tiers([e["key"] for e in group], k)
+        auto = assign_sized_tiers(
+            [e["key"] for e in group], [e["basis_value"] for e in group], k
+        )
         # Effective tier: if you've set manual tiers, rank by (your tier, value)
         # and re-bin with the size cap so there are a few tiers of <=7 then two
         # unbounded bottom tiers (rather than many tiny tiers).
@@ -416,7 +434,9 @@ def compute_values(
             ordered = sorted(
                 group, key=lambda e: (manual_tiers.get(e["key"], 999), -e["basis_value"])
             )
-            eff = assign_sized_tiers([e["key"] for e in ordered], k)
+            eff = assign_sized_tiers(
+                [e["key"] for e in ordered], [e["basis_value"] for e in ordered], k
+            )
         else:
             eff = auto
         for rank, ent in enumerate(group, 1):

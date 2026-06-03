@@ -93,26 +93,40 @@
     return vals.map(function (v) { return tierOf[nearest(v, c)]; });
   }
   function nearest(v, c) { var bj = 0, bd = Infinity; for (var j = 0; j < c.length; j++) { var d = Math.abs(v - c[j]); if (d < bd) { bd = d; bj = j; } } return bj; }
-  function sizedTiers(n, k, maxSize) {
-    // Tier numbers for ranks 0..n-1: top k-2 tiers capped at maxSize, the
-    // remainder split across the last two (uncapped) tiers.
+  function sizedTiers(values, k, maxSize) {
+    // Gap-aware tiers (mirrors valuation.assign_sized_tiers): start a new tier at
+    // a notable drop in rating so elite guys break out into their own small
+    // tiers, capped at maxSize. Top k-2 tiers form this way; the rest split
+    // across the last two (uncapped) tiers. `values` is best->worst.
     maxSize = maxSize || 7;
-    var labels = new Array(n), capped = Math.max(k - 2, 0), i = 0, t = 0;
-    while (t < capped && i < n) {
-      t++;
-      for (var j = i; j < Math.min(i + maxSize, n); j++) labels[j] = t;
-      i += maxSize;
+    var n = values.length, labels = new Array(n);
+    if (n === 0) return labels;
+    var capped = Math.max(k - 2, 1);
+    var gaps = []; for (var g = 0; g < n - 1; g++) gaps.push(values[g] - values[g + 1]);
+    var positive = gaps.filter(function (x) { return x > 0; }).sort(function (a, b) { return a - b; });
+    var thr = positive.length ? positive[Math.floor(0.75 * (positive.length - 1))] : Infinity;
+    var tier = 1, count = 0, i = 0;
+    while (i < n) {
+      labels[i] = tier; count++;
+      var lastCapped = tier >= capped;
+      var gapBreak = i < n - 1 && gaps[i] >= thr;
+      i++;
+      if (lastCapped) {
+        if (count >= maxSize) break;
+      } else if (count >= maxSize || gapBreak) {
+        tier++; count = 0;
+      }
     }
     var rest = n - i;
     if (rest > 0) {
       var half = Math.ceil(rest / 2);
-      for (var m = i; m < n; m++) labels[m] = t + 1 + ((m - i) < half ? 0 : 1);
+      for (var m = i; m < n; m++) labels[m] = tier + 1 + ((m - i) < half ? 0 : 1);
     }
     return labels;
   }
   function tiersFor(pos) {
     var pool = (DATA[pos] || []).slice().sort(function (a, b) { return S.ratings[b.key] - S.ratings[a.key]; });
-    var labels = sizedTiers(pool.length, TIER_K[pos] || 6, 7);
+    var labels = sizedTiers(pool.map(function (e) { return S.ratings[e.key]; }), TIER_K[pos] || 6, 7);
     var out = {}; pool.forEach(function (e, i) { out[e.key] = labels[i]; }); return out;
   }
 
