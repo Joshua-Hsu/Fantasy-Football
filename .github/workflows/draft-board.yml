@@ -12,8 +12,21 @@ on:
         description: Roster year that defines the active/draftable pool
         default: "2026"
       basis:
-        description: Value basis for pricing (total | ppg | w3yr)
-        default: "w3yr"
+        description: Value basis for pricing
+        type: choice
+        default: w3yr
+        options:
+          - w3yr
+          - ppg
+          - total
+      scoring:
+        description: Scoring system
+        type: choice
+        default: half_ppr
+        options:
+          - half_ppr
+          - standard
+          - ppr
       teams:
         description: League size
         default: "12"
@@ -62,6 +75,7 @@ jobs:
           python -m fantasy_football.cli cheatsheet \
             --out draft_board.xlsx $TIERS \
             --basis "${{ inputs.basis }}" \
+            --scoring "${{ inputs.scoring }}" \
             --teams "${{ inputs.teams }}" \
             --budget "${{ inputs.budget }}"
 
