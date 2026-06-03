@@ -274,6 +274,7 @@ class TeamGameStats(Base):
     # Offense
     points: Mapped[int] = _count()
     total_yards: Mapped[int] = _count()
+    plays: Mapped[int] = _count()
     passing_yards: Mapped[int] = _count()
     rushing_yards: Mapped[int] = _count()
     turnovers: Mapped[int] = _count()

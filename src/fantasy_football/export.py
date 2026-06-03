@@ -13,13 +13,19 @@ from __future__ import annotations
 
 from typing import NamedTuple
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .models import UserRating
 from .ratings import seed_ratings, user_rating_tiers
 from .scoring import DEFAULT_RULES, ScoringRules
-from .valuation import ALL_POSITIONS, DEFAULT_LEAGUE, LeagueConfig, compute_values
+from .valuation import (
+    ALL_POSITIONS,
+    DEFAULT_LEAGUE,
+    LeagueConfig,
+    _latest_season,
+    compute_values,
+)
 
 # A few soft fills cycled per tier so tier bands are easy to scan.
 _TIER_FILLS = ["FFF6E5", "E8F0FE", "E9F7EF", "FCE8F3", "F3E8FD", "EAF2F8", "FFF0E6"]
@@ -29,6 +35,7 @@ _HEADERS = ["Tier", "PosRank", "TierRank", "Player", "Tm", "Ovr", "$", "UserRtg"
 
 
 class BoardRow(NamedTuple):
+    key: str
     tier: int
     pos_rank: int
     tier_rank: int
@@ -84,7 +91,7 @@ def build_board(
             per_tier_seen[r.tier] = per_tier_seen.get(r.tier, 0) + 1
             out.append(
                 BoardRow(
-                    tier=r.tier, pos_rank=i, tier_rank=per_tier_seen[r.tier],
+                    key=r.key, tier=r.tier, pos_rank=i, tier_rank=per_tier_seen[r.tier],
                     name=r.name, team=r.team, overall_rank=r.overall_rank,
                     dollars=r.dollars,
                     user_rating=round(ratings.get(r.key, r.basis_value), 1),
@@ -236,6 +243,95 @@ def write_webapp_data(
     return path
 
 
+# Last-year stat columns shown inline per position: (header, PlayerGameStats attr).
+_SKILL_STATS = [
+    ("Car", "rush_attempts"), ("RuYds", "rush_yards"), ("RuTD", "rush_touchdowns"),
+    ("Tgt", "targets"), ("Rec", "receptions"), ("ReYds", "receiving_yards"),
+    ("ReTD", "receiving_touchdowns"),
+]
+STAT_COLS: dict[str, list[tuple[str, str]]] = {
+    "QB": [("PaAtt", "pass_attempts"), ("PaYds", "pass_yards"), ("PaTD", "pass_touchdowns"),
+           ("INT", "interceptions_thrown"), ("RuAtt", "rush_attempts"), ("RuYds", "rush_yards")],
+    "RB": _SKILL_STATS, "WR": _SKILL_STATS, "TE": _SKILL_STATS,
+    "K": [("FGM", "field_goals_made"), ("FGA", "field_goals_attempted"), ("XPM", "extra_points_made")],
+    "DST": [("PA/g", "PA"), ("Sack", "Sack"), ("INT", "INT"), ("DefTD", "TD")],
+}
+#: Positions that show their team's offensive context inline.
+TEAM_OFFENSE_POSITIONS = {"QB", "RB", "WR", "TE"}
+_OFFENSE_METRICS = [("TmYds", "total_yards"), ("TmPlays", "plays"), ("TmRush", "rush"), ("TmPass", "pass")]
+
+
+def _player_last_year(session: Session, year: int) -> dict[str, dict[str, int]]:
+    """{p<id>: {stat: 2025 regular-season total}} for all the stats we display."""
+    from .models import Game, Player, PlayerGameStats
+
+    cols = sorted({attr for cols in STAT_COLS.values() for _, attr in cols
+                   if attr not in ("PA", "Sack", "INT", "TD")})
+    aggs = [func.sum(getattr(PlayerGameStats, c)).label(c) for c in cols]
+    query = (
+        select(Player.id, *aggs)
+        .join(PlayerGameStats, PlayerGameStats.player_id == Player.id)
+        .join(Game, Game.id == PlayerGameStats.game_id)
+        .where(Game.season_year == year, Game.season_type == "regular")
+        .group_by(Player.id)
+    )
+    out: dict[str, dict[str, int]] = {}
+    for row in session.execute(query):
+        out[f"p{row[0]}"] = {c: int(v or 0) for c, v in zip(cols, row[1:])}
+    return out
+
+
+def _team_offense(session: Session, year: int) -> dict[str, dict[str, int]]:
+    """{team_abbr: {total_yards, plays, rush, pass, *_rank}} for the season."""
+    from .models import Game, Team, TeamGameStats
+
+    query = (
+        select(
+            Team.abbreviation,
+            func.sum(TeamGameStats.total_yards), func.sum(TeamGameStats.plays),
+            func.sum(TeamGameStats.rushing_yards), func.sum(TeamGameStats.passing_yards),
+        )
+        .join(TeamGameStats, TeamGameStats.team_id == Team.id)
+        .join(Game, Game.id == TeamGameStats.game_id)
+        .where(Game.season_year == year, Game.season_type == "regular")
+        .group_by(Team.id)
+    )
+    data: dict[str, dict[str, int]] = {}
+    for abbr, ty, pl, ru, pa in session.execute(query):
+        data[abbr] = {"total_yards": int(ty or 0), "plays": int(pl or 0),
+                      "rush": int(ru or 0), "pass": int(pa or 0)}
+    for key in ("total_yards", "plays", "rush", "pass"):
+        for rank, abbr in enumerate(sorted(data, key=lambda t: data[t][key], reverse=True), 1):
+            data[abbr][key + "_rank"] = rank
+    return data
+
+
+def _dst_last_year(session: Session, year: int) -> dict[str, dict[str, float]]:
+    """{d<abbr>: {PA (per game), Sack, INT, TD}} from team defensive stats."""
+    from .models import Game, Team, TeamGameStats
+
+    query = (
+        select(
+            Team.abbreviation, func.count(TeamGameStats.id),
+            func.sum(TeamGameStats.points_allowed), func.sum(TeamGameStats.sacks),
+            func.sum(TeamGameStats.interceptions),
+            func.sum(TeamGameStats.defensive_tds), func.sum(TeamGameStats.special_teams_tds),
+        )
+        .join(TeamGameStats, TeamGameStats.team_id == Team.id)
+        .join(Game, Game.id == TeamGameStats.game_id)
+        .where(Game.season_year == year, Game.season_type == "regular")
+        .group_by(Team.id)
+    )
+    out: dict[str, dict[str, float]] = {}
+    for abbr, g, pa, sk, inte, dtd, sttd in session.execute(query):
+        g = int(g or 0)
+        out[f"d{abbr}"] = {
+            "PA": round((pa or 0) / g, 1) if g else 0.0, "Sack": int(sk or 0),
+            "INT": int(inte or 0), "TD": int((dtd or 0) + (sttd or 0)),
+        }
+    return out
+
+
 def write_cheatsheet(
     session: Session,
     path: str,
@@ -261,6 +357,11 @@ def write_cheatsheet(
         session, year=year, config=config, rules=rules, basis=basis,
         manual_tiers=manual_tiers, fixed_prices=fixed_prices,
     )
+    last_year = year or _latest_season(session)
+    player_stats = _player_last_year(session, last_year) if last_year else {}
+    team_off = _team_offense(session, last_year) if last_year else {}
+    dst_stats = _dst_last_year(session, last_year) if last_year else {}
+
     header_font = Font(bold=True)
     center = Alignment(horizontal="center")
 
@@ -270,24 +371,39 @@ def write_cheatsheet(
     def _tier_fill(tier: int) -> PatternFill:
         return PatternFill("solid", fgColor=_TIER_FILLS[(tier - 1) % len(_TIER_FILLS)])
 
-    # --- Static per-position tier sheets (pre-draft reference) --------------
-    def _position_sheet(title: str, rows: list[BoardRow]) -> None:
-        ws = wb.create_sheet(title[:31])
-        ws.append(_HEADERS)
-        for c in range(1, len(_HEADERS) + 1):
+    # --- Static per-position tier sheets, with last-year stats inline ------
+    def _position_sheet(pos: str, rows: list[BoardRow]) -> None:
+        ws = wb.create_sheet(pos[:31])
+        stat_cols = STAT_COLS.get(pos, [])
+        show_team = pos in TEAM_OFFENSE_POSITIONS
+        headers = (["Tier", "Rk", "Player", "Tm", "$", "PPG"]
+                   + [h for h, _ in stat_cols]
+                   + ([h for h, _ in _OFFENSE_METRICS] if show_team else []))
+        ws.append(headers)
+        for c in range(1, len(headers) + 1):
             ws.cell(row=1, column=c).font = header_font
             ws.cell(row=1, column=c).alignment = center
+
         for r in rows:
             name = r.name + (" (R)" if r.is_rookie else "")
-            ws.append([r.tier, r.pos_rank, r.tier_rank, name, r.team, r.overall_rank,
-                       r.dollars, r.user_rating, r.total, r.ppg, r.w3yr])
-            for c in range(1, len(_HEADERS) + 1):
+            line: list = [r.tier, r.pos_rank, name, r.team, r.dollars, r.ppg]
+            src = dst_stats.get(r.key, {}) if pos == "DST" else player_stats.get(r.key, {})
+            for _h, attr in stat_cols:
+                line.append(src.get(attr, 0))
+            if show_team:
+                off = team_off.get(r.team, {})
+                for _h, key in _OFFENSE_METRICS:
+                    val, rk = off.get(key), off.get(key + "_rank")
+                    line.append(f"{val} (#{rk})" if val else "")
+            ws.append(line)
+            for c in range(1, len(headers) + 1):
                 ws.cell(row=ws.max_row, column=c).fill = _tier_fill(r.tier)
-        ws.freeze_panes = "A2"
-        for c in range(1, len(_HEADERS) + 1):
-            ws.column_dimensions[get_column_letter(c)].width = 22 if c == 4 else 9
+
+        ws.freeze_panes = "C2"
+        for c in range(1, len(headers) + 1):
+            ws.column_dimensions[get_column_letter(c)].width = 20 if c == 3 else 8
         for row in range(2, ws.max_row + 1):
-            ws.cell(row=row, column=7).number_format = '"$"0'  # $ column
+            ws.cell(row=row, column=5).number_format = '"$"0'  # $ column
 
     for pos in ALL_POSITIONS:
         if pos in board:

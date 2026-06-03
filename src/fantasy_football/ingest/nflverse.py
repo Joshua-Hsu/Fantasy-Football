@@ -543,6 +543,8 @@ def load_team_stats(session: Session, year: int) -> int:
         tgs.passing_yards = passing
         tgs.rushing_yards = rushing
         tgs.total_yards = passing + rushing
+        # Offensive plays = pass attempts + rush attempts + sacks taken.
+        tgs.plays = _count(g("attempts")) + _count(g("carries")) + _count(g("sacks_suffered"))
         tgs.points = _opt_int(team_score) or 0
         tgs.points_allowed = _opt_int(opp_score) or 0
         tgs.yards_allowed = off_yards.get((int(row.week), opp_id), 0)
