@@ -72,12 +72,30 @@ WEEKLY_DF = pd.DataFrame(
 )
 
 
+# Team-week rows for the 2024 GB-CHI game (GB won 24-17).
+TEAM_WEEK_DF = pd.DataFrame(
+    [
+        {"team": "GB", "opponent_team": "CHI", "season": 2024, "week": 1,
+         "season_type": "REG", "passing_yards": 295, "rushing_yards": 100,
+         "passing_interceptions": 1, "sack_fumbles_lost": 0, "rushing_fumbles_lost": 0,
+         "receiving_fumbles_lost": 0, "def_sacks": 3, "def_interceptions": 1,
+         "fumble_recovery_opp": 1, "def_tds": 0, "special_teams_tds": 0, "def_safeties": 0},
+        {"team": "CHI", "opponent_team": "GB", "season": 2024, "week": 1,
+         "season_type": "REG", "passing_yards": 180, "rushing_yards": 80,
+         "passing_interceptions": 1, "sack_fumbles_lost": 1, "rushing_fumbles_lost": 0,
+         "receiving_fumbles_lost": 0, "def_sacks": 2, "def_interceptions": 1,
+         "fumble_recovery_opp": 0, "def_tds": 1, "special_teams_tds": 0, "def_safeties": 0},
+    ]
+)
+
+
 @pytest.fixture()
 def session(monkeypatch):
     monkeypatch.setattr(nflverse, "_fetch_teams", lambda: TEAMS_DF.copy())
     monkeypatch.setattr(nflverse, "_fetch_games", lambda: GAMES_DF.copy())
     monkeypatch.setattr(nflverse, "_fetch_roster", lambda year: ROSTER_DF.copy())
     monkeypatch.setattr(nflverse, "_fetch_weekly", lambda year: WEEKLY_DF.copy())
+    monkeypatch.setattr(nflverse, "_fetch_team_week", lambda year: TEAM_WEEK_DF.copy())
 
     engine = create_db_engine(":memory:")
     init_db(engine)
@@ -89,6 +107,24 @@ def test_load_season_populates_all_tables(session):
     summary = ingest.load_season(session, 2024)
     assert summary["games"] == 1  # only the 2024 game
     assert summary["stat_lines"] == 2
+    assert summary["team_lines"] == 2  # one row per team in the game
+
+
+def test_team_stats_mapping(session):
+    from fantasy_football.models import Team, TeamGameStats
+
+    ingest.load_season(session, 2024)
+    gb = session.query(Team).filter_by(abbreviation="GB").one()
+    tgs = session.query(TeamGameStats).filter_by(team_id=gb.id).one()
+    assert tgs.is_home is True or tgs.is_home == 1
+    assert tgs.points == 24            # GB's score from the game
+    assert tgs.points_allowed == 17    # CHI's score
+    assert tgs.total_yards == 395      # 295 pass + 100 rush
+    assert tgs.yards_allowed == 260    # CHI offense: 180 + 80
+    assert tgs.sacks == 3
+    assert tgs.interceptions == 1
+    assert tgs.fumble_recoveries == 1
+    assert tgs.turnovers == 1          # GB threw 1 INT, lost 0 fumbles
 
     assert session.query(Team).count() == 2
     # Roster player + fallback stat-only player.

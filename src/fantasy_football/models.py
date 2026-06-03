@@ -214,6 +214,14 @@ class PlayerGameStats(Base):
     field_goals_attempted: Mapped[int] = _count()
     extra_points_made: Mapped[int] = _count()
     extra_points_attempted: Mapped[int] = _count()
+    # Field goals made by distance bucket, for distance-based scoring. These sum
+    # to ``field_goals_made``; the total is kept for convenience/validation.
+    fg_made_0_19: Mapped[int] = _count()
+    fg_made_20_29: Mapped[int] = _count()
+    fg_made_30_39: Mapped[int] = _count()
+    fg_made_40_49: Mapped[int] = _count()
+    fg_made_50_59: Mapped[int] = _count()
+    fg_made_60_plus: Mapped[int] = _count()
 
     # --- Returns ---
     kick_return_yards: Mapped[int] = _count()
@@ -247,6 +255,7 @@ class TeamGameStats(Base):
     game_id: Mapped[int] = mapped_column(ForeignKey("games.id"), nullable=False)
     is_home: Mapped[bool] = mapped_column(Integer, nullable=False)
 
+    # Offense
     points: Mapped[int] = _count()
     total_yards: Mapped[int] = _count()
     passing_yards: Mapped[int] = _count()
@@ -254,6 +263,18 @@ class TeamGameStats(Base):
     turnovers: Mapped[int] = _count()
     first_downs: Mapped[int] = _count()
     time_of_possession_seconds: Mapped[int | None] = mapped_column(Integer)
+
+    # Defense / special teams (this team's defensive production in the game).
+    # ``points_allowed`` / ``yards_allowed`` are what the opponent's offense did,
+    # and drive the tiered DST scoring.
+    points_allowed: Mapped[int] = _count()
+    yards_allowed: Mapped[int] = _count()
+    sacks: Mapped[int] = _count()
+    interceptions: Mapped[int] = _count()
+    fumble_recoveries: Mapped[int] = _count()
+    defensive_tds: Mapped[int] = _count()
+    special_teams_tds: Mapped[int] = _count()
+    safeties: Mapped[int] = _count()
 
     team: Mapped[Team] = relationship()
     game: Mapped[Game] = relationship()

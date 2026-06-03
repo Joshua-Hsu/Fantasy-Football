@@ -29,7 +29,7 @@ import pandas as pd
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..models import Game, Player, PlayerGameStats, Season, Team
+from ..models import Game, Player, PlayerGameStats, Season, Team, TeamGameStats
 
 # --- Source URLs -----------------------------------------------------------
 
@@ -42,6 +42,10 @@ WEEKLY_URL = (
 ROSTER_URL = (
     "https://github.com/nflverse/nflverse-data/releases/download/"
     "rosters/roster_{year}.parquet"
+)
+TEAM_WEEK_URL = (
+    "https://github.com/nflverse/nflverse-data/releases/download/"
+    "stats_team/stats_team_week_{year}.parquet"
 )
 
 #: nflverse weekly/roster data begins in 1999; weekly *player* stats are
@@ -134,6 +138,10 @@ def _fetch_weekly(year: int) -> pd.DataFrame:
 
 def _fetch_roster(year: int) -> pd.DataFrame:
     return _read(lambda: pd.read_parquet(ROSTER_URL.format(year=year)))
+
+
+def _fetch_team_week(year: int) -> pd.DataFrame:
+    return _read(lambda: pd.read_parquet(TEAM_WEEK_URL.format(year=year)))
 
 
 def season_has_data(year: int) -> bool:
@@ -400,10 +408,100 @@ def _apply_stats(line: PlayerGameStats, row: Any, team_id: int) -> None:
     line.field_goals_attempted = _count(g("fg_att"))
     line.extra_points_made = _count(g("pat_made"))
     line.extra_points_attempted = _count(g("pat_att"))
+    # FG made by distance bucket (source's 60+ column is `fg_made_60_`).
+    line.fg_made_0_19 = _count(g("fg_made_0_19"))
+    line.fg_made_20_29 = _count(g("fg_made_20_29"))
+    line.fg_made_30_39 = _count(g("fg_made_30_39"))
+    line.fg_made_40_49 = _count(g("fg_made_40_49"))
+    line.fg_made_50_59 = _count(g("fg_made_50_59"))
+    line.fg_made_60_plus = _count(g("fg_made_60_"))
 
     # Returns (return TDs aren't split by type in the source -> left at 0)
     line.kick_return_yards = _count(g("kickoff_return_yards"))
     line.punt_return_yards = _count(g("punt_return_yards"))
+
+
+def load_team_stats(session: Session, year: int) -> int:
+    """Upsert one ``TeamGameStats`` row per (team, game) for a season.
+
+    Offensive totals come straight from the team-week file. Defensive output
+    (sacks, takeaways, def/ST TDs, safeties) comes from the same row's ``def_*``
+    fields. ``points``/``points_allowed`` come from the game's score, and
+    ``yards_allowed`` is the opponent's offensive yardage in that game (looked
+    up from the opponent's own row). Returns rows written.
+    """
+    teams = _ensure_teams(session)
+
+    games = list(session.scalars(select(Game).where(Game.season_year == year)))
+    game_by_matchup: dict[tuple[int, frozenset[int]], Game] = {
+        (g.week, frozenset({g.home_team_id, g.away_team_id})): g for g in games
+    }
+    game_ids = {g.id for g in games}
+
+    existing: dict[tuple[int, int], TeamGameStats] = {}
+    if game_ids:
+        for tgs in session.scalars(
+            select(TeamGameStats).where(TeamGameStats.game_id.in_(game_ids))
+        ):
+            existing[(tgs.team_id, tgs.game_id)] = tgs
+
+    df = _fetch_team_week(year)
+
+    # First pass: index each team's offensive yards by (week, team_id) so we can
+    # resolve an opponent's yards_allowed.
+    off_yards: dict[tuple[int, int], int] = {}
+    rows: list[tuple[Any, int, int, Game]] = []
+    for row in df.itertuples():
+        team_id = teams.get(_opt_str(row.team))
+        opp_id = teams.get(_opt_str(row.opponent_team))
+        if team_id is None or opp_id is None:
+            continue
+        game = game_by_matchup.get((int(row.week), frozenset({team_id, opp_id})))
+        if game is None:
+            continue
+        yards = _count(getattr(row, "passing_yards", 0)) + _count(getattr(row, "rushing_yards", 0))
+        off_yards[(int(row.week), team_id)] = yards
+        rows.append((row, team_id, opp_id, game))
+
+    written = 0
+    for row, team_id, opp_id, game in rows:
+        is_home = team_id == game.home_team_id
+        team_score = game.home_score if is_home else game.away_score
+        opp_score = game.away_score if is_home else game.home_score
+
+        tgs = existing.get((team_id, game.id))
+        if tgs is None:
+            tgs = TeamGameStats(team_id=team_id, game_id=game.id, is_home=is_home)
+            session.add(tgs)
+            existing[(team_id, game.id)] = tgs
+        tgs.is_home = is_home
+
+        g = lambda name: getattr(row, name, None)  # noqa: E731 - terse accessor
+        passing = _count(g("passing_yards"))
+        rushing = _count(g("rushing_yards"))
+        tgs.passing_yards = passing
+        tgs.rushing_yards = rushing
+        tgs.total_yards = passing + rushing
+        tgs.points = _opt_int(team_score) or 0
+        tgs.points_allowed = _opt_int(opp_score) or 0
+        tgs.yards_allowed = off_yards.get((int(row.week), opp_id), 0)
+        tgs.turnovers = (
+            _count(g("passing_interceptions"))
+            + _count(g("sack_fumbles_lost"))
+            + _count(g("rushing_fumbles_lost"))
+            + _count(g("receiving_fumbles_lost"))
+        )
+        # Defense / special teams
+        tgs.sacks = _count(g("def_sacks"))
+        tgs.interceptions = _count(g("def_interceptions"))
+        tgs.fumble_recoveries = _count(g("fumble_recovery_opp"))
+        tgs.defensive_tds = _count(g("def_tds"))
+        tgs.special_teams_tds = _count(g("special_teams_tds"))
+        tgs.safeties = _count(g("def_safeties"))
+        written += 1
+
+    session.commit()
+    return written
 
 
 def load_season(session: Session, year: int) -> dict[str, int]:
@@ -415,7 +513,14 @@ def load_season(session: Session, year: int) -> dict[str, int]:
     games = load_games(session, year)
     players = load_players(session, year)
     stats = load_weekly_stats(session, year)
-    return {"teams": teams_written, "games": games, "players": players, "stat_lines": stats}
+    team_stats = load_team_stats(session, year)
+    return {
+        "teams": teams_written,
+        "games": games,
+        "players": players,
+        "stat_lines": stats,
+        "team_lines": team_stats,
+    }
 
 
 def load_seasons(

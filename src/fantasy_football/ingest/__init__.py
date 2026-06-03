@@ -10,6 +10,7 @@ from .nflverse import (
     load_players,
     load_season,
     load_seasons,
+    load_team_stats,
     load_teams,
     load_weekly_stats,
 )
@@ -19,6 +20,7 @@ __all__ = [
     "load_players",
     "load_games",
     "load_weekly_stats",
+    "load_team_stats",
     "load_season",
     "load_seasons",
 ]
