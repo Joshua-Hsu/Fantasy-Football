@@ -127,6 +127,17 @@ Manual tiers (the league's real tiers, from Yahoo prices + H2H) come in via the
 CLI `values --export`/`--tiers-file` CSV round-trip, keyed by entity `key`
 (`p<player_id>` / `d<team_abbr>`).
 
+**User ratings / H2H game (`ratings.py` + `web.py`).** The league's real tiers
+are produced by a head-to-head comparison game: a human picks Player A vs B and
+each pick updates an Elo-style **user rating** (`ratings.py`), seeded from the
+computed value so picks only *refine* the order. `record_pick` logs to the
+`comparisons` table and updates `user_ratings`; `next_matchup` favours
+similarly-rated same-position players; `user_rating_tiers` runs k-means on the
+ratings to produce `{key: tier}` that flows into `compute_values(manual_tiers=)`
+(also via `values --use-user-ratings`). `web.py` is a self-contained Flask app
+(optional `web` extra) launched with `python -m fantasy_football.cli serve`;
+both new tables are created by `create_all`, so no DB rebuild is needed.
+
 **Schema-change note:** `init-db` uses `create_all`, which does **not** alter
 existing tables. When you add columns (as the scoring work did to
 `PlayerGameStats` FG buckets and `TeamGameStats` defensive fields), an existing

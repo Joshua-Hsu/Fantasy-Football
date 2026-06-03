@@ -24,6 +24,7 @@ import datetime as dt
 from sqlalchemy import (
     CheckConstraint,
     Date,
+    DateTime,
     Float,
     ForeignKey,
     Integer,
@@ -283,6 +284,49 @@ class TeamGameStats(Base):
         return f"<TeamGameStats team={self.team_id} game={self.game_id}>"
 
 
+class UserRating(Base):
+    """A human-derived "user rating" for one draftable entity.
+
+    The rating is an Elo-style score seeded from the computed auction value and
+    nudged by head-to-head picks in the comparison game. ``key`` is the stable
+    entity id used across the toolkit (``p<player_id>`` / ``d<team_abbr>``) so a
+    player and a team defense can both have a rating.
+    """
+
+    __tablename__ = "user_ratings"
+
+    key: Mapped[str] = mapped_column(String(16), primary_key=True)
+    name: Mapped[str] = mapped_column(String(128), nullable=False)
+    position: Mapped[str] = mapped_column(String(8), nullable=False)
+    rating: Mapped[float] = mapped_column(Float, nullable=False)
+    comparisons: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    updated_at: Mapped[dt.datetime] = mapped_column(
+        DateTime, nullable=False, default=dt.datetime.utcnow
+    )
+
+    def __repr__(self) -> str:  # pragma: no cover - debug helper
+        return f"<UserRating {self.key} {self.rating:.0f}>"
+
+
+class Comparison(Base):
+    """An append-only log of head-to-head picks (winner chosen over loser)."""
+
+    __tablename__ = "comparisons"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    position: Mapped[str] = mapped_column(String(8), nullable=False)
+    winner_key: Mapped[str] = mapped_column(String(16), nullable=False)
+    loser_key: Mapped[str] = mapped_column(String(16), nullable=False)
+    created_at: Mapped[dt.datetime] = mapped_column(
+        DateTime, nullable=False, default=dt.datetime.utcnow
+    )
+
+    def __repr__(self) -> str:  # pragma: no cover - debug helper
+        return f"<Comparison {self.winner_key} > {self.loser_key}>"
+
+
 # Timestamp mixin columns could be added per-table later; kept minimal for the
 # initial base schema.
 __all__ = [
@@ -293,4 +337,6 @@ __all__ = [
     "Game",
     "PlayerGameStats",
     "TeamGameStats",
+    "UserRating",
+    "Comparison",
 ]

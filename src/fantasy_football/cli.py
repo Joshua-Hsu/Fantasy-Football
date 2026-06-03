@@ -9,7 +9,8 @@ Usage::
     python -m fantasy_football.cli load-season --year 2024
     python -m fantasy_football.cli load-seasons --start 2020   # ...through latest
     python -m fantasy_football.cli leaders --year 2024 --scoring half_ppr --position RB
-    python -m fantasy_football.cli leaders --year 2024 --position DST
+    python -m fantasy_football.cli values  --year 2025 --position RB
+    python -m fantasy_football.cli serve                # head-to-head tier game
 """
 
 from __future__ import annotations
@@ -153,6 +154,10 @@ def _cmd_values(args: argparse.Namespace) -> int:
     manual_tiers = _read_manual_tiers(args.tiers_file)
 
     with _open_session(args) as session:
+        if args.use_user_ratings:
+            from .ratings import user_rating_tiers
+
+            manual_tiers = {**user_rating_tiers(session), **manual_tiers}
         values = compute_values(
             session,
             year=args.year,
@@ -164,6 +169,8 @@ def _cmd_values(args: argparse.Namespace) -> int:
 
     positions = [args.position.upper()] if args.position else list(ALL_POSITIONS)
     note = " (tier = manual override)" if manual_tiers else ""
+    if args.use_user_ratings:
+        note = " (tier = user ratings)"
     for pos in positions:
         rows = values.get(pos, [])
         if not rows:
@@ -195,6 +202,15 @@ def _cmd_values(args: argparse.Namespace) -> int:
                     )
         print(f"\nExported full table to {args.export} "
               f"(edit the manual_tier column, then re-run with --tiers-file).")
+    return 0
+
+
+def _cmd_serve(args: argparse.Namespace) -> int:
+    from .web import create_app
+
+    app = create_app(args.db)
+    print(f"Serving comparison game at http://{args.host}:{args.port}  (Ctrl-C to stop)")
+    app.run(host=args.host, port=args.port, debug=False)
     return 0
 
 
@@ -271,7 +287,16 @@ def build_parser() -> argparse.ArgumentParser:
         "--export", default=None,
         help="Write the full table to this CSV for manual tier editing",
     )
+    p_values.add_argument(
+        "--use-user-ratings", action="store_true", dest="use_user_ratings",
+        help="Draw tiers from the head-to-head user ratings",
+    )
     p_values.set_defaults(func=_cmd_values)
+
+    p_serve = sub.add_parser("serve", help="Run the head-to-head comparison web app")
+    p_serve.add_argument("--host", default="127.0.0.1", help="Bind host (use 0.0.0.0 for LAN/phone)")
+    p_serve.add_argument("--port", type=int, default=8000, help="Port (default 8000)")
+    p_serve.set_defaults(func=_cmd_serve)
 
     return parser
 

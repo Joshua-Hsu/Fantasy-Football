@@ -155,12 +155,34 @@ python -m fantasy_football.cli values --year 2025 --export tiers.csv
 python -m fantasy_football.cli values --year 2025 --tiers-file tiers.csv
 ```
 
+## Head-to-head tier game (user ratings)
+
+Rather than hand-entering tiers, you can *play* for them. A small local web app
+shows **Player A vs Player B** (same position) with their three stat categories;
+you pick the one you'd rather draft. Each pick updates an Elo-style **user
+rating** (seeded from the computed value, so you only refine the order). Tiers
+are drawn from the user ratings and feed pricing.
+
+```bash
+pip install -e ".[web]"
+python -m fantasy_football.cli serve            # http://127.0.0.1:8000
+python -m fantasy_football.cli serve --host 0.0.0.0   # reachable from your phone
+
+# Price using the tiers your picks produced
+python -m fantasy_football.cli values --year 2025 --use-user-ratings
+```
+
+Picks are stored (`comparisons`) and ratings persist (`user_ratings`), so the
+game keeps sharpening tiers across sessions. Matchups favour similarly-rated
+players within a position — where your pick actually moves the order.
+
 ## Roadmap
 
 - [x] Data ingestion from nflverse (teams, games, players, weekly + team stats)
 - [x] Reference data: load all franchises and seasons 2020-present
 - [x] Fantasy scoring (offense + distance-based K + tiered DST), Half-PPR default
 - [x] Auction values from tiers (VOR + flex, k-means tiers, manual override)
-- [ ] Manual-tier workflow: import Yahoo base prices to seed/blend tiers
+- [x] Head-to-head comparison web app -> user ratings -> tiers
+- [ ] Import Yahoo base prices to seed/blend the comparison ratings
 - [ ] Play-by-play enrichment (return TDs by type, passer rating)
 - [ ] Migrations (Alembic) once the schema stabilizes
