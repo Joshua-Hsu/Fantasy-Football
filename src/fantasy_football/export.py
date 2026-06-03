@@ -441,7 +441,7 @@ def write_tiers_csv(
 
     with open(path, "w", newline="") as fh:
         writer = csv.writer(fh)
-        writer.writerow(["key", "manual_tier", "name", "pos", "total", "ppg"]
+        writer.writerow(["key", "manual_tier", "name", "pos", "team", "total", "ppg"]
                         + CSV_STAT_HEADERS + ["price"])
         for key, tier in tiers.items():
             r = by_key.get(key)
@@ -449,7 +449,7 @@ def write_tiers_csv(
             cols = _stat_columns(key, pos, r.team if r else "", pstats, toff, dstats)
             writer.writerow(
                 [_safe_cell(key), tier, _safe_cell(r.name if r else key), _safe_cell(pos),
-                 r.total if r else "", r.ppg if r else ""]
+                 _safe_cell(r.team if r else ""), r.total if r else "", r.ppg if r else ""]
                 + [cols[h] for h in CSV_STAT_HEADERS]
                 + [prices.get(key, "")]
             )

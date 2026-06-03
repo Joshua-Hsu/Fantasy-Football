@@ -174,7 +174,7 @@
       // columns (name/pos/rookie) so you can edit it by hand in a spreadsheet.
       var q = function (s) { return '"' + String(s == null ? "" : s).replace(/"/g, '""') + '"'; };
       var HEADERS = (window.FF_DATA && window.FF_DATA.stat_headers) || [];
-      var lines = [["key,manual_tier,name,pos,rookie,total,ppg"].concat(HEADERS).join(",")];
+      var lines = [["key,manual_tier,name,pos,team,rookie,total,ppg"].concat(HEADERS).join(",")];
       ORDER.forEach(function (p) {
         var t = tiersFor(p);
         var pool = (DATA[p] || []).slice().sort(function (a, b) {
@@ -182,7 +182,7 @@
         });
         pool.forEach(function (e) {
           var c = e.cols || {};
-          var row = [e.key, t[e.key], q(e.name), e.pos, e.rookie ? 1 : 0, e.total, e.ppg];
+          var row = [e.key, t[e.key], q(e.name), e.pos, e.team || "", e.rookie ? 1 : 0, e.total, e.ppg];
           HEADERS.forEach(function (h) { row.push(c[h] == null ? "" : c[h]); });
           lines.push(row.join(","));
         });
