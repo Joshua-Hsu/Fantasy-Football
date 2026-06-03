@@ -153,7 +153,10 @@ def write_cheatsheet(
         for c in range(1, 5):
             ws.cell(row=1, column=c).font = header_font
         for t in teams:
-            ws.append([t.abbreviation, t.head_coach, t.offensive_coordinator, t.play_caller])
+            ws.append([
+                t.abbreviation, t.head_coach or "TBD",
+                t.offensive_coordinator or "TBD", t.play_caller or "TBD",
+            ])
         ws.freeze_panes = "A2"
         for c, w in zip("ABCD", (8, 20, 20, 20)):
             ws.column_dimensions[c].width = w

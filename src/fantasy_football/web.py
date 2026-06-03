@@ -73,9 +73,10 @@ def _stat_block(row, coaching: dict) -> str:
     rookie = " &#127376;" if row.is_rookie else ""  # rookie badge
     return (
         f"<div class='name'>{row.name}{rookie}</div>"
-        f"<div class='muted'>{row.position} &middot; {row.team or '?'} "
+        f"<div class='muted'>{row.position} &middot; {row.team or 'TBD'} "
         f"&middot; Pos #{row.pos_rank} &middot; Ovr #{row.overall_rank}</div>"
-        f"<div class='muted'>HC {hc or '?'} &middot; OC {oc or '?'} &middot; PC {pc or '?'}</div>"
+        f"<div class='muted'>HC {hc or 'TBD'} &middot; OC {oc or 'TBD'} "
+        f"&middot; PC {pc or 'TBD'}</div>"
         f"<div class='stat'><span>Last-yr total</span><b>{row.total:.1f}</b></div>"
         f"<div class='stat'><span>Last-yr PPG</span><b>{row.ppg:.1f}</b></div>"
         f"<div class='stat'><span>3-yr weighted</span><b>{row.w3yr:.1f}</b></div>"
