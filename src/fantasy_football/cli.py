@@ -16,6 +16,7 @@ Usage::
 from __future__ import annotations
 
 import argparse
+import re
 import sys
 
 from sqlalchemy import inspect
@@ -128,42 +129,66 @@ def _cmd_leaders(args: argparse.Namespace) -> int:
     return 0
 
 
+# A valid entity key is "p<player_id>" or "d<team_abbr>" — nothing else is
+# accepted from a (possibly hand-edited / untrusted) tiers CSV.
+_KEY_RE = re.compile(r"^[pd][A-Za-z0-9_.\-]{1,32}$")
+_MAX_TIERS_ROWS = 20000  # guard against absurdly large input files
+
+
 def _read_manual_tiers(path: str | None) -> dict[str, int]:
-    """Read manual tier overrides from a CSV with columns ``key,manual_tier``."""
+    """Read manual tier overrides from a CSV with columns ``key,manual_tier``.
+
+    Untrusted-input hardened: only well-formed keys are accepted, tiers are
+    parsed leniently and clamped to 1..30, and bad rows are skipped rather than
+    raising.
+    """
+    import csv
     import os
 
     if not path or not os.path.exists(path):
         return {}
-    import csv
-
     tiers: dict[str, int] = {}
     with open(path, newline="") as fh:
-        for row in csv.DictReader(fh):
+        for i, row in enumerate(csv.DictReader(fh)):
+            if i >= _MAX_TIERS_ROWS:
+                break
             key = (row.get("key") or "").strip()
-            value = (row.get("manual_tier") or "").strip()
-            if key and value:
-                tiers[key] = int(value)
+            if not _KEY_RE.match(key):
+                continue
+            try:
+                tier = int(float((row.get("manual_tier") or "").strip()))
+            except ValueError:
+                continue
+            tiers[key] = max(1, min(tier, 30))
     return tiers
 
 
 def _read_fixed_prices(path: str | None) -> dict[str, float]:
-    """Read expected/market prices from a CSV's optional ``price`` column."""
+    """Read expected/market prices from a CSV's optional ``price`` column.
+
+    Same hardening: valid keys only, lenient float parsing, clamped to 0..10000.
+    """
+    import csv
     import os
 
     if not path or not os.path.exists(path):
         return {}
-    import csv
-
     prices: dict[str, float] = {}
     with open(path, newline="") as fh:
         reader = csv.DictReader(fh)
         if "price" not in (reader.fieldnames or []):
             return {}
-        for row in reader:
+        for i, row in enumerate(reader):
+            if i >= _MAX_TIERS_ROWS:
+                break
             key = (row.get("key") or "").strip()
             value = (row.get("price") or "").strip()
-            if key and value:
-                prices[key] = float(value)
+            if not _KEY_RE.match(key) or not value:
+                continue
+            try:
+                prices[key] = max(0.0, min(float(value), 10000.0))
+            except ValueError:
+                continue
     return prices
 
 

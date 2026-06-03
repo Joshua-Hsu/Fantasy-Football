@@ -34,6 +34,10 @@ on:
         description: Auction budget per team
         default: "200"
 
+# Read-only: this workflow only builds and uploads an artifact, never commits.
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: ubuntu-latest

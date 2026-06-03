@@ -405,6 +405,18 @@ def _stat_columns(key: str, pos: str, team: str, pstats: dict, toff: dict, dstat
     return c
 
 
+def _safe_cell(value):
+    """Neutralize spreadsheet formula injection in a text cell.
+
+    A CSV value beginning with =, +, -, @ (or a control char) is executed as a
+    formula by Excel/Sheets. Prefix such values with a single quote so they're
+    treated as text. Numbers are returned unchanged.
+    """
+    if isinstance(value, str) and value and value[0] in ("=", "+", "-", "@", "\t", "\r"):
+        return "'" + value
+    return value
+
+
 def write_tiers_csv(
     session: Session,
     path: str,
@@ -436,7 +448,7 @@ def write_tiers_csv(
             pos = r.position if r else ""
             cols = _stat_columns(key, pos, r.team if r else "", pstats, toff, dstats)
             writer.writerow(
-                [key, tier, r.name if r else key, pos,
+                [_safe_cell(key), tier, _safe_cell(r.name if r else key), _safe_cell(pos),
                  r.total if r else "", r.ppg if r else ""]
                 + [cols[h] for h in CSV_STAT_HEADERS]
                 + [prices.get(key, "")]

@@ -67,3 +67,35 @@ def test_write_cheatsheet_has_draft_board_and_live_formulas(session, tmp_path):
     # Control block (column P / index 16) carries the remaining-pool math.
     labels = [ws.cell(row=r, column=16).value for r in range(1, 8)]
     assert "Remaining pool" in labels and "Remaining weight" in labels
+
+
+def test_csv_readers_reject_malicious_input(tmp_path):
+    from fantasy_football.cli import _read_fixed_prices, _read_manual_tiers
+
+    p = tmp_path / "evil.csv"
+    p.write_text(
+        "key,manual_tier,price\n"
+        "=cmd|' /C calc'!A1,1,5\n"   # formula key -> rejected
+        "p100,99,5\n"               # tier clamped to 30
+        "p101,notanint,5\n"         # bad tier -> skipped
+        "d ABC,1,5\n"               # space in key -> rejected
+        "p102,2,=HYPERLINK(1)\n"    # bad price -> skipped
+    )
+    tiers = _read_manual_tiers(str(p))
+    prices = _read_fixed_prices(str(p))
+    assert all(k.startswith(("p", "d")) and "=" not in k and " " not in k for k in tiers)
+    assert tiers["p100"] == 30            # clamped
+    assert "p101" not in tiers            # bad tier skipped
+    assert tiers["p102"] == 2
+    assert "p102" not in prices           # bad price skipped
+
+
+def test_safe_cell_guards_formulas():
+    from fantasy_football.export import _safe_cell
+
+    assert _safe_cell("=1+1") == "'=1+1"
+    assert _safe_cell("+danger") == "'+danger"
+    assert _safe_cell("@x") == "'@x"
+    assert _safe_cell("-2") == "'-2"
+    assert _safe_cell("Ja'Marr Chase") == "Ja'Marr Chase"   # normal text untouched
+    assert _safe_cell(123) == 123
