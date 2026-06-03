@@ -12,7 +12,10 @@ Flask is an optional dependency (``pip install -e ".[web]"``).
 
 from __future__ import annotations
 
+from sqlalchemy import select
+
 from .db import create_db_engine, get_sessionmaker, init_db
+from .models import Team
 from .ratings import (
     comparison_count,
     next_matchup,
@@ -62,12 +65,17 @@ def _render(title: str, body: str, extra_nav: str = "") -> str:
     return render_template_string(_PAGE, title=title, body=body, extra_nav=extra_nav)
 
 
-def _stat_block(row) -> str:
-    """The three comparison categories for one entity."""
+def _stat_block(row, coaching: dict) -> str:
+    """One entity's card: identity, coaching, ranks, and the three categories."""
     if row is None:
         return "<div class='muted'>no value data</div>"
+    hc, oc, pc = coaching.get(row.team, ("", "", ""))
+    rookie = " &#127376;" if row.is_rookie else ""  # rookie badge
     return (
-        f"<div class='name'>{row.name}</div>"
+        f"<div class='name'>{row.name}{rookie}</div>"
+        f"<div class='muted'>{row.position} &middot; {row.team or '?'} "
+        f"&middot; Pos #{row.pos_rank} &middot; Ovr #{row.overall_rank}</div>"
+        f"<div class='muted'>HC {hc or '?'} &middot; OC {oc or '?'} &middot; PC {pc or '?'}</div>"
         f"<div class='stat'><span>Last-yr total</span><b>{row.total:.1f}</b></div>"
         f"<div class='stat'><span>Last-yr PPG</span><b>{row.ppg:.1f}</b></div>"
         f"<div class='stat'><span>3-yr weighted</span><b>{row.w3yr:.1f}</b></div>"
@@ -88,12 +96,17 @@ def create_app(db_path: str | None = None, config: LeagueConfig = DEFAULT_LEAGUE
         seed_ratings(s, config=config)
     with Session() as s:
         values = compute_values(s, config=config)
+        coaching = {
+            t.abbreviation: (t.head_coach or "", t.offensive_coordinator or "", t.play_caller or "")
+            for t in s.scalars(select(Team))
+        }
     value_by_key = {r.key: r for rows in values.values() for r in rows}
 
     app = Flask(__name__)
     app.config["SESSION"] = Session
     app.config["LEAGUE"] = config
     app.config["VALUES"] = value_by_key
+    app.config["COACHING"] = coaching
 
     @app.route("/")
     def home():
@@ -125,6 +138,8 @@ def create_app(db_path: str | None = None, config: LeagueConfig = DEFAULT_LEAGUE
         va = app.config["VALUES"].get(a.key)
         vb = app.config["VALUES"].get(b.key)
 
+        coaching = app.config["COACHING"]
+
         def card(other_key: str, block: str) -> str:
             return (
                 f"<form class='pick' method='post' action='/pick'>"
@@ -137,8 +152,8 @@ def create_app(db_path: str | None = None, config: LeagueConfig = DEFAULT_LEAGUE
 
         body = (
             f"<h1>{pos} &mdash; who'd you rather?</h1>"
-            f"<div class='cards'>{card(a.key, _stat_block(va))}"
-            f"{card(b.key, _stat_block(vb))}</div>"
+            f"<div class='cards'>{card(a.key, _stat_block(va, coaching))}"
+            f"{card(b.key, _stat_block(vb, coaching))}</div>"
             f"<p class='vs'><a href='/play/{pos}'>&#8635; different pair</a> "
             f"&middot; <span class='muted'>{n} picks</span></p>"
         )

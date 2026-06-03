@@ -67,6 +67,11 @@ class Team(Base):
     division: Mapped[str | None] = mapped_column(String(16))  # North / South / ...
     active: Mapped[bool] = mapped_column(Integer, nullable=False, default=1, server_default="1")
 
+    # Coaching staff (loaded from a user-supplied CSV; shown on player cards).
+    head_coach: Mapped[str | None] = mapped_column(String(64))
+    offensive_coordinator: Mapped[str | None] = mapped_column(String(64))
+    play_caller: Mapped[str | None] = mapped_column(String(64))
+
     home_games: Mapped[list[Game]] = relationship(
         back_populates="home_team", foreign_keys="Game.home_team_id"
     )
@@ -113,6 +118,14 @@ class Player(Base):
     weight_lbs: Mapped[int | None] = mapped_column(Integer)
     college: Mapped[str | None] = mapped_column(String(128))
     debut_year: Mapped[int | None] = mapped_column(Integer)
+
+    # Current-season roster status (set by load_active_roster). ``active`` marks
+    # players on an NFL roster for the target season, so the draft pool can be
+    # limited to selectable players (and rookies, who have no stats yet).
+    current_team: Mapped[str | None] = mapped_column(String(8))
+    status: Mapped[str | None] = mapped_column(String(8))
+    active: Mapped[bool] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    rookie_year: Mapped[int | None] = mapped_column(Integer)
 
     game_stats: Mapped[list[PlayerGameStats]] = relationship(back_populates="player")
 

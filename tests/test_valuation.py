@@ -108,6 +108,31 @@ def test_compute_values_smoke(session):
     assert values["DST"], "expected DST rows"
 
 
+def test_active_filter_and_rookie_placeholder(session):
+    _seed(session)
+    # Mark only RB0/RB1 active, plus a rookie with no stats; RB2.. stay inactive.
+    from fantasy_football.models import Player
+
+    players = {p.slug: p for p in session.query(Player)}
+    players["rb0"].active = True
+    players["rb0"].current_team = "GB"
+    players["rb1"].active = True
+    players["rb1"].current_team = "CHI"
+    rookie = Player(full_name="Rook Wide", position="WR", slug="rookie1",
+                    active=True, current_team="GB", rookie_year=2025)
+    session.add(rookie)
+    session.commit()
+
+    values = compute_values(session, year=2025, config=LeagueConfig(teams=1))  # active auto-on
+    rb_names = {r.name for r in values["RB"]}
+    assert rb_names == {"RB0", "RB1"}              # inactive RBs excluded
+    wrs = values["WR"]
+    rook = next(r for r in wrs if r.name == "Rook Wide")
+    assert rook.is_rookie is True
+    assert rook.dollars >= 1                        # placeholder priced at the floor
+    assert rook.team == "GB"
+
+
 def test_manual_tiers_override_kmeans(session):
     _seed(session)
     # Force the top RB into tier 5; its k-means tier should differ.

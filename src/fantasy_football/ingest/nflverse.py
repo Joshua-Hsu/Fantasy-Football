@@ -504,6 +504,99 @@ def load_team_stats(session: Session, year: int) -> int:
     return written
 
 
+#: Roster statuses that mean a player is on an NFL roster (draftable). Unsigned
+#: free agents (UFA/RFA/UDF) and cut/retired players are not "active".
+ACTIVE_STATUSES = {"ACT", "RES", "PUP", "DEV"}
+
+
+def load_active_roster(session: Session, year: int) -> int:
+    """Mark the selectable player pool from a season's roster.
+
+    Sets ``current_team``/``status``/``active``/``rookie_year`` on each player
+    and creates rows for players who have no stats yet (rookies), so the draft
+    pool can be limited to players actually on an NFL roster for ``year``.
+    Returns the number of active players. Re-running refreshes status; players
+    not on this roster are marked inactive.
+    """
+    df = _fetch_roster(year)
+    existing = {p.slug: p for p in session.scalars(select(Player)) if p.slug}
+
+    # Anyone previously active but absent from this roster becomes inactive.
+    seen: set[str] = set()
+    active = 0
+    for row in df.itertuples():
+        slug = _opt_str(getattr(row, "gsis_id", None))
+        if not slug:
+            continue
+        seen.add(slug)
+        status = _opt_str(getattr(row, "status", None))
+        is_active = (status or "").upper() in ACTIVE_STATUSES
+
+        player = existing.get(slug)
+        if player is None:
+            player = Player(slug=slug, full_name=_opt_str(getattr(row, "full_name", None)) or slug)
+            session.add(player)
+            existing[slug] = player
+        # Roster is the source of truth for current team/position.
+        player.current_team = _opt_str(getattr(row, "team", None))
+        player.status = status
+        player.active = is_active
+        player.position = _opt_str(getattr(row, "position", None)) or player.position
+        player.rookie_year = _opt_int(getattr(row, "rookie_year", None)) or _opt_int(
+            getattr(row, "entry_year", None)
+        )
+        # Fill bio for brand-new (rookie) rows.
+        if not player.birth_date:
+            player.birth_date = _opt_date(getattr(row, "birth_date", None))
+            player.height_inches = player.height_inches or _opt_int(getattr(row, "height", None))
+            player.weight_lbs = player.weight_lbs or _opt_int(getattr(row, "weight", None))
+            player.college = player.college or _opt_str(getattr(row, "college", None))
+        if is_active:
+            active += 1
+
+    for slug, player in existing.items():
+        if slug not in seen and player.active:
+            player.active = False
+
+    session.commit()
+    return active
+
+
+def latest_head_coaches() -> dict[str, str]:
+    """{team_abbr: head coach} from the most recent season in the schedule."""
+    df = _fetch_games()
+    df = df[df["season"] == int(df["season"].max())]
+    coaches: dict[str, str] = {}
+    for row in df.sort_values("week").itertuples():
+        for team_attr, coach_attr in (("home_team", "home_coach"), ("away_team", "away_coach")):
+            team = _opt_str(getattr(row, team_attr, None))
+            coach = _opt_str(getattr(row, coach_attr, None))
+            if team and coach:
+                coaches[team] = coach  # later weeks overwrite -> end-of-season staff
+    return coaches
+
+
+def load_coaching(session: Session, path: str) -> int:
+    """Load team coaching staff from a CSV: team,head_coach,offensive_coordinator,play_caller."""
+    import csv
+
+    teams = {t.abbreviation: t for t in session.scalars(select(Team))}
+    updated = 0
+    with open(path, newline="") as fh:
+        for row in csv.DictReader(fh):
+            team = teams.get((row.get("team") or "").strip().upper())
+            if team is None:
+                continue
+            team.head_coach = _opt_str(row.get("head_coach")) or team.head_coach
+            team.offensive_coordinator = (
+                _opt_str(row.get("offensive_coordinator")) or team.offensive_coordinator
+            )
+            team.play_caller = _opt_str(row.get("play_caller")) or team.play_caller
+            updated += 1
+    session.commit()
+    return updated
+
+
 def load_season(session: Session, year: int) -> dict[str, int]:
     """Load everything for one season: teams, season, games, players, stats.
 

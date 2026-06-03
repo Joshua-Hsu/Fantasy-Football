@@ -64,6 +64,6 @@ def test_write_cheatsheet_has_draft_board_and_live_formulas(session, tmp_path):
     assert [c.value for c in ws[1][:7]] == ["Pos", "Tier", "Player", "Base$", "Rec$", "Drafted", "Paid"]
     # Rec$ (column E) is a live formula reacting to Drafted/Paid.
     assert str(ws["E2"].value).startswith("=IF(F2")
-    # Control block carries the remaining-pool math.
-    labels = [ws.cell(row=r, column=14).value for r in range(1, 8)]
+    # Control block (column P / index 16) carries the remaining-pool math.
+    labels = [ws.cell(row=r, column=16).value for r in range(1, 8)]
     assert "Remaining pool" in labels and "Remaining weight" in labels

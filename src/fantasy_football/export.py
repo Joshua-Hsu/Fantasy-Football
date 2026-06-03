@@ -24,7 +24,7 @@ from .valuation import ALL_POSITIONS, DEFAULT_LEAGUE, LeagueConfig, compute_valu
 # A few soft fills cycled per tier so tier bands are easy to scan.
 _TIER_FILLS = ["FFF6E5", "E8F0FE", "E9F7EF", "FCE8F3", "F3E8FD", "EAF2F8", "FFF0E6"]
 
-_HEADERS = ["Tier", "PosRank", "TierRank", "Player", "$", "UserRtg",
+_HEADERS = ["Tier", "PosRank", "TierRank", "Player", "Tm", "Ovr", "$", "UserRtg",
             "LastYr", "PPG", "3yrWtd"]
 
 
@@ -33,12 +33,15 @@ class BoardRow(NamedTuple):
     pos_rank: int
     tier_rank: int
     name: str
+    team: str
+    overall_rank: int
     dollars: float
     user_rating: float
     total: float
     ppg: float
     w3yr: float
     position: str
+    is_rookie: bool
 
 
 def build_board(
@@ -74,9 +77,11 @@ def build_board(
             out.append(
                 BoardRow(
                     tier=r.tier, pos_rank=i, tier_rank=per_tier_seen[r.tier],
-                    name=r.name, dollars=r.dollars,
+                    name=r.name, team=r.team, overall_rank=r.overall_rank,
+                    dollars=r.dollars,
                     user_rating=round(ratings.get(r.key, r.basis_value), 1),
                     total=r.total, ppg=r.ppg, w3yr=r.w3yr, position=pos,
+                    is_rookie=r.is_rookie,
                 )
             )
         board[pos] = out
@@ -120,19 +125,38 @@ def write_cheatsheet(
             ws.cell(row=1, column=c).font = header_font
             ws.cell(row=1, column=c).alignment = center
         for r in rows:
-            ws.append([r.tier, r.pos_rank, r.tier_rank, r.name, r.dollars,
-                       r.user_rating, r.total, r.ppg, r.w3yr])
+            name = r.name + (" (R)" if r.is_rookie else "")
+            ws.append([r.tier, r.pos_rank, r.tier_rank, name, r.team, r.overall_rank,
+                       r.dollars, r.user_rating, r.total, r.ppg, r.w3yr])
             for c in range(1, len(_HEADERS) + 1):
                 ws.cell(row=ws.max_row, column=c).fill = _tier_fill(r.tier)
         ws.freeze_panes = "A2"
         for c in range(1, len(_HEADERS) + 1):
             ws.column_dimensions[get_column_letter(c)].width = 22 if c == 4 else 9
         for row in range(2, ws.max_row + 1):
-            ws.cell(row=row, column=5).number_format = '"$"0'
+            ws.cell(row=row, column=7).number_format = '"$"0'  # $ column
 
     for pos in ALL_POSITIONS:
         if pos in board:
             _position_sheet(pos, board[pos])
+
+    # --- Coaching reference -------------------------------------------------
+    from .models import Team
+
+    teams = sorted(
+        (t for t in session.scalars(select(Team)) if t.head_coach or t.offensive_coordinator),
+        key=lambda t: t.abbreviation,
+    )
+    if teams:
+        ws = wb.create_sheet("Coaching")
+        ws.append(["Team", "Head Coach", "Off. Coordinator", "Play-caller"])
+        for c in range(1, 5):
+            ws.cell(row=1, column=c).font = header_font
+        for t in teams:
+            ws.append([t.abbreviation, t.head_coach, t.offensive_coordinator, t.play_caller])
+        ws.freeze_panes = "A2"
+        for c, w in zip("ABCD", (8, 20, 20, 20)):
+            ws.column_dimensions[c].width = w
 
     # --- Live Draft Board: recommended prices that react to picks ----------
     _draft_sheet(wb, board, config, header_font, center, _tier_fill)
@@ -144,14 +168,12 @@ def write_cheatsheet(
 
 # Draft Board column layout (1-indexed):
 #  A Pos  B Tier  C Player  D Base$  E Rec$  F Drafted  G Paid  H Weight(hidden)
-#  I UserRtg  J LastYr  K PPG  L 3yr  ; control block in N (labels) / O (values)
+#  I UserRtg  J LastYr  K PPG  L 3yr  M Tm  N Ovr ; control block in P/Q.
 _DRAFT_HEADERS = ["Pos", "Tier", "Player", "Base$", "Rec$", "Drafted", "Paid",
-                  "Weight", "UserRtg", "LastYr", "PPG", "3yrWtd"]
+                  "Weight", "UserRtg", "LastYr", "PPG", "3yrWtd", "Tm", "Ovr"]
 
 
 def _draft_sheet(wb, board, config, header_font, center, tier_fill) -> None:
-    from openpyxl.utils import get_column_letter
-
     ws = wb.create_sheet("Draft Board")
     ws.append(_DRAFT_HEADERS)
     for c in range(1, len(_DRAFT_HEADERS) + 1):
@@ -169,45 +191,45 @@ def _draft_sheet(wb, board, config, header_font, center, tier_fill) -> None:
     weight = f"$H$2:$H${last}"
 
     for i, r in enumerate(rows, start=2):
+        name = r.name + (" (R)" if r.is_rookie else "")
         ws.append([
-            r.position, r.tier, r.name, r.dollars, None, None, None, None,
-            r.user_rating, r.total, r.ppg, r.w3yr,
+            r.position, r.tier, name, r.dollars, None, None, None, None,
+            r.user_rating, r.total, r.ppg, r.w3yr, r.team, r.overall_rank,
         ])
         # Weight = max(Base$ - 1, 0); recompute defensively in-sheet.
         ws.cell(row=i, column=8).value = f"=MAX(D{i}-1,0)"
         # Rec$ = paid if drafted, else inflation-adjusted allocation of the
-        # remaining pool across remaining weights.
+        # remaining pool across remaining weights (control block in column Q).
         ws.cell(row=i, column=5).value = (
             f'=IF(F{i}="x",G{i},'
-            f'IF($O$7>0,ROUND(1+H{i}/$O$7*($O$5-$O$6),0),D{i}))'
+            f'IF($Q$7>0,ROUND(1+H{i}/$Q$7*($Q$5-$Q$6),0),D{i}))'
         )
         for c in range(1, len(_DRAFT_HEADERS) + 1):
             ws.cell(row=i, column=c).fill = tier_fill(r.tier)
 
-    # Control block (labels in N, live values in O).
+    # Control block (labels in P, live values in Q).
     controls = [
         ("Total pool", config.pool),
         ("Total slots", config.teams * config.roster_size),
         ("Spent", f'=SUMIFS({paid},{drafted},"x")'),
         ("Drafted", f'=COUNTIF({drafted},"x")'),
-        ("Remaining pool", "=O1-O3"),
-        ("Remaining slots", "=O2-O4"),
+        ("Remaining pool", "=Q1-Q3"),
+        ("Remaining slots", "=Q2-Q4"),
         ("Remaining weight", f'=SUMIFS({weight},{drafted},"<>x")'),
     ]
     for idx, (label, value) in enumerate(controls, start=1):
-        ws.cell(row=idx, column=14, value=label).font = header_font
-        ws.cell(row=idx, column=15, value=value)
+        ws.cell(row=idx, column=16, value=label).font = header_font
+        ws.cell(row=idx, column=17, value=value)
 
     ws.freeze_panes = "A2"
-    ws.auto_filter.ref = f"A1:L{last}"
+    ws.auto_filter.ref = f"A1:N{last}"
     ws.column_dimensions["C"].width = 22
-    for col in ("A", "B", "D", "E", "F", "G", "I", "J", "K", "L"):
+    for col in ("A", "B", "D", "E", "F", "G", "I", "J", "K", "L", "M", "N"):
         ws.column_dimensions[col].width = 9
     ws.column_dimensions["H"].hidden = True
-    ws.column_dimensions["N"].width = 16
+    ws.column_dimensions["P"].width = 16
     for row in range(2, last + 1):
-        ws.cell(row=row, column=4).number_format = '"$"0'
-        ws.cell(row=row, column=5).number_format = '"$"0'
-        ws.cell(row=row, column=7).number_format = '"$"0'
-    ws.cell(row=1, column=15).number_format = '"$"0'
-    ws.cell(row=5, column=15).number_format = '"$"0'
+        for col in (4, 5, 7):  # Base$, Rec$, Paid
+            ws.cell(row=row, column=col).number_format = '"$"0'
+    ws.cell(row=1, column=17).number_format = '"$"0'  # total pool
+    ws.cell(row=5, column=17).number_format = '"$"0'  # remaining pool

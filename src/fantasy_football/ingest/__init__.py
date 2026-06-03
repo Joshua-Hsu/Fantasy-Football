@@ -6,6 +6,8 @@ files and loads them into our schema.
 """
 
 from .nflverse import (
+    load_active_roster,
+    load_coaching,
     load_games,
     load_players,
     load_season,
@@ -13,6 +15,7 @@ from .nflverse import (
     load_team_stats,
     load_teams,
     load_weekly_stats,
+    latest_head_coaches,
 )
 
 __all__ = [
@@ -21,6 +24,9 @@ __all__ = [
     "load_games",
     "load_weekly_stats",
     "load_team_stats",
+    "load_active_roster",
+    "load_coaching",
+    "latest_head_coaches",
     "load_season",
     "load_seasons",
 ]

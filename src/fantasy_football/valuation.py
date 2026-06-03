@@ -72,6 +72,7 @@ class ValueRow(NamedTuple):
     key: str            # stable id: "p<player_id>" or "d<team_abbr>"
     name: str
     position: str
+    team: str           # current NFL team (abbr); "" if unknown
     games: int          # games in the most recent season
     total: float        # last-season total fantasy points
     ppg: float          # last-season points per game
@@ -81,6 +82,9 @@ class ValueRow(NamedTuple):
     kmeans_tier: int
     vor: float          # value over replacement (can be negative)
     dollars: float      # auction value (>= 1)
+    pos_rank: int       # rank within position by value
+    overall_rank: int   # rank across all positions by value
+    is_rookie: bool     # no prior stats (placeholder until tiered by hand)
 
 
 # --- Value: gather season totals -------------------------------------------
@@ -90,6 +94,19 @@ def _latest_season(session: Session) -> int | None:
     return session.scalar(
         select(func.max(Game.season_year)).where(Game.season_type == "regular")
     )
+
+
+def _active_players(session: Session) -> dict[str, tuple[str, str, str, int | None]]:
+    """{key: (name, position, current_team, rookie_year)} for active offensive players."""
+    rows = session.execute(
+        select(Player.id, Player.full_name, Player.position, Player.current_team, Player.rookie_year)
+        .where(Player.active == 1)
+    )
+    return {
+        f"p{pid}": (name, pos, team or "", rk)
+        for pid, name, pos, team, rk in rows
+        if pos in OFFENSE_POSITIONS
+    }
 
 
 def _player_entities(session: Session, years: list[int], rules: ScoringRules) -> dict[str, dict]:
@@ -280,12 +297,17 @@ def compute_values(
     tier_k: dict[str, int] | None = None,
     manual_tiers: dict[str, int] | None = None,
     tier_smoothing: float = 0.5,
+    active_only: bool | None = None,
 ) -> dict[str, list[ValueRow]]:
     """Compute tiers and auction values, grouped by position.
 
     ``basis`` selects which value drives pricing (``total`` / ``ppg`` / ``w3yr``);
     all three are reported regardless. ``manual_tiers`` maps an entity ``key`` to
     a tier and overrides the k-means tier for both display and smoothing.
+
+    When ``active_only`` (auto-enabled if any player is marked active) the pool is
+    limited to players on a current NFL roster, and active players without recent
+    stats (rookies) are included as $1 placeholders to be tiered by hand.
     """
     latest = year or _latest_season(session)
     if latest is None:
@@ -296,12 +318,38 @@ def compute_values(
 
     entities = list(_player_entities(session, years, rules).values())
     entities += list(_defense_entities(session, years, def_rules).values())
-
     for ent in entities:
         _summarize(ent, latest)
         ent["basis_value"] = _basis_value(ent, basis)
-    # Drop entities with no production in the scoring window.
-    entities = [e for e in entities if e["basis_value"] > 0 or e["total"] > 0]
+
+    active = _active_players(session)
+    use_active = bool(active) if active_only is None else active_only
+
+    if use_active:
+        present = {e["key"] for e in entities if e["position"] in OFFENSE_POSITIONS}
+        kept = []
+        for e in entities:
+            if e["position"] == "DST":
+                e["team"] = e["name"]
+                kept.append(e)
+            elif e["key"] in active:
+                e["team"] = active[e["key"]][2]
+                kept.append(e)
+        # Active players with no stats (rookies / didn't play) -> placeholders.
+        for key, (name, pos, team, _rk) in active.items():
+            if key not in present:
+                ent = {"key": key, "name": name, "position": pos, "team": team, "seasons": {}}
+                _summarize(ent, latest)
+                ent["basis_value"] = _basis_value(ent, basis)
+                kept.append(ent)
+        entities = kept
+    else:
+        entities = [e for e in entities if e["basis_value"] > 0 or e["total"] > 0]
+        for e in entities:
+            e["team"] = e["name"] if e["position"] == "DST" else ""
+
+    for e in entities:
+        e["is_rookie"] = e["position"] != "DST" and not e["seasons"]
 
     by_position: dict[str, list[dict]] = {}
     for ent in entities:
@@ -309,23 +357,29 @@ def compute_values(
     for pos, group in by_position.items():
         group.sort(key=lambda e: e["basis_value"], reverse=True)
         tiers = kmeans_1d([e["basis_value"] for e in group], tier_k.get(pos, 6))
-        for ent, kt in zip(group, tiers):
+        for rank, (ent, kt) in enumerate(zip(group, tiers), 1):
             ent["kmeans_tier"] = kt
             ent["tier"] = manual_tiers.get(ent["key"], kt)
+            ent["pos_rank"] = rank
 
     replacement = _replacement_values(by_position, config)
     for ent in entities:
         ent["vor"] = ent["basis_value"] - replacement.get(ent["position"], 0.0)
     _assign_prices(entities, config, tier_smoothing=tier_smoothing)
 
+    # Overall rank across all positions, by value.
+    for rank, ent in enumerate(sorted(entities, key=lambda e: e["basis_value"], reverse=True), 1):
+        ent["overall_rank"] = rank
+
     result: dict[str, list[ValueRow]] = {}
     for pos in ALL_POSITIONS:
         rows = [
             ValueRow(
-                key=e["key"], name=e["name"], position=e["position"], games=e["games"],
-                total=round(e["total"], 1), ppg=round(e["ppg"], 2), w3yr=round(e["w3yr"], 1),
-                basis_value=round(e["basis_value"], 1), tier=e["tier"],
+                key=e["key"], name=e["name"], position=e["position"], team=e.get("team", ""),
+                games=e["games"], total=round(e["total"], 1), ppg=round(e["ppg"], 2),
+                w3yr=round(e["w3yr"], 1), basis_value=round(e["basis_value"], 1), tier=e["tier"],
                 kmeans_tier=e["kmeans_tier"], vor=round(e["vor"], 1), dollars=e["dollars"],
+                pos_rank=e["pos_rank"], overall_rank=e["overall_rank"], is_rookie=e["is_rookie"],
             )
             for e in by_position.get(pos, [])
         ]

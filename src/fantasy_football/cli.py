@@ -165,6 +165,7 @@ def _cmd_values(args: argparse.Namespace) -> int:
             rules=PRESETS[args.scoring],
             basis=args.basis,
             manual_tiers=manual_tiers,
+            active_only=False if args.all_players else None,
         )
 
     positions = [args.position.upper()] if args.position else list(ALL_POSITIONS)
@@ -177,14 +178,16 @@ def _cmd_values(args: argparse.Namespace) -> int:
             continue
         print(f"\n=== {pos} - {args.basis} basis, {config.teams}tm/${config.budget}{note} ===")
         print(
-            f"{'#':>3}  {'Player':<22} {'G':>2} {'Total':>6} {'PPG':>5} "
+            f"{'#':>3}  {'Player':<22} {'Tm':<3} {'Ovr':>4} {'Total':>6} {'PPG':>5} "
             f"{'3yr':>6} {'Tier':>4} {'VOR':>6} {'$':>5}"
         )
         for i, r in enumerate(rows[: args.limit], 1):
             tier = f"{r.tier}" if not manual_tiers else f"{r.tier}*"
+            name = (r.name + (" (R)" if r.is_rookie else ""))[:22]
             print(
-                f"{i:>3}  {r.name[:22]:<22} {r.games:>2} {r.total:>6.1f} {r.ppg:>5.1f} "
-                f"{r.w3yr:>6.1f} {tier:>4} {r.vor:>6.1f} {r.dollars:>5.0f}"
+                f"{i:>3}  {name:<22} {(r.team or ''):<3} {r.overall_rank:>4} "
+                f"{r.total:>6.1f} {r.ppg:>5.1f} {r.w3yr:>6.1f} {tier:>4} "
+                f"{r.vor:>6.1f} {r.dollars:>5.0f}"
             )
 
     if args.export:
@@ -202,6 +205,49 @@ def _cmd_values(args: argparse.Namespace) -> int:
                     )
         print(f"\nExported full table to {args.export} "
               f"(edit the manual_tier column, then re-run with --tiers-file).")
+    return 0
+
+
+def _cmd_load_active(args: argparse.Namespace) -> int:
+    import datetime as _dt
+
+    from .ingest import load_active_roster
+
+    year = args.year or _dt.date.today().year
+    with _open_session(args) as session:
+        n = load_active_roster(session, year)
+    print(f"Marked {n} active players from the {year} roster")
+    return 0
+
+
+def _cmd_load_coaching(args: argparse.Namespace) -> int:
+    from .ingest import load_coaching
+
+    with _open_session(args) as session:
+        n = load_coaching(session, args.file)
+    print(f"Loaded coaching staff for {n} teams")
+    return 0
+
+
+def _cmd_coaching_template(args: argparse.Namespace) -> int:
+    import csv
+
+    from sqlalchemy import select
+
+    from .ingest import latest_head_coaches
+    from .models import Team
+
+    coaches = latest_head_coaches()
+    with _open_session(args) as session:
+        known = {t.abbreviation for t in session.scalars(select(Team))}
+    teams = sorted(known & set(coaches)) or sorted(known)
+    with open(args.out, "w", newline="") as fh:
+        writer = csv.writer(fh)
+        writer.writerow(["team", "head_coach", "offensive_coordinator", "play_caller"])
+        for team in teams:
+            writer.writerow([team, coaches.get(team, ""), "", ""])
+    print(f"Wrote coaching template ({len(teams)} teams) to {args.out} "
+          f"- fill OC/play-caller, then load-coaching --file {args.out}")
     return 0
 
 
@@ -306,7 +352,23 @@ def build_parser() -> argparse.ArgumentParser:
         "--use-user-ratings", action="store_true", dest="use_user_ratings",
         help="Draw tiers from the head-to-head user ratings",
     )
+    p_values.add_argument(
+        "--all-players", action="store_true", dest="all_players",
+        help="Don't restrict to active rosters (include anyone with recent stats)",
+    )
     p_values.set_defaults(func=_cmd_values)
+
+    p_active = sub.add_parser("load-active", help="Mark the active draft pool from a season roster")
+    p_active.add_argument("--year", type=int, default=None, help="Roster year (default: current year)")
+    p_active.set_defaults(func=_cmd_load_active)
+
+    p_coachtpl = sub.add_parser("coaching-template", help="Write a coaching CSV to fill in")
+    p_coachtpl.add_argument("--out", default="coaching.csv", help="Output CSV path")
+    p_coachtpl.set_defaults(func=_cmd_coaching_template)
+
+    p_coach = sub.add_parser("load-coaching", help="Load team coaching staff from a CSV")
+    p_coach.add_argument("--file", required=True, help="CSV: team,head_coach,offensive_coordinator,play_caller")
+    p_coach.set_defaults(func=_cmd_load_coaching)
 
     p_serve = sub.add_parser("serve", help="Run the head-to-head comparison web app")
     p_serve.add_argument("--host", default="127.0.0.1", help="Bind host (use 0.0.0.0 for LAN/phone)")
