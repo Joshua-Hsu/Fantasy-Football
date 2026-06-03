@@ -51,6 +51,10 @@ DRAFT_URL = (
     "https://github.com/nflverse/nflverse-data/releases/download/"
     "draft_picks/draft_picks.parquet"
 )
+PBP_URL = (
+    "https://github.com/nflverse/nflverse-data/releases/download/"
+    "pbp/play_by_play_{year}.parquet"
+)
 
 # Team-code aliases: roster/draft sources use a few codes that differ from the
 # canonical nflverse stats codes. Normalize so current_team/team join correctly.
@@ -698,6 +702,51 @@ def load_coaching(session: Session, path: str) -> int:
             updated += 1
     session.commit()
     return updated
+
+
+def _fetch_pbp(year: int) -> pd.DataFrame:
+    cols = ["week", "posteam", "defteam", "play_type", "yardline_100", "receiver_player_id"]
+    return _read(lambda: pd.read_parquet(PBP_URL.format(year=year), columns=cols))
+
+
+def load_redzone(session: Session, year: int) -> int:
+    """Set per-game red-zone targets (passes inside the opponent 20) from PBP.
+
+    Aggregates PBP red-zone pass targets by (receiver, week, team) and writes
+    them onto the matching PlayerGameStats rows. Returns rows updated.
+    """
+    teams = _ensure_teams(session)
+    players = {p.slug: p.id for p in session.scalars(select(Player)) if p.slug}
+    games = list(session.scalars(select(Game).where(Game.season_year == year)))
+    game_by_matchup = {
+        (g.week, frozenset({g.home_team_id, g.away_team_id})): g.id for g in games
+    }
+    existing: dict[tuple[int, int], PlayerGameStats] = {}
+    game_ids = {g.id for g in games}
+    if game_ids:
+        for line in session.scalars(
+            select(PlayerGameStats).where(PlayerGameStats.game_id.in_(game_ids))
+        ):
+            existing[(line.player_id, line.game_id)] = line
+
+    df = _fetch_pbp(year)
+    rz = df[(df["play_type"] == "pass") & (df["yardline_100"] <= 20) & df["receiver_player_id"].notna()]
+    counts = rz.groupby(["receiver_player_id", "week", "posteam", "defteam"]).size()
+
+    written = 0
+    for (rid, week, posteam, defteam), cnt in counts.items():
+        pid = players.get(_opt_str(rid))
+        tid = teams.get(_norm_team(_opt_str(posteam)))
+        oid = teams.get(_norm_team(_opt_str(defteam)))
+        if pid is None or tid is None or oid is None:
+            continue
+        game_id = game_by_matchup.get((int(week), frozenset({tid, oid})))
+        line = existing.get((pid, game_id)) if game_id else None
+        if line is not None:
+            line.redzone_targets = int(cnt)
+            written += 1
+    session.commit()
+    return written
 
 
 def load_season(session: Session, year: int) -> dict[str, int]:

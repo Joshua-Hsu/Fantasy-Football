@@ -221,6 +221,7 @@ class PlayerGameStats(Base):
     receptions: Mapped[int] = _count()
     receiving_yards: Mapped[int] = _count()
     receiving_touchdowns: Mapped[int] = _count()
+    redzone_targets: Mapped[int] = _count()  # targets inside opponent's 20 (from PBP)
 
     # --- Ball security ---
     fumbles: Mapped[int] = _count()

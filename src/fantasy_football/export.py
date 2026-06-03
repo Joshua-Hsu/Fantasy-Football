@@ -257,15 +257,16 @@ def write_webapp_data(
 
 
 # Last-year stat columns shown inline per position: (header, PlayerGameStats attr).
-_SKILL_STATS = [
-    ("Car", "rush_attempts"), ("RuYds", "rush_yards"), ("RuTD", "rush_touchdowns"),
+# RB: rushing + full receiving line (RBs catch). WR/TE: receiving only (no rush).
+_RECEIVING = [
     ("Tgt", "targets"), ("Rec", "receptions"), ("ReYds", "receiving_yards"),
-    ("ReTD", "receiving_touchdowns"), ("Tgt%", "__tgtshare"),
+    ("ReTD", "receiving_touchdowns"), ("Tgt%", "__tgtshare"), ("RZTgt", "redzone_targets"),
 ]
+_RB_STATS = [("Car", "rush_attempts"), ("RuYds", "rush_yards"), ("RuTD", "rush_touchdowns")] + _RECEIVING
 STAT_COLS: dict[str, list[tuple[str, str]]] = {
     "QB": [("PaAtt", "pass_attempts"), ("PaYds", "pass_yards"), ("PaTD", "pass_touchdowns"),
            ("INT", "interceptions_thrown"), ("RuAtt", "rush_attempts"), ("RuYds", "rush_yards")],
-    "RB": _SKILL_STATS, "WR": _SKILL_STATS, "TE": _SKILL_STATS,
+    "RB": _RB_STATS, "WR": _RECEIVING, "TE": _RECEIVING,
     "K": [("FGM", "field_goals_made"), ("FGA", "field_goals_attempted"), ("XPM", "extra_points_made")],
     "DST": [("PA/g", "PA"), ("Sack", "Sack"), ("INT", "INT"), ("DefTD", "TD")],
 }
@@ -376,7 +377,7 @@ def _format_team_context(team: str, pos: str, toff: dict) -> str:
 # Canonical individual stat columns (each sortable) used by the CSVs and app.
 CSV_STAT_HEADERS = [
     "Bye", "Age",
-    "PaYds", "PaTD", "INT", "RuAtt", "RuYds", "RuTD", "Tgt", "Rec", "ReYds", "ReTD", "Tgt%",
+    "PaYds", "PaTD", "INT", "RuAtt", "RuYds", "RuTD", "Tgt", "Rec", "ReYds", "ReTD", "Tgt%", "RZTgt",
     "FGM", "FGA", "XPM", "DefPA", "DefSk", "DefINT", "DefTD",
     "TmYds", "TmYdsRk", "TmPlays", "TmPlaysRk", "TmRush", "TmRushRk", "TmPass", "TmPassRk",
 ]
@@ -457,10 +458,12 @@ def _stat_columns(key: str, pos: str, team: str, pstats: dict, toff: dict, dstat
             c["RuAtt"], c["RuYds"], c["RuTD"] = s["rush_attempts"], s["rush_yards"], s["rush_touchdowns"]
         elif pos == "K":
             c["FGM"], c["FGA"], c["XPM"] = s["field_goals_made"], s["field_goals_attempted"], s["extra_points_made"]
-        else:
-            c["RuAtt"], c["RuYds"], c["RuTD"] = s["rush_attempts"], s["rush_yards"], s["rush_touchdowns"]
+        else:  # RB / WR / TE: receiving (+ rushing for RB only)
             c["Tgt"], c["Rec"] = s["targets"], s["receptions"]
             c["ReYds"], c["ReTD"] = s["receiving_yards"], s["receiving_touchdowns"]
+            c["RZTgt"] = s.get("redzone_targets", "")
+            if pos == "RB":
+                c["RuAtt"], c["RuYds"], c["RuTD"] = s["rush_attempts"], s["rush_yards"], s["rush_touchdowns"]
     if pos in TEAM_OFFENSE_POSITIONS:
         o = toff.get(team)
         if o:

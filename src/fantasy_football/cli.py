@@ -306,6 +306,24 @@ def _cmd_load_draft(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_load_redzone(args: argparse.Namespace) -> int:
+    from sqlalchemy import func, select
+
+    from .ingest import load_redzone
+    from .models import Game
+
+    with _open_session(args) as session:
+        year = args.year or session.scalar(
+            select(func.max(Game.season_year)).where(Game.season_type == "regular")
+        )
+        if year is None:
+            print("No seasons loaded.")
+            return 1
+        n = load_redzone(session, year)
+    print(f"Set red-zone targets on {n} stat lines ({year})")
+    return 0
+
+
 def _cmd_load_byes(args: argparse.Namespace) -> int:
     import datetime as _dt
 
@@ -496,6 +514,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_coachtpl = sub.add_parser("coaching-template", help="Write a coaching CSV to fill in")
     p_coachtpl.add_argument("--out", default="coaching.csv", help="Output CSV path")
     p_coachtpl.set_defaults(func=_cmd_coaching_template)
+
+    p_rz = sub.add_parser("load-redzone", help="Set red-zone targets from play-by-play")
+    p_rz.add_argument("--year", type=int, default=None, help="Season (default: latest loaded)")
+    p_rz.set_defaults(func=_cmd_load_redzone)
 
     p_byes = sub.add_parser("load-byes", help="Set team bye weeks from the schedule")
     p_byes.add_argument("--year", type=int, default=None, help="Season year (default: current year)")
