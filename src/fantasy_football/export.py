@@ -158,6 +158,33 @@ def build_webapp_data(
             select(Player.id, Player.draft_round, Player.draft_pick).where(Player.draft_round.isnot(None))
         )
     }
+    # Last-year stat lines for the cards / CSV export.
+    last_year = year or _latest_season(session)
+    pstats = _player_last_year(session, last_year) if last_year else {}
+    toff = _team_offense(session, last_year) if last_year else {}
+    dstats = _dst_last_year(session, last_year) if last_year else {}
+
+    def statline(key: str, pos: str) -> str:
+        if pos == "DST":
+            d = dstats.get(key, {})
+            return f"{d.get('PA', 0)}PA/g {d.get('Sack', 0)}sk {d.get('INT', 0)}int {d.get('TD', 0)}td"
+        s = pstats.get(key)
+        if not s:
+            return ""
+        if pos == "QB":
+            return (f"{s['pass_yards']}yd {s['pass_touchdowns']}td {s['interceptions_thrown']}int, "
+                    f"{s['rush_attempts']}car {s['rush_yards']}ryd")
+        if pos == "K":
+            return f"{s['field_goals_made']}/{s['field_goals_attempted']}FG {s['extra_points_made']}XP"
+        return (f"{s['receptions']}rec {s['receiving_yards']}yd {s['receiving_touchdowns']}td, "
+                f"{s['rush_attempts']}car {s['rush_yards']}ryd {s['rush_touchdowns']}rtd")
+
+    def team_context(team: str) -> str:
+        o = toff.get(team)
+        if not o:
+            return ""
+        return f"off yds#{o['total_yards_rank']} pass#{o['pass_rank']} rush#{o['rush_rank']}"
+
     # Where a rookie of each round slots into a position's value scale.
     round_slot = {1: 7, 2: 17, 3: 27}
 
@@ -174,6 +201,8 @@ def build_webapp_data(
             "key": r.key, "name": r.name, "team": r.team, "pos": r.position,
             "total": r.total, "ppg": r.ppg, "w3yr": r.w3yr,
             "seed": round(seed, 1), "rookie": r.is_rookie, "hc": hc, "oc": oc, "pc": pc,
+            "stat": statline(r.key, r.position),
+            "tmoff": team_context(r.team) if r.position in TEAM_OFFENSE_POSITIONS else "",
         }
         # Manual tiers only seed the starting `seed` (above) — the app's Elo
         # refines from there, so we deliberately don't lock a tier here.

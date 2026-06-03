@@ -135,7 +135,9 @@
       " &middot; PC " + esc(e.pc || "TBD") + "</div>" + draftLine +
       "<div class='row'><span>Last-yr total</span><b>" + stat(e.total) + "</b></div>" +
       "<div class='row'><span>Last-yr PPG</span><b>" + stat(e.ppg) + "</b></div>" +
-      "<div class='row'><span>3-yr weighted</span><b>" + stat(e.w3yr) + "</b></div>";
+      "<div class='row'><span>3-yr weighted</span><b>" + stat(e.w3yr) + "</b></div>" +
+      (e.stat ? "<div class='muted'>" + esc(e.stat) + "</div>" : "") +
+      (e.tmoff ? "<div class='muted'>" + esc(e.tmoff) + "</div>" : "");
   }
 
   function play(pos) {
@@ -170,15 +172,16 @@
     exportTiers: function () {
       // key + manual_tier first (so the CLI/Action can read it), then human
       // columns (name/pos/rookie) so you can edit it by hand in a spreadsheet.
-      var lines = ["key,manual_tier,name,pos,rookie"];
+      var q = function (s) { return '"' + String(s == null ? "" : s).replace(/"/g, '""') + '"'; };
+      var lines = ["key,manual_tier,name,pos,rookie,total,ppg,lastyr_stats,team_offense"];
       ORDER.forEach(function (p) {
         var t = tiersFor(p);
         var pool = (DATA[p] || []).slice().sort(function (a, b) {
           return (t[a.key] - t[b.key]) || (S.ratings[b.key] - S.ratings[a.key]);
         });
         pool.forEach(function (e) {
-          var nm = '"' + String(e.name).replace(/"/g, '""') + '"';
-          lines.push([e.key, t[e.key], nm, e.pos, e.rookie ? 1 : 0].join(","));
+          lines.push([e.key, t[e.key], q(e.name), e.pos, e.rookie ? 1 : 0,
+            e.total, e.ppg, q(e.stat || ""), q(e.tmoff || "")].join(","));
         });
       });
       var blob = new Blob([lines.join("\n") + "\n"], { type: "text/csv" });
