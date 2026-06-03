@@ -1,0 +1,69 @@
+name: Draft Board
+
+# Builds the tiered auction draft board (.xlsx) from nflverse data and uploads
+# it as a workflow artifact. Run it on demand from the Actions tab.
+on:
+  workflow_dispatch:
+    inputs:
+      start_year:
+        description: First season to load for history
+        default: "2020"
+      roster_year:
+        description: Roster year that defines the active/draftable pool
+        default: "2026"
+      basis:
+        description: Value basis for pricing (total | ppg | w3yr)
+        default: "w3yr"
+      teams:
+        description: League size
+        default: "12"
+      budget:
+        description: Auction budget per team
+        default: "200"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install (ingest + export extras)
+        run: pip install -e ".[ingest,export]"
+
+      - name: Build database from nflverse
+        run: |
+          python -m fantasy_football.cli init-db
+          python -m fantasy_football.cli load-seasons --start "${{ inputs.start_year }}"
+          python -m fantasy_football.cli load-active --year "${{ inputs.roster_year }}"
+
+      - name: Load coaching (real CSV if committed, else HC-only template)
+        run: |
+          # TODO: commit a filled coaching.csv (OC/play-caller) to enrich cards.
+          # Until then head coaches load from nflverse and OC/play-caller show TBD.
+          if [ -f coaching.csv ]; then
+            python -m fantasy_football.cli load-coaching --file coaching.csv
+          else
+            echo "::warning::No coaching.csv found - OC/play-caller will be TBD."
+            python -m fantasy_football.cli coaching-template --out coaching.csv
+            python -m fantasy_football.cli load-coaching --file coaching.csv
+          fi
+
+      - name: Generate draft board
+        run: |
+          python -m fantasy_football.cli cheatsheet \
+            --out draft_board.xlsx \
+            --basis "${{ inputs.basis }}" \
+            --teams "${{ inputs.teams }}" \
+            --budget "${{ inputs.budget }}"
+
+      - name: Upload draft board
+        uses: actions/upload-artifact@v4
+        with:
+          name: draft-board
+          path: draft_board.xlsx
+          retention-days: 30

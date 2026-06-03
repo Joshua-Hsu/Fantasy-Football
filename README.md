@@ -214,6 +214,11 @@ players' recommended prices re-adjust for auction inflation (more money left →
 prices rise; overpays → prices fall). Per-position sheets give the static tier
 view (rank-in-position, rank-in-tier, value, the three bases), banded by tier.
 
+You can also build the board in CI: the **Draft Board** GitHub Action
+(`.github/workflows/draft-board.yml`, run from the Actions tab) loads nflverse
+data and uploads `draft_board.xlsx` as an artifact. Coaching OC/play-caller is
+still TBD — see `TODO.md`.
+
 ## Roadmap
 
 - [x] Data ingestion from nflverse (teams, games, players, weekly + team stats)
