@@ -33,8 +33,8 @@ def test_offense_half_ppr_vs_ppr():
 
 def test_passing_default_is_half_ppr():
     qb = SimpleNamespace(pass_yards=300, pass_touchdowns=2, interceptions_thrown=1)
-    # 300*0.04 + 2*4 + 1*(-2) = 12 + 8 - 2 = 18
-    assert score_stats(qb) == pytest.approx(18.0)
+    # 300*0.04 + 2*4 + 1*(-1) = 12 + 8 - 1 = 19  (Yahoo default INT = -1)
+    assert score_stats(qb) == pytest.approx(19.0)
 
 
 def test_distance_based_field_goals():

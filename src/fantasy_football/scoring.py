@@ -36,13 +36,13 @@ class ScoringRules:
 
     passing_yards: float = 0.04          # 1 pt / 25 yds
     passing_td: float = 4.0
-    interception: float = -2.0           # placeholder, league value TBD
+    interception: float = -1.0           # Yahoo default (INT thrown)
     rushing_yards: float = 0.1           # 1 pt / 10 yds
     rushing_td: float = 6.0
     reception: float = 0.0               # PPR knob
     receiving_yards: float = 0.1         # 1 pt / 10 yds
     receiving_td: float = 6.0
-    fumble_lost: float = -2.0            # placeholder, league value TBD
+    fumble_lost: float = -2.0            # Yahoo default (fumble lost)
     extra_point_made: float = 1.0
     return_td: float = 6.0               # kick + punt return TDs
     # Distance-based field goals (min 2, no max): points per made FG by bucket.

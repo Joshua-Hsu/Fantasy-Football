@@ -127,15 +127,40 @@ python -m fantasy_football.cli leaders --year 2024 --scoring half_ppr --position
 python -m fantasy_football.cli leaders --year 2024 --position DST
 ```
 
-Presets: `standard`, `half_ppr` (default), `ppr`. Interception/fumble penalties
-are placeholders (-2 each) pending final league values.
+Presets: `standard`, `half_ppr` (default), `ppr`. Negative plays use Yahoo
+defaults: interception thrown −1, fumble lost −2 (Yahoo has no QB sack penalty;
+sacks score +1 on defense).
+
+## Auction values
+
+`src/fantasy_football/valuation.py` turns historical scoring into auction dollar
+values for a 12-team / $200 league (configurable). No projection model —
+last-season production is the value signal. The pipeline:
+
+1. **Value** — each player/defense summarized three ways for comparison:
+   last-season total, last-season PPG, and a weighted 3-year average.
+2. **Tier** — a 1-D k-means gives an automated tier per position as a starting
+   rating. Real tiers are a *manual* input (Yahoo base prices + head-to-head
+   preferences) supplied via a CSV override.
+3. **Price** — value over replacement (replacement levels from the roster,
+   including an RB/WR/TE flex pool), scaled to the budget pool and smoothed
+   within each tier.
+
+```bash
+# Panel of values (all three bases shown); pricing uses --basis (default w3yr)
+python -m fantasy_football.cli values --year 2025 --position RB
+
+# Export the full table, hand-edit the manual_tier column, then re-price from it
+python -m fantasy_football.cli values --year 2025 --export tiers.csv
+python -m fantasy_football.cli values --year 2025 --tiers-file tiers.csv
+```
 
 ## Roadmap
 
 - [x] Data ingestion from nflverse (teams, games, players, weekly + team stats)
 - [x] Reference data: load all franchises and seasons 2020-present
 - [x] Fantasy scoring (offense + distance-based K + tiered DST), Half-PPR default
-- [ ] Projections: expected fantasy points per player for an upcoming season
-- [ ] Auction values & tiers (value over replacement, scaled to budget × teams)
+- [x] Auction values from tiers (VOR + flex, k-means tiers, manual override)
+- [ ] Manual-tier workflow: import Yahoo base prices to seed/blend tiers
 - [ ] Play-by-play enrichment (return TDs by type, passer rating)
 - [ ] Migrations (Alembic) once the schema stabilizes

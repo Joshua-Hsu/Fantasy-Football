@@ -16,11 +16,12 @@ The work is layered, and the lower layers exist before the upper ones:
    and per-player + per-team box-score lines.
 2. **Ingestion** (done) — loads real NFL data from nflverse.
 3. **Fantasy scoring** (done) — `scoring.py`; Half-PPR default; offense + K + DST.
-4. **Projections** (next) — expected fantasy points per player for the upcoming
-   season.
-5. **Auction values & tiers** (the toolkit) — convert projections into dollar
-   values (value over replacement, scaled to budget × teams) and cluster players
-   into tiers.
+4. **Auction values from tiers** (done) — `valuation.py`. Note: the projection
+   model was intentionally skipped; historical production is the value signal and
+   feeds tiers → dollar values directly.
+
+Negative plays use **Yahoo defaults**: INT thrown −1, fumble lost −2 (no QB sack
+penalty; defensive sack is +1).
 
 League settings: **Half-PPR**, roster 1 QB / 2 RB / 2 WR / 1 TE / 1 FLEX
 (RB/WR/TE) / 1 K / 1 DEF / 5 bench — relevant for replacement levels when
@@ -114,6 +115,17 @@ kicker scoring linear/SQL-friendly. **Team DST** scoring is **non-linear**
 (`score_team_defense`, `team_defense_season_leaders`), not via SQL. The default
 rules are `HALF_PPR`; presets are `standard`/`half_ppr`/`ppr`. INT/fumble
 penalties are placeholders (-2) pending final league values.
+
+**Valuation (`valuation.py`).** Builds auction dollar values from history, no
+projection model. `compute_values()` returns per-position `ValueRow`s with all
+three value bases (total / ppg / w3yr), a k-means `kmeans_tier`, an effective
+`tier` (manual override if supplied), `vor`, and `dollars`. Pricing is VOR with
+replacement levels from `LeagueConfig` (a real RB/WR/TE **flex pool** in
+`_replacement_values`), scaled to the budget pool and **smoothed within tier**.
+k-means is pure-Python (`kmeans_1d`) so this module needs no extra dependency.
+Manual tiers (the league's real tiers, from Yahoo prices + H2H) come in via the
+CLI `values --export`/`--tiers-file` CSV round-trip, keyed by entity `key`
+(`p<player_id>` / `d<team_abbr>`).
 
 **Schema-change note:** `init-db` uses `create_all`, which does **not** alter
 existing tables. When you add columns (as the scoring work did to

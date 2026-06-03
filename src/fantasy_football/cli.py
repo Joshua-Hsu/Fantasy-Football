@@ -127,6 +127,77 @@ def _cmd_leaders(args: argparse.Namespace) -> int:
     return 0
 
 
+def _read_manual_tiers(path: str | None) -> dict[str, int]:
+    """Read manual tier overrides from a CSV with columns ``key,manual_tier``."""
+    if not path:
+        return {}
+    import csv
+
+    tiers: dict[str, int] = {}
+    with open(path, newline="") as fh:
+        for row in csv.DictReader(fh):
+            key = (row.get("key") or "").strip()
+            value = (row.get("manual_tier") or "").strip()
+            if key and value:
+                tiers[key] = int(value)
+    return tiers
+
+
+def _cmd_values(args: argparse.Namespace) -> int:
+    import csv
+
+    from .scoring import PRESETS
+    from .valuation import ALL_POSITIONS, LeagueConfig, compute_values
+
+    config = LeagueConfig(teams=args.teams, budget=args.budget)
+    manual_tiers = _read_manual_tiers(args.tiers_file)
+
+    with _open_session(args) as session:
+        values = compute_values(
+            session,
+            year=args.year,
+            config=config,
+            rules=PRESETS[args.scoring],
+            basis=args.basis,
+            manual_tiers=manual_tiers,
+        )
+
+    positions = [args.position.upper()] if args.position else list(ALL_POSITIONS)
+    note = " (tier = manual override)" if manual_tiers else ""
+    for pos in positions:
+        rows = values.get(pos, [])
+        if not rows:
+            continue
+        print(f"\n=== {pos} - {args.basis} basis, {config.teams}tm/${config.budget}{note} ===")
+        print(
+            f"{'#':>3}  {'Player':<22} {'G':>2} {'Total':>6} {'PPG':>5} "
+            f"{'3yr':>6} {'Tier':>4} {'VOR':>6} {'$':>5}"
+        )
+        for i, r in enumerate(rows[: args.limit], 1):
+            tier = f"{r.tier}" if not manual_tiers else f"{r.tier}*"
+            print(
+                f"{i:>3}  {r.name[:22]:<22} {r.games:>2} {r.total:>6.1f} {r.ppg:>5.1f} "
+                f"{r.w3yr:>6.1f} {tier:>4} {r.vor:>6.1f} {r.dollars:>5.0f}"
+            )
+
+    if args.export:
+        with open(args.export, "w", newline="") as fh:
+            writer = csv.writer(fh)
+            writer.writerow(
+                ["key", "name", "position", "games", "total", "ppg", "w3yr",
+                 "kmeans_tier", "vor", "dollars", "manual_tier"]
+            )
+            for pos in ALL_POSITIONS:
+                for r in values.get(pos, []):
+                    writer.writerow(
+                        [r.key, r.name, r.position, r.games, r.total, r.ppg, r.w3yr,
+                         r.kmeans_tier, r.vor, r.dollars, ""]
+                    )
+        print(f"\nExported full table to {args.export} "
+              f"(edit the manual_tier column, then re-run with --tiers-file).")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="fantasy_football", description=__doc__)
     parser.add_argument(
@@ -175,6 +246,32 @@ def build_parser() -> argparse.ArgumentParser:
         dest="season_type", help="Which games to include (default: regular)",
     )
     p_leaders.set_defaults(func=_cmd_leaders)
+
+    p_values = sub.add_parser(
+        "values", help="Compute tiers and auction values from historical scoring"
+    )
+    p_values.add_argument("--year", type=int, default=None, help="Most recent season (default: latest loaded)")
+    p_values.add_argument(
+        "--basis", choices=["total", "ppg", "w3yr"], default="w3yr",
+        help="Value used for pricing; all three are shown (default: w3yr)",
+    )
+    p_values.add_argument(
+        "--scoring", choices=["standard", "half_ppr", "ppr"], default="half_ppr",
+        help="Scoring system (default: half_ppr)",
+    )
+    p_values.add_argument("--position", default=None, help="Limit to one position")
+    p_values.add_argument("--limit", type=int, default=20, help="Rows per position (default 20)")
+    p_values.add_argument("--teams", type=int, default=12, help="League size (default 12)")
+    p_values.add_argument("--budget", type=int, default=200, help="Auction budget (default 200)")
+    p_values.add_argument(
+        "--tiers-file", default=None, dest="tiers_file",
+        help="CSV of manual tier overrides (columns: key,manual_tier)",
+    )
+    p_values.add_argument(
+        "--export", default=None,
+        help="Write the full table to this CSV for manual tier editing",
+    )
+    p_values.set_defaults(func=_cmd_values)
 
     return parser
 
