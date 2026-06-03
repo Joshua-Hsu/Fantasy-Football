@@ -130,7 +130,9 @@ def _cmd_leaders(args: argparse.Namespace) -> int:
 
 def _read_manual_tiers(path: str | None) -> dict[str, int]:
     """Read manual tier overrides from a CSV with columns ``key,manual_tier``."""
-    if not path:
+    import os
+
+    if not path or not os.path.exists(path):
         return {}
     import csv
 
@@ -146,7 +148,9 @@ def _read_manual_tiers(path: str | None) -> dict[str, int]:
 
 def _read_fixed_prices(path: str | None) -> dict[str, float]:
     """Read expected/market prices from a CSV's optional ``price`` column."""
-    if not path:
+    import os
+
+    if not path or not os.path.exists(path):
         return {}
     import csv
 
@@ -238,8 +242,13 @@ def _cmd_import_tiers(args: argparse.Namespace) -> int:
     from .export import write_tiers_csv
 
     new_tiers = _read_manual_tiers(args.file)
-    # Preserve prices from either the output file or the incoming export.
-    existing_prices = {**_read_fixed_prices(args.file), **_read_fixed_prices(args.out)}
+    # Preserve prices from the incoming file, an explicit --prices-from, then the
+    # output (most specific wins).
+    existing_prices = {
+        **_read_fixed_prices(args.file),
+        **_read_fixed_prices(getattr(args, "prices_from", None)),
+        **_read_fixed_prices(args.out),
+    }
 
     with _open_session(args) as session:
         write_tiers_csv(session, args.out, tiers=new_tiers, prices=existing_prices)
@@ -435,8 +444,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_active.set_defaults(func=_cmd_load_active)
 
     p_import = sub.add_parser("import-tiers", help="Update manual_tiers.csv from a pick-game export")
-    p_import.add_argument("--file", required=True, help="Exported tiers.csv (key,manual_tier)")
-    p_import.add_argument("--out", default="manual_tiers.csv", help="Output (default manual_tiers.csv)")
+    p_import.add_argument("--file", required=True, help="Exported app_tiers.csv (key,manual_tier)")
+    p_import.add_argument("--out", default="manual_tiers.csv", help="Output CSV path")
+    p_import.add_argument("--prices-from", default=None, dest="prices_from",
+                         help="Carry expected prices forward from this CSV (e.g. the previous master)")
     p_import.set_defaults(func=_cmd_import_tiers)
 
     p_draft = sub.add_parser("load-draft", help="Add incoming rookies (top rounds) to the pool")

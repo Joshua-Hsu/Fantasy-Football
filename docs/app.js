@@ -189,7 +189,7 @@
       });
       var blob = new Blob([lines.join("\n") + "\n"], { type: "text/csv" });
       var url = URL.createObjectURL(blob), a = document.createElement("a");
-      a.href = url; a.download = "tiers.csv"; a.click(); URL.revokeObjectURL(url);
+      a.href = url; a.download = "app_tiers.csv"; a.click(); URL.revokeObjectURL(url);
     },
     importTiers: function (input) {
       var file = input.files && input.files[0];

@@ -69,9 +69,10 @@ jobs:
 
       - name: Generate draft board
         run: |
-          # Use saved tiers/prices (your picks) if present.
+          # Build from the newest committed master tiers file (your picks/prices).
+          MASTER=$(ls -1 master_tiers.*.csv 2>/dev/null | sort | tail -1)
           TIERS=""
-          [ -f manual_tiers.csv ] && TIERS="--tiers-file manual_tiers.csv"
+          [ -n "$MASTER" ] && TIERS="--tiers-file $MASTER" && echo "Using tiers: $MASTER"
           python -m fantasy_football.cli cheatsheet \
             --out draft_board.xlsx $TIERS \
             --basis "${{ inputs.basis }}" \

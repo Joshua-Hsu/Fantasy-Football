@@ -212,18 +212,27 @@ python -m fantasy_football.cli build-webapp --out docs/data.js
 Enable it once under **Settings → Pages → Deploy from a branch → `/docs`**, then
 open `https://<user>.github.io/Fantasy-Football/`.
 
-**The loop:** play picks → **Export tiers CSV** → fold them into `manual_tiers.csv`
-(names added, prices preserved) → rebuild the board:
+**The loop:** play picks → **Export** `app_tiers.csv` → fold it into a dated
+`master_tiers.<date>.csv` → build the board from the newest master.
 
 ```bash
-python -m fantasy_football.cli import-tiers --file ~/Downloads/tiers.csv   # -> manual_tiers.csv
-python -m fantasy_football.cli cheatsheet  --tiers-file manual_tiers.csv --out draft_board.xlsx
+# fold an app export into a new dated master (names + stats added, prices kept)
+python -m fantasy_football.cli import-tiers --file app_tiers.csv \
+    --out "master_tiers.$(date +%F).csv" --prices-from master_tiers.PREV.csv
+# build the board from a master tiers file
+python -m fantasy_football.cli cheatsheet --tiers-file master_tiers.<date>.csv --out draft_board.xlsx
 ```
 
-`manual_tiers.csv` also takes an optional `price` column (expected/market prices,
-e.g. Chase = 80) that pins those players and re-prices the field around them. The
-**Draft Board** GitHub Action automatically uses `manual_tiers.csv` if it's
-committed, so a one-click run produces a board with your tiers.
+Master tiers files also take an optional `price` column (expected/market prices,
+e.g. Chase = 80) that pins those players and re-prices the field around them.
+
+Two GitHub Actions drive this in the cloud:
+
+- **Master Tiers** — folds a committed `app_tiers.csv` into a new dated
+  `master_tiers.<today>.csv`, **commits it** (old ones are kept as history), and
+  uploads it as a downloadable artifact.
+- **Draft Board** — builds `draft_board.xlsx` from the **newest**
+  `master_tiers.*.csv` and uploads it.
 
 ## Draft-board export (live in-draft pricing)
 

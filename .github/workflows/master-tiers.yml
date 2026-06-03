@@ -1,0 +1,63 @@
+name: Master Tiers
+
+# Folds your latest app picks (app_tiers.csv, exported from the pick game and
+# committed to the repo) into a new dated master tiers file, keeping the old
+# ones as history, and uploads it as a downloadable artifact.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install (ingest + export extras)
+        run: pip install -e ".[ingest,export]"
+
+      - name: Build database from nflverse
+        run: |
+          python -m fantasy_football.cli init-db
+          python -m fantasy_football.cli load-seasons --start 2020
+          python -m fantasy_football.cli load-active --year 2026
+          python -m fantasy_football.cli load-draft --year 2026 --max-round 3
+          if [ -f coaching.csv ]; then
+            python -m fantasy_football.cli load-coaching --file coaching.csv
+          fi
+
+      - name: Build dated master tiers
+        run: |
+          DATE=$(date +%F)
+          OUT="master_tiers.${DATE}.csv"
+          PREV=$(ls -1 master_tiers.*.csv 2>/dev/null | sort | tail -1)
+          # Prefer your freshly committed app export; otherwise refresh the
+          # newest master in place (updates stats, re-dates it).
+          if [ -f app_tiers.csv ]; then SRC=app_tiers.csv; else SRC="$PREV"; fi
+          if [ -z "$SRC" ]; then echo "::error::no app_tiers.csv or master_tiers.*.csv found"; exit 1; fi
+          echo "Source: $SRC  ->  $OUT  (carrying prices from ${PREV:-none})"
+          python -m fantasy_football.cli import-tiers --file "$SRC" --out "$OUT" \
+            ${PREV:+--prices-from "$PREV"}
+          echo "OUT=$OUT" >> "$GITHUB_ENV"
+
+      - name: Commit master tiers (history)
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "$OUT"
+          git commit -m "Master tiers $OUT" || echo "no changes to commit"
+          git push
+
+      - name: Upload master tiers
+        uses: actions/upload-artifact@v4
+        with:
+          name: master-tiers
+          path: ${{ env.OUT }}
+          retention-days: 90
