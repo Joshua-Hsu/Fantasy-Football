@@ -13,6 +13,8 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
+# Ingestion pulls nflverse files directly via pandas (parquet needs pyarrow).
+ingest = ["pandas>=2.0", "pyarrow>=14"]
 
 [project.scripts]
 fantasy-football = "fantasy_football.cli:main"

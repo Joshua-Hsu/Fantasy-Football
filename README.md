@@ -8,8 +8,9 @@ foundation.
 
 ## Status
 
-Foundation / base schema. The data model and database tooling are in place;
-data ingestion and fantasy scoring come next.
+Base schema **plus working ingestion**. The database can be populated with real
+NFL data (teams, games, players, per-player box-score lines) from
+[nflverse](https://github.com/nflverse). Fantasy scoring comes next.
 
 ## Data model
 
@@ -47,9 +48,18 @@ pip install -e ".[dev]"
 # 2. Create the database (data/fantasy_football.db by default)
 python -m fantasy_football.cli init-db
 
-# 3. Inspect it
+# 3. Load real data from nflverse (2020 through the most recent played season)
+python -m fantasy_football.cli load-seasons --start 2020
+#   ...or a single season:
+python -m fantasy_football.cli load-season --year 2024
+
+# 4. Inspect it
 python -m fantasy_football.cli info
 ```
+
+Ingestion requires the optional `ingest` extra (`pip install -e ".[ingest]"`).
+Loaders are **idempotent** — re-running a season refreshes scores and stats in
+place rather than duplicating rows, so it's safe to re-run during a season.
 
 Override the database location with the `FANTASY_FOOTBALL_DB` environment
 variable or the `--db` flag:
@@ -58,15 +68,37 @@ variable or the `--db` flag:
 python -m fantasy_football.cli --db /tmp/ff.db init-db
 ```
 
+## Data sources
+
+Data is pulled directly from the files [nflverse](https://github.com/nflverse)
+publishes on GitHub — no scraping, no rate-limited hosts:
+
+| Data    | Source                                              |
+| ------- | --------------------------------------------------- |
+| Teams   | `nflfastR-data/teams_colors_logos.csv`              |
+| Games   | `nfldata/data/games.csv` (schedules + results)      |
+| Stats   | `nflverse-data` `stats_player` release (weekly)     |
+| Players | `nflverse-data` `rosters` release (biographical)    |
+
+These trace back to the NFL's own game feeds; nflverse cleans and republishes
+them for programmatic use. See `src/fantasy_football/ingest/nflverse.py`.
+
+> **Coverage note:** weekly stats cover passing, rushing, receiving, fumbles,
+> kicking (FG/PAT) and return yardage. Return touchdowns aren't split by type
+> in the source and passer rating isn't provided, so those columns stay at
+> their defaults pending a future play-by-play enrichment pass.
+
 ## Project layout
 
 ```
 src/fantasy_football/
-  models.py   # SQLAlchemy ORM models (the schema)
-  db.py       # engine/session helpers, SQLite config
-  cli.py      # `init-db` / `info` admin commands
+  models.py          # SQLAlchemy ORM models (the schema)
+  db.py              # engine/session helpers, SQLite config
+  cli.py             # init-db / info / load-* admin commands
+  ingest/nflverse.py # nflverse loaders
 tests/
   test_schema.py
+  test_ingest.py
 ```
 
 ## Running tests
@@ -77,8 +109,9 @@ pytest
 
 ## Roadmap
 
-- [ ] Data ingestion from external stat sources (e.g. Pro Football Reference)
-- [ ] Reference data: load all current teams and a season
+- [x] Data ingestion from nflverse (teams, games, players, weekly stats)
+- [x] Reference data: load all franchises and seasons 2020-present
+- [ ] Play-by-play enrichment (return TDs, defensive stats, passer rating)
 - [ ] Fantasy scoring rules and computed fantasy points
 - [ ] Standings / season aggregate views
 - [ ] Migrations (Alembic) once the schema stabilizes
