@@ -210,9 +210,20 @@ python -m fantasy_football.cli build-webapp --out docs/data.js
 ```
 
 Enable it once under **Settings → Pages → Deploy from a branch → `/docs`**, then
-open `https://<user>.github.io/Fantasy-Football/`. Use the **Export tiers CSV**
-button to download a `tiers.csv` you can feed back in with
-`values --tiers-file tiers.csv`.
+open `https://<user>.github.io/Fantasy-Football/`.
+
+**The loop:** play picks → **Export tiers CSV** → fold them into `manual_tiers.csv`
+(names added, prices preserved) → rebuild the board:
+
+```bash
+python -m fantasy_football.cli import-tiers --file ~/Downloads/tiers.csv   # -> manual_tiers.csv
+python -m fantasy_football.cli cheatsheet  --tiers-file manual_tiers.csv --out draft_board.xlsx
+```
+
+`manual_tiers.csv` also takes an optional `price` column (expected/market prices,
+e.g. Chase = 80) that pins those players and re-prices the field around them. The
+**Draft Board** GitHub Action automatically uses `manual_tiers.csv` if it's
+committed, so a one-click run produces a board with your tiers.
 
 ## Draft-board export (live in-draft pricing)
 

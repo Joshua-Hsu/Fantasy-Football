@@ -229,6 +229,36 @@ def _cmd_values(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_import_tiers(args: argparse.Namespace) -> int:
+    """Turn a pick-game export (key,manual_tier) into manual_tiers.csv.
+
+    Adds player/defense names and preserves any prices already set in the
+    output file, so re-importing a fresh export keeps your market anchors.
+    """
+    import csv
+
+    from sqlalchemy import select
+
+    from .models import Player, Team
+
+    new_tiers = _read_manual_tiers(args.file)
+    existing_prices = _read_fixed_prices(args.out)
+
+    with _open_session(args) as session:
+        names = {f"p{p.id}": p.full_name for p in session.scalars(select(Player))}
+        names.update({f"d{t.abbreviation}": t.abbreviation for t in session.scalars(select(Team))})
+
+    with open(args.out, "w", newline="") as fh:
+        writer = csv.writer(fh)
+        writer.writerow(["key", "manual_tier", "name", "price"])
+        for key, tier in new_tiers.items():
+            price = existing_prices.get(key, "")
+            writer.writerow([key, tier, names.get(key, key), price])
+    print(f"Wrote {len(new_tiers)} tiers to {args.out} "
+          f"(prices preserved: {len(existing_prices)}). Rebuild the board to apply.")
+    return 0
+
+
 def _cmd_load_active(args: argparse.Namespace) -> int:
     import datetime as _dt
 
@@ -414,6 +444,11 @@ def build_parser() -> argparse.ArgumentParser:
     p_active = sub.add_parser("load-active", help="Mark the active draft pool from a season roster")
     p_active.add_argument("--year", type=int, default=None, help="Roster year (default: current year)")
     p_active.set_defaults(func=_cmd_load_active)
+
+    p_import = sub.add_parser("import-tiers", help="Update manual_tiers.csv from a pick-game export")
+    p_import.add_argument("--file", required=True, help="Exported tiers.csv (key,manual_tier)")
+    p_import.add_argument("--out", default="manual_tiers.csv", help="Output (default manual_tiers.csv)")
+    p_import.set_defaults(func=_cmd_import_tiers)
 
     p_draft = sub.add_parser("load-draft", help="Add incoming rookies (top rounds) to the pool")
     p_draft.add_argument("--year", type=int, default=None, help="Draft year (default: current year)")
