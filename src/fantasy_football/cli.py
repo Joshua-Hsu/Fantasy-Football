@@ -8,6 +8,8 @@ Usage::
     python -m fantasy_football.cli load-teams       # load all franchises
     python -m fantasy_football.cli load-season --year 2024
     python -m fantasy_football.cli load-seasons --start 2020   # ...through latest
+    python -m fantasy_football.cli leaders --year 2024 --scoring half_ppr --position RB
+    python -m fantasy_football.cli leaders --year 2024 --position DST
 """
 
 from __future__ import annotations
@@ -87,6 +89,44 @@ def _cmd_load_seasons(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_leaders(args: argparse.Namespace) -> int:
+    from .scoring import PRESETS, season_leaders, team_defense_season_leaders
+
+    rules = PRESETS[args.scoring]
+    season_type = None if args.season_type == "all" else args.season_type
+    is_dst = (args.position or "").upper() == "DST"
+
+    with _open_session(args) as session:
+        if is_dst:
+            rows = team_defense_season_leaders(
+                session, args.year, season_type=season_type, limit=args.limit
+            )
+        else:
+            rows = season_leaders(
+                session,
+                args.year,
+                rules,
+                season_type=season_type,
+                position=args.position,
+                limit=args.limit,
+            )
+
+    scope = "DST" if is_dst else (args.position or "ALL")
+    print(
+        f"{args.year} {args.scoring} leaders "
+        f"({scope}, {args.season_type}) - top {args.limit}"
+    )
+    print(f"{'#':>3}  {'Player':<26} {'Pos':<4} {'G':>3} {'Pts':>8} {'PPG':>6}")
+    for i, r in enumerate(rows, 1):
+        print(
+            f"{i:>3}  {(r.player or '')[:26]:<26} {(r.position or ''):<4} "
+            f"{r.games:>3} {r.points:>8.2f} {r.points_per_game:>6.2f}"
+        )
+    if not rows:
+        print("(no data - has this season been loaded?)")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="fantasy_football", description=__doc__)
     parser.add_argument(
@@ -118,6 +158,23 @@ def build_parser() -> argparse.ArgumentParser:
         "--end", type=int, default=None, help="Last season (default: current year)"
     )
     p_seasons.set_defaults(func=_cmd_load_seasons)
+
+    p_leaders = sub.add_parser("leaders", help="Show fantasy scoring leaders for a season")
+    p_leaders.add_argument("--year", type=int, required=True, help="Season year, e.g. 2024")
+    p_leaders.add_argument(
+        "--scoring", choices=["standard", "half_ppr", "ppr"], default="half_ppr",
+        help="Scoring system (default: half_ppr)",
+    )
+    p_leaders.add_argument(
+        "--position", default=None,
+        help="Filter to a position (QB/RB/WR/TE/K, or DST for team defenses)",
+    )
+    p_leaders.add_argument("--limit", type=int, default=25, help="Number of rows (default 25)")
+    p_leaders.add_argument(
+        "--season-type", choices=["regular", "postseason", "all"], default="regular",
+        dest="season_type", help="Which games to include (default: regular)",
+    )
+    p_leaders.set_defaults(func=_cmd_leaders)
 
     return parser
 

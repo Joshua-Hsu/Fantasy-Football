@@ -13,14 +13,18 @@ comparable value, for tier-based drafting).
 The work is layered, and the lower layers exist before the upper ones:
 
 1. **Stats database** (done) — normalized schema of teams/seasons/players/games
-   and per-player box-score lines.
+   and per-player + per-team box-score lines.
 2. **Ingestion** (done) — loads real NFL data from nflverse.
-3. **Fantasy scoring** (next) — turn box-score lines into fantasy points under a
-   configurable scoring system (PPR / standard / custom).
-4. **Projections** — expected fantasy points per player for the upcoming season.
+3. **Fantasy scoring** (done) — `scoring.py`; Half-PPR default; offense + K + DST.
+4. **Projections** (next) — expected fantasy points per player for the upcoming
+   season.
 5. **Auction values & tiers** (the toolkit) — convert projections into dollar
    values (value over replacement, scaled to budget × teams) and cluster players
    into tiers.
+
+League settings: **Half-PPR**, roster 1 QB / 2 RB / 2 WR / 1 TE / 1 FLEX
+(RB/WR/TE) / 1 K / 1 DEF / 5 bench — relevant for replacement levels when
+computing auction values.
 
 When adding features, respect this layering: scoring reads stat lines,
 projections read scoring, auction values read projections.
@@ -99,6 +103,23 @@ receiving, fumbles, kicking (FG/PAT) and return *yardage*, but **not** return
 touchdowns (not split by type in the source) or passer rating. Those columns sit
 at their defaults pending a future play-by-play enrichment pass. Don't assume
 they're populated.
+
+**Scoring (`scoring.py`).** Offense + kicker scoring is a **linear** combination
+of stat columns, so a single `_terms()` map builds both `score_stats` (Python,
+one object) and `score_expression` (a SQL expression for fast `func.sum`
+leaderboards) — they cannot drift. Field goals are **distance-based**, scored
+from per-bucket made-FG columns (`fg_made_0_19 … fg_made_60_plus`), which keeps
+kicker scoring linear/SQL-friendly. **Team DST** scoring is **non-linear**
+(tiered points-allowed and yards-allowed), so it's computed per-game in Python
+(`score_team_defense`, `team_defense_season_leaders`), not via SQL. The default
+rules are `HALF_PPR`; presets are `standard`/`half_ppr`/`ppr`. INT/fumble
+penalties are placeholders (-2) pending final league values.
+
+**Schema-change note:** `init-db` uses `create_all`, which does **not** alter
+existing tables. When you add columns (as the scoring work did to
+`PlayerGameStats` FG buckets and `TeamGameStats` defensive fields), an existing
+`data/*.db` must be deleted and reloaded — fine, since the DB is gitignored and
+fully reproducible via the loaders in ~50s.
 
 **`db.py`** centralizes engine/session creation and enables SQLite foreign-key
 enforcement (`PRAGMA foreign_keys = ON`) per connection — FKs are off by default

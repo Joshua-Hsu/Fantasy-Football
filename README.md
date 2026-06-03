@@ -73,12 +73,13 @@ python -m fantasy_football.cli --db /tmp/ff.db init-db
 Data is pulled directly from the files [nflverse](https://github.com/nflverse)
 publishes on GitHub — no scraping, no rate-limited hosts:
 
-| Data    | Source                                              |
-| ------- | --------------------------------------------------- |
-| Teams   | `nflfastR-data/teams_colors_logos.csv`              |
-| Games   | `nfldata/data/games.csv` (schedules + results)      |
-| Stats   | `nflverse-data` `stats_player` release (weekly)     |
-| Players | `nflverse-data` `rosters` release (biographical)    |
+| Data        | Source                                                  |
+| ----------- | ------------------------------------------------------- |
+| Teams       | `nflfastR-data/teams_colors_logos.csv`                  |
+| Games       | `nfldata/data/games.csv` (schedules + results)          |
+| Player stats| `nflverse-data` `stats_player` release (weekly)         |
+| Team stats  | `nflverse-data` `stats_team` release (weekly, for DST)  |
+| Players     | `nflverse-data` `rosters` release (biographical)        |
 
 These trace back to the NFL's own game feeds; nflverse cleans and republishes
 them for programmatic use. See `src/fantasy_football/ingest/nflverse.py`.
@@ -107,11 +108,34 @@ tests/
 pytest
 ```
 
+## Fantasy scoring
+
+The target league is **Half-PPR** (1 QB / 2 RB / 2 WR / 1 TE / 1 FLEX / 1 K /
+1 DEF / 5 bench). Scoring lives in `src/fantasy_football/scoring.py`:
+
+- **Offense/kicker** scoring is a linear combination of stats, so it's computed
+  in SQL for fast leaderboards. A single `_terms()` map drives both the Python
+  (`score_stats`) and SQL (`score_expression`) scorers so they can't drift.
+- **Field goals are distance-based** (min 2, no max): 0-29=2, 30-39=3, 40-49=4,
+  50-59=5, 60+=6, scored from per-bucket made-FG columns.
+- **Team defense (DST)** uses tiered points-allowed and yards-allowed plus event
+  scoring (sack/INT/fumble recovery/TD/safety); tiers are non-linear so DST is
+  aggregated in Python (`score_team_defense`, `team_defense_season_leaders`).
+
+```bash
+python -m fantasy_football.cli leaders --year 2024 --scoring half_ppr --position RB
+python -m fantasy_football.cli leaders --year 2024 --position DST
+```
+
+Presets: `standard`, `half_ppr` (default), `ppr`. Interception/fumble penalties
+are placeholders (-2 each) pending final league values.
+
 ## Roadmap
 
-- [x] Data ingestion from nflverse (teams, games, players, weekly stats)
+- [x] Data ingestion from nflverse (teams, games, players, weekly + team stats)
 - [x] Reference data: load all franchises and seasons 2020-present
-- [ ] Play-by-play enrichment (return TDs, defensive stats, passer rating)
-- [ ] Fantasy scoring rules and computed fantasy points
-- [ ] Standings / season aggregate views
+- [x] Fantasy scoring (offense + distance-based K + tiered DST), Half-PPR default
+- [ ] Projections: expected fantasy points per player for an upcoming season
+- [ ] Auction values & tiers (value over replacement, scaled to budget × teams)
+- [ ] Play-by-play enrichment (return TDs by type, passer rating)
 - [ ] Migrations (Alembic) once the schema stabilizes
