@@ -445,7 +445,7 @@ def _stat_columns(key: str, pos: str, team: str, pstats: dict, toff: dict, dstat
     c: dict[str, object] = {h: "" for h in CSV_STAT_HEADERS}
     c["Age"] = (ages or {}).get(key, "")
     c["Bye"] = (byes or {}).get(team, "")
-    c["Tgt%"] = (tshares or {}).get(key, "")
+    c["Tgt%"] = (tshares or {}).get(key, "") if pos in ("RB", "WR", "TE") else ""
     if pos == "DST":
         d = dstats.get(key, {})
         c["DefPA"], c["DefSk"] = d.get("PA", ""), d.get("Sack", "")
