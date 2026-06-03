@@ -112,9 +112,13 @@
     }).join("");
     app.innerHTML = nav() +
       "<h1>Tier Builder</h1><p class='muted'>Pick who you'd rather draft. Your picks " +
-      "become user ratings &rarr; tiers. Export when done.</p>" +
+      "become user ratings &rarr; tiers. Export to edit by hand, import to load it back.</p>" +
       "<div class='pos-grid'>" + g + "</div>" +
-      "<p style='margin-top:1rem'><button class='btn' onclick='FF.exportTiers()'>&#11015; Export tiers CSV</button></p>";
+      "<p style='margin-top:1rem'>" +
+      "<button class='btn' onclick='FF.exportTiers()'>&#11015; Export tiers CSV</button> " +
+      "<label class='btn' style='cursor:pointer'>&#11014; Import tiers CSV" +
+      "<input type='file' accept='.csv' style='display:none' onchange='FF.importTiers(this)'></label>" +
+      "</p>";
   }
 
   function statBlock(e) {
@@ -164,11 +168,46 @@
     choose: function (winner, loser, pos) { pick(winner, loser); play(pos); },
     reset: function () { if (confirm("Clear all picks and ratings?")) { localStorage.removeItem(STORE); S = load(); route(); } },
     exportTiers: function () {
-      var lines = ["key,manual_tier"];
-      ORDER.forEach(function (p) { var t = tiersFor(p); Object.keys(t).forEach(function (k) { lines.push(k + "," + t[k]); }); });
+      // key + manual_tier first (so the CLI/Action can read it), then human
+      // columns (name/pos/rookie) so you can edit it by hand in a spreadsheet.
+      var lines = ["key,manual_tier,name,pos,rookie"];
+      ORDER.forEach(function (p) {
+        var t = tiersFor(p);
+        var pool = (DATA[p] || []).slice().sort(function (a, b) {
+          return (t[a.key] - t[b.key]) || (S.ratings[b.key] - S.ratings[a.key]);
+        });
+        pool.forEach(function (e) {
+          var nm = '"' + String(e.name).replace(/"/g, '""') + '"';
+          lines.push([e.key, t[e.key], nm, e.pos, e.rookie ? 1 : 0].join(","));
+        });
+      });
       var blob = new Blob([lines.join("\n") + "\n"], { type: "text/csv" });
       var url = URL.createObjectURL(blob), a = document.createElement("a");
       a.href = url; a.download = "tiers.csv"; a.click(); URL.revokeObjectURL(url);
+    },
+    importTiers: function (input) {
+      var file = input.files && input.files[0];
+      if (!file) return;
+      var reader = new FileReader();
+      reader.onload = function () {
+        var lines = String(reader.result).split(/\r?\n/).filter(function (l) { return l.trim(); });
+        var start = /^\s*key\s*,/i.test(lines[0]) ? 1 : 0;  // skip header if present
+        var n = 0;
+        for (var i = start; i < lines.length; i++) {
+          var parts = lines[i].split(",");
+          var key = (parts[0] || "").trim();
+          var tier = parseInt(parts[1], 10);
+          if (!key || !tier || !(key in S.ratings)) continue;
+          var e = BYKEY[key];
+          // Anchor rating by the imported tier (value as a within-tier tiebreak).
+          S.ratings[key] = (8 - tier) * 100 + (e ? Math.min(e.seed, 99) * 0.001 : 0);
+          n++;
+        }
+        save(S);
+        alert("Imported " + n + " tiers. Your ranking now reflects the file.");
+        route();
+      };
+      reader.readAsText(file);
     }
   };
 
