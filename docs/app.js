@@ -140,26 +140,27 @@
   var app = document.getElementById("app");
   function esc(s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]; }); }
   function nav(extra) {
-    return "<div class='nav'><a href='#/'>&#127944; Home</a>" + (extra || "") +
-      "<span class='spacer'></span><span class='muted'>" + S.picks + " picks</span></div>";
+    return "<div class='nav'><a class='brand' href='#/'><span class='ball'>&#127944;</span> Tier Builder</a>" + (extra || "") +
+      "<span class='spacer'></span><span class='pill'>" + S.picks + " picks</span></div>";
   }
 
   function home() {
     var g = ORDER.filter(function (p) { return (DATA[p] || []).length; }).map(function (p) {
       var picks = (DATA[p] || []).reduce(function (a, e) { return a + S.comps[e.key]; }, 0);
-      return "<button onclick=\"location.hash='#/play/" + p + "'\"><b>" + p + "</b><br>" +
-        "<span class='muted'>" + Math.round(picks / 2) + " picks &middot; play &raquo;</span></button>";
+      return "<button onclick=\"location.hash='#/play/" + p + "'\">" +
+        "<span class='pos'>" + p + "</span>" +
+        "<span class='sub'>" + Math.round(picks / 2) + " picks &middot; play &raquo;</span></button>";
     }).join("");
     app.innerHTML = nav() +
-      "<h1>Tier Builder</h1><p class='muted'>Pick who you'd rather draft. Your picks " +
+      "<h1>Tier Builder</h1><p class='lead'>Pick who you'd rather draft. Your picks " +
       "become user ratings &rarr; tiers. Export to edit by hand, import to load it back.</p>" +
       "<div class='pos-grid'>" + g + "</div>" +
-      "<p style='margin-top:1rem'>" +
-      "<button class='btn' onclick='FF.commitPicks()'>&#128640; Commit picks to GitHub</button> " +
-      "<button class='btn' onclick='FF.exportTiers()'>&#11015; Export tiers CSV</button> " +
+      "<div class='actions'>" +
+      "<button class='btn btn-primary' onclick='FF.commitPicks()'>&#128640; Commit picks to GitHub</button>" +
+      "<button class='btn' onclick='FF.exportTiers()'>&#11015; Export tiers CSV</button>" +
       "<label class='btn' style='cursor:pointer'>&#11014; Import tiers CSV" +
       "<input type='file' accept='.csv' style='display:none' onchange='FF.importTiers(this)'></label>" +
-      "</p><p class='muted'>Commit sends just the players you moved to " +
+      "</div><p class='muted'>Commit sends just the players you moved to " +
       "<code>picks/</code>; run the Rebuild Master action to fold them in.</p>";
   }
 
@@ -175,9 +176,10 @@
       " &middot; Pos #" + posRank(e) + " &middot; Ovr #" + overallRank(e) + "</div>" +
       "<div class='muted'>HC " + esc(e.hc || "TBD") + " &middot; OC " + esc(e.oc || "TBD") +
       " &middot; PC " + esc(e.pc || "TBD") + "</div>" + draftLine +
+      "<div class='stats'>" +
       "<div class='row'><span>Last-yr total</span><b>" + stat(e.total) + "</b></div>" +
       "<div class='row'><span>Last-yr PPG</span><b>" + stat(e.ppg) + "</b></div>" +
-      "<div class='row'><span>3-yr weighted</span><b>" + stat(e.w3yr) + "</b></div>" +
+      "<div class='row'><span>3-yr weighted</span><b>" + stat(e.w3yr) + "</b></div></div>" +
       (e.stat ? "<div class='muted'>" + esc(e.stat) + "</div>" : "") +
       (e.tmoff ? "<div class='muted'>" + esc(e.tmoff) + "</div>" : "");
   }
@@ -203,13 +205,14 @@
     var tiers = tiersFor(pos);
     var pool = (DATA[pos] || []).slice().sort(function (a, b) { return S.ratings[b.key] - S.ratings[a.key]; });
     var rows = pool.map(function (e, i) {
-      return "<tr><td>" + (i + 1) + "</td><td>" + esc(e.name) + (e.rookie ? " (R)" : "") +
+      return "<tr><td>" + (i + 1) + "</td><td>" + esc(e.name) + (e.rookie ? " <span class='badge'>R</span>" : "") +
         "</td><td>" + esc(e.team) + "</td><td>" + Math.round(S.ratings[e.key]) +
-        "</td><td>" + tiers[e.key] + "</td><td>" + S.comps[e.key] + "</td></tr>";
+        "</td><td><span class='tier'>" + tiers[e.key] + "</span></td><td>" + S.comps[e.key] + "</td></tr>";
     }).join("");
     app.innerHTML = nav(" &middot; <a href='#/play/" + pos + "'>play " + pos + "</a>") +
-      "<h1>" + pos + " ranking</h1><p class='muted'>Ordered by your user rating; tiers via k-means on ratings.</p>" +
-      "<table><tr><th>#</th><th>Player</th><th>Tm</th><th>Rating</th><th>Tier</th><th>Picks</th></tr>" + rows + "</table>";
+      "<h1>" + pos + " ranking</h1><p class='lead'>Ordered by your user rating; tiers via k-means on ratings.</p>" +
+      "<div class='table-wrap'><table><thead><tr><th>#</th><th>Player</th><th>Tm</th><th>Rating</th><th>Tier</th><th>Picks</th></tr></thead>" +
+      "<tbody>" + rows + "</tbody></table></div>";
   }
 
   // ---- public actions ----
