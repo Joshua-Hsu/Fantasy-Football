@@ -102,31 +102,32 @@
   .btn-primary:hover { filter:brightness(1.04); border-color:var(--accent); }
 
   /* ---- Head-to-head cards (play) ---- */
-  .cards { display:grid; grid-template-columns:1fr 1fr; gap:.9rem; }
+  .cards { display:grid; grid-template-columns:1fr 1fr; gap:.7rem; }
   .card {
     width:100%; text-align:left; cursor:pointer;
     border:1px solid var(--line); border-radius:var(--radius);
-    padding:1.15rem; background:var(--surface); color:var(--ink);
+    padding:1rem 1.1rem; background:var(--surface); color:var(--ink);
     box-shadow:var(--shadow);
     transition:border-color .12s, transform .08s, box-shadow .12s;
   }
   .card:hover { border-color:var(--accent); }
   .card:active { border-color:var(--accent); transform:scale(.99); box-shadow:var(--shadow-press); }
-  .card .name { font-size:1.22rem; font-weight:800; letter-spacing:-.01em; display:flex; align-items:center; gap:.4rem; margin-bottom:.1rem; }
-  .card .name + .muted { margin-top:.15rem; }
+  .card .name { font-size:1.14rem; font-weight:800; letter-spacing:-.01em; display:flex; align-items:center; gap:.4rem; margin-bottom:.05rem; }
+  .card .muted { line-height:1.32; }
+  .card .name + .muted { margin-top:.1rem; }
   /* Three key stats as a tile row that fills the card width */
   .statgrid {
     display:grid; grid-template-columns:repeat(3,1fr); gap:.6rem;
-    margin-top:.95rem; padding-top:.95rem; border-top:1px solid var(--line);
+    margin-top:.7rem; padding-top:.7rem; border-top:1px solid var(--line);
   }
-  .stat { display:flex; flex-direction:column; gap:.18rem; min-width:0; }
-  .statval { font-size:1.5rem; font-weight:800; letter-spacing:-.02em; line-height:1.05; font-variant-numeric:tabular-nums; }
-  .statlabel { font-size:.68rem; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); }
-  .statline { margin-top:.85rem; font-size:.86rem; line-height:1.45; }
-  .statline + .statline { margin-top:.15rem; }
+  .stat { display:flex; flex-direction:column; gap:.12rem; min-width:0; }
+  .statval { font-size:1.34rem; font-weight:800; letter-spacing:-.02em; line-height:1.05; font-variant-numeric:tabular-nums; }
+  .statlabel { font-size:.66rem; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); }
+  .statline { margin-top:.6rem; font-size:.84rem; line-height:1.4; }
+  .statline + .statline { margin-top:.1rem; }
   .vs {
     display:flex; justify-content:center; gap:.6rem;
-    margin:1.25rem 0 calc(2.75rem + env(safe-area-inset-bottom, 0px));
+    margin:.95rem 0 calc(2rem + env(safe-area-inset-bottom, 0px));
   }
 
   /* ---- Ranking table ---- */
@@ -151,14 +152,22 @@
   }
 
   @media (max-width:520px){
-    .cards{ grid-template-columns:1fr; }
-    h1{ font-size:1.8rem; }
+    /* Compact the play view so both cards + actions fit without scrolling */
+    .cards{ grid-template-columns:1fr; gap:.55rem; }
+    h1{ font-size:1.45rem; margin:.4rem 0 .55rem; }
+    .nav{ padding:.6rem 0; }
+    .card{ padding:.8rem .95rem; }
+    .card .name{ font-size:1.08rem; }
+    .statgrid{ margin-top:.55rem; padding-top:.55rem; }
+    .statval{ font-size:1.24rem; }
+    .statline{ margin-top:.45rem; font-size:.8rem; }
+    .vs{ margin:.75rem 0 calc(1.25rem + env(safe-area-inset-bottom, 0px)); }
   }
 </style>
 </head>
 <body>
 <div id="app">Loading…</div>
-<script src="data.js?v=28"></script>
-<script src="app.js?v=28"></script>
+<script src="data.js?v=29"></script>
+<script src="app.js?v=29"></script>
 </body>
 </html>
