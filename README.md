@@ -145,12 +145,12 @@ players) and includes active players with no stats yet — **rookies** — as $1
 placeholders flagged `(R)`, to be tiered by hand or via the H2H game.
 
 Player cards/board also show **current team** and **coaching staff**. Head coaches
-come from nflverse's schedule data; offensive coordinator / play-caller aren't in
-nflverse, so fill them in a CSV:
+come from nflverse's schedule data; the offensive coordinator isn't in nflverse,
+so fill it in a CSV:
 
 ```bash
 python -m fantasy_football.cli coaching-template --out coaching.csv  # HCs prefilled
-# fill offensive_coordinator / play_caller columns, then:
+# fill the offensive_coordinator column, then:
 python -m fantasy_football.cli load-coaching --file coaching.csv
 ```
 
@@ -256,8 +256,8 @@ view (rank-in-position, rank-in-tier, value, the three bases), banded by tier.
 
 You can also build the board in CI: the **Draft Board** GitHub Action
 (`.github/workflows/draft-board.yml`, run from the Actions tab) loads nflverse
-data and uploads `draft_board.xlsx` as an artifact. Coaching OC/play-caller is
-still TBD — see `TODO.md`.
+data and uploads `draft_board.xlsx` as an artifact. The coaching OC column is
+filled from a committed `coaching.csv` — see `TODO.md`.
 
 ## Roadmap
 

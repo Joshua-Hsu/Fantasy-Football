@@ -175,7 +175,7 @@
       "<div class='muted'>" + esc(e.pos) + " &middot; " + esc(e.team || "TBD") +
       " &middot; Pos #" + posRank(e) + " &middot; Ovr #" + overallRank(e) + "</div>" +
       "<div class='muted'>HC " + esc(e.hc || "TBD") + " &middot; OC " + esc(e.oc || "TBD") +
-      " &middot; PC " + esc(e.pc || "TBD") + "</div>" + draftLine +
+      "</div>" + draftLine +
       "<div class='stats'>" +
       "<div class='row'><span>Last-yr total</span><b>" + stat(e.total) + "</b></div>" +
       "<div class='row'><span>Last-yr PPG</span><b>" + stat(e.ppg) + "</b></div>" +

@@ -684,7 +684,7 @@ def load_byes(session: Session, year: int) -> int:
 
 
 def load_coaching(session: Session, path: str) -> int:
-    """Load team coaching staff from a CSV: team,head_coach,offensive_coordinator,play_caller."""
+    """Load team coaching staff from a CSV: team,head_coach,offensive_coordinator."""
     import csv
 
     teams = {t.abbreviation: t for t in session.scalars(select(Team))}
@@ -698,7 +698,6 @@ def load_coaching(session: Session, path: str) -> int:
             team.offensive_coordinator = (
                 _opt_str(row.get("offensive_coordinator")) or team.offensive_coordinator
             )
-            team.play_caller = _opt_str(row.get("play_caller")) or team.play_caller
             updated += 1
     session.commit()
     return updated
