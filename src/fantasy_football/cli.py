@@ -426,11 +426,11 @@ def _cmd_coaching_template(args: argparse.Namespace) -> int:
     teams = sorted(known & set(coaches)) or sorted(known)
     with open(args.out, "w", newline="") as fh:
         writer = csv.writer(fh)
-        writer.writerow(["team", "head_coach", "offensive_coordinator", "play_caller"])
+        writer.writerow(["team", "head_coach", "offensive_coordinator"])
         for team in teams:
-            writer.writerow([team, coaches.get(team, ""), "", ""])
+            writer.writerow([team, coaches.get(team, ""), ""])
     print(f"Wrote coaching template ({len(teams)} teams) to {args.out} "
-          f"- fill OC/play-caller, then load-coaching --file {args.out}")
+          f"- fill OC, then load-coaching --file {args.out}")
     return 0
 
 
@@ -593,7 +593,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_byes.set_defaults(func=_cmd_load_byes)
 
     p_coach = sub.add_parser("load-coaching", help="Load team coaching staff from a CSV")
-    p_coach.add_argument("--file", required=True, help="CSV: team,head_coach,offensive_coordinator,play_caller")
+    p_coach.add_argument("--file", required=True, help="CSV: team,head_coach,offensive_coordinator")
     p_coach.set_defaults(func=_cmd_load_coaching)
 
     p_serve = sub.add_parser("serve", help="Run the head-to-head comparison web app")

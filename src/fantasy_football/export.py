@@ -157,7 +157,7 @@ def build_webapp_data(
         session, year=year, config=config, rules=rules, basis=basis, manual_tiers=manual_tiers
     )
     coaching = {
-        t.abbreviation: (t.head_coach or "", t.offensive_coordinator or "", t.play_caller or "")
+        t.abbreviation: (t.head_coach or "", t.offensive_coordinator or "")
         for t in session.scalars(select(Team))
     }
     draft = {
@@ -190,12 +190,12 @@ def build_webapp_data(
         return fallback
 
     def emit(r, seed):
-        hc, oc, pc = coaching.get(r.team, ("", "", ""))
+        hc, oc = coaching.get(r.team, ("", ""))
         rnd, pick = draft.get(r.key, (None, None))
         row = {
             "key": r.key, "name": r.name, "team": r.team, "pos": r.position,
             "total": r.total, "ppg": r.ppg, "w3yr": r.w3yr,
-            "seed": round(seed, 1), "rookie": r.is_rookie, "hc": hc, "oc": oc, "pc": pc,
+            "seed": round(seed, 1), "rookie": r.is_rookie, "hc": hc, "oc": oc,
             "stat": _format_statline(r.key, r.position, pstats, dstats),
             "tmoff": _format_team_context(r.team, r.position, toff),
             "cols": _stat_columns(r.key, r.position, r.team, pstats, toff, dstats,
@@ -718,16 +718,16 @@ def write_cheatsheet(
     )
     if teams:
         ws = wb.create_sheet("Coaching")
-        ws.append(["Team", "Head Coach", "Off. Coordinator", "Play-caller"])
-        for c in range(1, 5):
+        ws.append(["Team", "Head Coach", "Off. Coordinator"])
+        for c in range(1, 4):
             ws.cell(row=1, column=c).font = header_font
         for t in teams:
             ws.append([
                 t.abbreviation, t.head_coach or "TBD",
-                t.offensive_coordinator or "TBD", t.play_caller or "TBD",
+                t.offensive_coordinator or "TBD",
             ])
         ws.freeze_panes = "A2"
-        for c, w in zip("ABCD", (8, 20, 20, 20)):
+        for c, w in zip("ABC", (8, 20, 20)):
             ws.column_dimensions[c].width = w
 
     # --- Live Draft Board: recommended prices that react to picks ----------
