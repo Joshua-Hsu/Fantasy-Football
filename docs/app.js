@@ -176,18 +176,21 @@
       " &middot; Pos #" + posRank(e) + " &middot; Ovr #" + overallRank(e) + "</div>" +
       "<div class='muted'>HC " + esc(e.hc || "TBD") + " &middot; OC " + esc(e.oc || "TBD") +
       "</div>" + draftLine +
-      "<div class='stats'>" +
-      "<div class='row'><span>Last-yr total</span><b>" + stat(e.total) + "</b></div>" +
-      "<div class='row'><span>Last-yr PPG</span><b>" + stat(e.ppg) + "</b></div>" +
-      "<div class='row'><span>3-yr weighted</span><b>" + stat(e.w3yr) + "</b></div></div>" +
-      (e.stat ? "<div class='muted'>" + esc(e.stat) + "</div>" : "") +
-      (e.tmoff ? "<div class='muted'>" + esc(e.tmoff) + "</div>" : "");
+      "<div class='statgrid'>" +
+      "<div class='stat'><span class='statval'>" + stat(e.total) + "</span><span class='statlabel'>Last-yr total</span></div>" +
+      "<div class='stat'><span class='statval'>" + stat(e.ppg) + "</span><span class='statlabel'>Last-yr PPG</span></div>" +
+      "<div class='stat'><span class='statval'>" + stat(e.w3yr) + "</span><span class='statlabel'>3-yr weighted</span></div>" +
+      "</div>" +
+      (e.stat ? "<div class='statline muted'>" + esc(e.stat) + "</div>" : "") +
+      (e.tmoff ? "<div class='statline muted'>" + esc(e.tmoff) + "</div>" : "");
   }
 
   function play(pos) {
     var m = matchup(pos, lastPair);
     if (!m) { app.innerHTML = nav() + "<h1>" + pos + "</h1><p>Not enough " + pos + " players.</p>"; return; }
     var a = m[0], b = m[1];
+    // Always show the better current rank (higher rating = smaller rank #) on top.
+    if (S.ratings[b.key] > S.ratings[a.key]) { var tmp = a; a = b; b = tmp; }
     lastPair = [a.key, b.key];  // next pair will avoid these two
     app.innerHTML = nav(" &middot; <a href='#/rank/" + pos + "'>" + pos + " ranking</a>") +
       "<h1>" + pos + " &mdash; who'd you rather?</h1>" +
