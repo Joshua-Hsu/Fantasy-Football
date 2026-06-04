@@ -14,6 +14,9 @@
   // the head-to-head relations, not the seed.
   var SCALE = 400, K = 24, NEAR = 4, NUDGE = 10;
   var STORE = "ff_tier_state_v3";  // v3: seed from master continuous ratings
+  // Where "Commit picks" sends your ratings. The Rebuild Master action reads
+  // picks/*.csv on this branch and averages them into the next master.
+  var REPO = "Joshua-Hsu/Fantasy-Football", BRANCH = "main";
   // Flatten + index.
   var ALL = [];
   ORDER.forEach(function (p) { (DATA[p] || []).forEach(function (e) { ALL.push(e); }); });
@@ -152,10 +155,12 @@
       "become user ratings &rarr; tiers. Export to edit by hand, import to load it back.</p>" +
       "<div class='pos-grid'>" + g + "</div>" +
       "<p style='margin-top:1rem'>" +
+      "<button class='btn' onclick='FF.commitPicks()'>&#128640; Commit picks to GitHub</button> " +
       "<button class='btn' onclick='FF.exportTiers()'>&#11015; Export tiers CSV</button> " +
       "<label class='btn' style='cursor:pointer'>&#11014; Import tiers CSV" +
       "<input type='file' accept='.csv' style='display:none' onchange='FF.importTiers(this)'></label>" +
-      "</p>";
+      "</p><p class='muted'>Commit sends just the players you moved to " +
+      "<code>picks/</code>; run the Rebuild Master action to fold them in.</p>";
   }
 
   function statBlock(e) {
@@ -217,6 +222,32 @@
       S.ratings[a] -= NUDGE; S.ratings[b] -= NUDGE;
       S.comps[a]++; S.comps[b]++;
       save(S); play(pos);
+    },
+    commitPicks: function () {
+      // Static pages can't push to git, so we hand GitHub a pre-filled "new file"
+      // editor containing only the players you actually moved (rating != seed),
+      // as key,rating. You land on GitHub already signed in and just click
+      // "Commit". The Rebuild Master action averages every picks/*.csv in.
+      var rows = [];
+      ALL.forEach(function (e) {
+        if (Math.abs((S.ratings[e.key] || 0) - e.seed) > 0.001) {
+          rows.push(e.key + "," + (Math.round(S.ratings[e.key] * 100) / 100));
+        }
+      });
+      if (!rows.length) { alert("No picks to save yet - play a few matchups first."); return; }
+      var csv = "key,rating\n" + rows.join("\n") + "\n";
+      var ts = new Date().toISOString().replace(/[:.]/g, "-").replace("T", "_").slice(0, 19);
+      var name = "picks/picks-" + ts + ".csv";
+      var url = "https://github.com/" + REPO + "/new/" + BRANCH +
+        "?filename=" + encodeURIComponent(name) + "&value=" + encodeURIComponent(csv);
+      if (url.length > 14000) {  // very long sessions: fall back to a plain download
+        var blob = new Blob([csv], { type: "text/csv" }), u = URL.createObjectURL(blob),
+            a = document.createElement("a");
+        a.href = u; a.download = name.split("/").pop(); a.click(); URL.revokeObjectURL(u);
+        alert("Lots of picks - downloaded the file instead. Upload it into the repo's picks/ folder.");
+        return;
+      }
+      window.open(url, "_blank");
     },
     exportTiers: function () {
       // key + manual_tier first (so the CLI/Action can read it), then human
