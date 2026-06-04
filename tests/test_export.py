@@ -90,6 +90,40 @@ def test_csv_readers_reject_malicious_input(tmp_path):
     assert "p102" not in prices           # bad price skipped
 
 
+def test_merge_ratings_averages_across_files(tmp_path):
+    from fantasy_football.cli import _merge_ratings
+
+    a = tmp_path / "a.csv"
+    a.write_text("key,rating\nprb0,100\nprb1,50\n")
+    b = tmp_path / "b.csv"
+    b.write_text("key,rating\nprb0,200\n")  # prb1 absent here
+    merged = _merge_ratings([str(a), str(b)], base={"prb1": 999.0, "prb5": 10.0})
+    assert merged["prb0"] == 150.0       # (100 + 200) / 2
+    assert merged["prb1"] == 50.0        # only one file had it -> that value (not base)
+    assert merged["prb5"] == 10.0        # nobody picked -> base carried forward
+
+
+def test_master_round_trip_rating_and_derived_tiers(session, tmp_path):
+    _seed(session)
+    from fantasy_football.cli import _read_ratings
+    from fantasy_football.export import write_tiers_csv
+
+    out = tmp_path / "master.csv"
+    # Hand the best RB a boosted rating; the writer should derive tiers from it.
+    ratings = {"prb0": 500.0, "prb1": 120.0, "prb2": 90.0}
+    write_tiers_csv(session, str(out), ratings=ratings, prices={"prb0": 42.0}, year=2025,
+                    config=LeagueConfig(teams=1))
+    text = out.read_text()
+    assert text.splitlines()[0].startswith("key,manual_tier,rating,name")
+    back = _read_ratings(str(out))
+    assert back["prb0"] == 500.0
+    # Boosted prb0 lands in the top tier.
+    import csv as _csv
+    rows = {r["key"]: r for r in _csv.DictReader(out.open())}
+    assert int(rows["prb0"]["manual_tier"]) == 1
+    assert rows["prb0"]["price"] == "42.0"
+
+
 def test_safe_cell_guards_formulas():
     from fantasy_football.export import _safe_cell
 

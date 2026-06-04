@@ -1,0 +1,41 @@
+name: Archive Week
+
+# Snapshots the current master tiers and the pick files currently in the inbox
+# (picks/*.csv) into archive/<date>/, so you keep a record of each week's master
+# and the picks that fed it. Run this BEFORE "Rebuild Master Tiers" (which folds
+# the picks in and clears the inbox). This action does not modify the inbox.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  archive:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Snapshot master + picks
+        run: |
+          DATE=$(date +%F)
+          DEST="archive/${DATE}"
+          mkdir -p "$DEST"
+          PREV=$(ls -1 master_tiers.*.csv 2>/dev/null | sort | tail -1)
+          if [ -n "$PREV" ]; then cp "$PREV" "$DEST/"; echo "archived master: $PREV"; fi
+          if ls picks/*.csv >/dev/null 2>&1; then
+            cp picks/*.csv "$DEST/"; echo "archived $(ls picks/*.csv | wc -l) pick file(s)"
+          else
+            echo "no picks/*.csv to archive"
+          fi
+          if [ -z "$PREV" ] && ! ls picks/*.csv >/dev/null 2>&1; then
+            echo "::warning::nothing to archive"; rmdir "$DEST" 2>/dev/null || true
+          fi
+
+      - name: Commit archive
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Archive week $(date +%F) (master + picks)" || echo "nothing to archive"
+          git push

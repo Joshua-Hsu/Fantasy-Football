@@ -192,6 +192,56 @@ def _read_fixed_prices(path: str | None) -> dict[str, float]:
     return prices
 
 
+def _read_ratings(path: str | None) -> dict[str, float]:
+    """Read the continuous user ``rating`` column from a master/picks CSV.
+
+    Same hardening as the other readers: valid keys only, lenient float parsing,
+    clamped to a sane range, bad rows skipped. Returns {} if there's no column.
+    """
+    import csv
+    import os
+
+    if not path or not os.path.exists(path):
+        return {}
+    ratings: dict[str, float] = {}
+    with open(path, newline="") as fh:
+        reader = csv.DictReader(fh)
+        if "rating" not in (reader.fieldnames or []):
+            return {}
+        for i, row in enumerate(reader):
+            if i >= _MAX_TIERS_ROWS:
+                break
+            key = (row.get("key") or "").strip()
+            value = (row.get("rating") or "").strip()
+            if not _KEY_RE.match(key) or not value:
+                continue
+            try:
+                ratings[key] = max(-10000.0, min(float(value), 10000.0))
+            except ValueError:
+                continue
+    return ratings
+
+
+def _merge_ratings(paths: list[str], base: dict[str, float]) -> dict[str, float]:
+    """Merge the ``rating`` columns of several pick exports into one map.
+
+    A player's new rating is the **average** of their rating across every pick
+    file that includes them (so multiple sessions / phones / people each get an
+    equal vote). Players nobody compared keep their ``base`` (previous-master)
+    rating, so refinements carry forward week to week.
+    """
+    sums: dict[str, float] = {}
+    counts: dict[str, int] = {}
+    for path in paths:
+        for key, rating in _read_ratings(path).items():
+            sums[key] = sums.get(key, 0.0) + rating
+            counts[key] = counts.get(key, 0) + 1
+    merged = dict(base)
+    for key, total in sums.items():
+        merged[key] = total / counts[key]
+    return merged
+
+
 def _cmd_values(args: argparse.Namespace) -> int:
     import csv
 
@@ -259,26 +309,43 @@ def _cmd_values(args: argparse.Namespace) -> int:
 
 
 def _cmd_import_tiers(args: argparse.Namespace) -> int:
-    """Turn a pick-game export (key,manual_tier) into manual_tiers.csv.
+    """Rebuild the master tiers by merging one or more pick-game exports.
 
-    Adds player/defense names and preserves any prices already set in the
-    output file, so re-importing a fresh export keeps your market anchors.
+    Each ``--file`` is an app export carrying a continuous ``rating`` column. The
+    ratings are averaged across all the files (one vote each), folded onto the
+    previous master's ratings (``--prices-from``) so un-compared players carry
+    forward, and the integer tiers are re-derived from the merged ratings. Prices
+    are preserved. Falls back to a file's integer ``manual_tier`` if it has no
+    ``rating`` column (legacy exports).
     """
     from .export import write_tiers_csv
 
-    new_tiers = _read_manual_tiers(args.file)
-    # Preserve prices from the incoming file, an explicit --prices-from, then the
+    files = args.file if isinstance(args.file, list) else [args.file]
+    base_ratings = _read_ratings(getattr(args, "prices_from", None))
+    ratings = _merge_ratings(files, base_ratings)
+    # Legacy fallback: if no file carried a rating column, use the integer tiers.
+    legacy_tiers: dict[str, int] = {}
+    if not ratings:
+        for path in files:
+            legacy_tiers.update(_read_manual_tiers(path))
+
+    # Preserve prices from the incoming files, an explicit --prices-from, then the
     # output (most specific wins).
-    existing_prices = {
-        **_read_fixed_prices(args.file),
-        **_read_fixed_prices(getattr(args, "prices_from", None)),
-        **_read_fixed_prices(args.out),
-    }
+    existing_prices: dict[str, float] = {}
+    for path in files:
+        existing_prices.update(_read_fixed_prices(path))
+    existing_prices.update(_read_fixed_prices(getattr(args, "prices_from", None)))
+    existing_prices.update(_read_fixed_prices(args.out))
 
     with _open_session(args) as session:
-        write_tiers_csv(session, args.out, tiers=new_tiers, prices=existing_prices)
-    print(f"Wrote {len(new_tiers)} tiers (with names + last-year stats) to {args.out} "
-          f"(prices preserved: {len(existing_prices)}). Rebuild the board to apply.")
+        write_tiers_csv(
+            session, args.out,
+            ratings=ratings or None, tiers=legacy_tiers or None,
+            prices=existing_prices,
+        )
+    print(f"Merged {len(files)} pick file(s) -> {args.out}: "
+          f"{len(ratings)} ratings (base carried: {len(base_ratings)}), "
+          f"prices preserved: {len(existing_prices)}. Rebuild the board/app to apply.")
     return 0
 
 
@@ -392,11 +459,12 @@ def _cmd_build_webapp(args: argparse.Namespace) -> int:
 
     config = LeagueConfig(teams=args.teams, budget=args.budget)
     manual = _read_manual_tiers(getattr(args, "tiers_file", None))
+    seeds = _read_ratings(getattr(args, "tiers_file", None))  # seed app from master rating
     with _open_session(args) as session:
         path = write_webapp_data(
             session, args.out, year=args.year, config=config,
             rules=PRESETS[args.scoring], basis=args.basis, depth=args.depth,
-            manual_tiers=manual,
+            manual_tiers=manual, seed_overrides=seeds,
         )
     print(f"Wrote pick-game data to {path}")
     return 0
@@ -498,11 +566,12 @@ def build_parser() -> argparse.ArgumentParser:
     p_active.add_argument("--year", type=int, default=None, help="Roster year (default: current year)")
     p_active.set_defaults(func=_cmd_load_active)
 
-    p_import = sub.add_parser("import-tiers", help="Update manual_tiers.csv from a pick-game export")
-    p_import.add_argument("--file", required=True, help="Exported app_tiers.csv (key,manual_tier)")
+    p_import = sub.add_parser("import-tiers", help="Rebuild master tiers by merging pick-game exports")
+    p_import.add_argument("--file", required=True, nargs="+",
+                         help="One or more app exports (key,rating,...); ratings are averaged")
     p_import.add_argument("--out", default="manual_tiers.csv", help="Output CSV path")
     p_import.add_argument("--prices-from", default=None, dest="prices_from",
-                         help="Carry expected prices forward from this CSV (e.g. the previous master)")
+                         help="Previous master: carry its ratings (un-picked players) and prices forward")
     p_import.set_defaults(func=_cmd_import_tiers)
 
     p_draft = sub.add_parser("load-draft", help="Add incoming rookies (top rounds) to the pool")

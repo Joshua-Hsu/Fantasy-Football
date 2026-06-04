@@ -13,7 +13,7 @@
   // pick (~K/2 points) moves you past your neighbours - the ranking is driven by
   // the head-to-head relations, not the seed.
   var SCALE = 400, K = 24, NEAR = 4, NUDGE = 10;
-  var STORE = "ff_tier_state_v2";  // v2: continuous value seeds (was tier-banded)
+  var STORE = "ff_tier_state_v3";  // v3: seed from master continuous ratings
   // Flatten + index.
   var ALL = [];
   ORDER.forEach(function (p) { (DATA[p] || []).forEach(function (e) { ALL.push(e); }); });
@@ -223,7 +223,7 @@
       // columns (name/pos/rookie) so you can edit it by hand in a spreadsheet.
       var q = function (s) { return '"' + String(s == null ? "" : s).replace(/"/g, '""') + '"'; };
       var HEADERS = (window.FF_DATA && window.FF_DATA.stat_headers) || [];
-      var lines = [["key,manual_tier,name,pos,team,rookie,total,ppg"].concat(HEADERS).join(",")];
+      var lines = [["key,manual_tier,rating,name,pos,team,rookie,total,ppg"].concat(HEADERS).join(",")];
       ORDER.forEach(function (p) {
         var t = tiersFor(p);
         var pool = (DATA[p] || []).slice().sort(function (a, b) {
@@ -231,7 +231,9 @@
         });
         pool.forEach(function (e) {
           var c = e.cols || {};
-          var row = [e.key, t[e.key], q(e.name), e.pos, e.team || "", e.rookie ? 1 : 0, e.total, e.ppg];
+          // rating is the continuous user rating the rebuild action averages.
+          var row = [e.key, t[e.key], Math.round(S.ratings[e.key] * 100) / 100,
+                     q(e.name), e.pos, e.team || "", e.rookie ? 1 : 0, e.total, e.ppg];
           HEADERS.forEach(function (h) { row.push(c[h] == null ? "" : c[h]); });
           lines.push(row.join(","));
         });
@@ -246,17 +248,26 @@
       var reader = new FileReader();
       reader.onload = function () {
         var lines = String(reader.result).split(/\r?\n/).filter(function (l) { return l.trim(); });
-        var start = /^\s*key\s*,/i.test(lines[0]) ? 1 : 0;  // skip header if present
+        // Header-aware: find the key / rating / manual_tier columns by name.
+        var hasHeader = /^\s*key\s*,/i.test(lines[0]);
+        var cols = hasHeader ? lines[0].split(",").map(function (s) { return s.trim().toLowerCase(); }) : [];
+        var iKey = hasHeader ? cols.indexOf("key") : 0;
+        var iRating = hasHeader ? cols.indexOf("rating") : -1;
+        var iTier = hasHeader ? cols.indexOf("manual_tier") : 1;
         var n = 0;
-        for (var i = start; i < lines.length; i++) {
+        for (var i = hasHeader ? 1 : 0; i < lines.length; i++) {
           var parts = lines[i].split(",");
-          var key = (parts[0] || "").trim();
-          var tier = parseInt(parts[1], 10);
-          if (!key || !tier || !(key in S.ratings)) continue;
-          var e = BYKEY[key];
-          // Anchor by the imported tier on the value scale (~40/tier so a few
-          // picks can still cross), value as the within-tier tiebreak.
-          S.ratings[key] = (8 - tier) * 40 + (e ? e.seed * 0.001 : 0);
+          var key = (parts[iKey] || "").trim();
+          if (!key || !(key in S.ratings)) continue;
+          var rating = iRating >= 0 ? parseFloat(parts[iRating]) : NaN;
+          if (!isNaN(rating)) {
+            S.ratings[key] = rating;            // continuous master rating: use as-is
+          } else {
+            var tier = parseInt(parts[iTier], 10);
+            if (!tier) continue;
+            var e = BYKEY[key];                 // legacy tiers-only file: anchor by tier
+            S.ratings[key] = (8 - tier) * 40 + (e ? e.seed * 0.001 : 0);
+          }
           n++;
         }
         save(S);

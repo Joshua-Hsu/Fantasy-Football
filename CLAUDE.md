@@ -145,6 +145,22 @@ drafted + the price they went for re-prices the rest for auction inflation
 (allocation weight = recommended − $1; remaining pool/slots shrink). Pure
 in-sheet formulas, no recompute needed.
 
+**Master tiers + weekly loop.** `master_tiers.<date>.csv` is the base used
+everywhere. It carries a continuous **`rating`** column (the user rating from the
+pick game) alongside the integer `manual_tier` (derived from the rating via
+`assign_sized_tiers`) and prices. The flow is a cycle: `build-webapp
+--tiers-file <master>` seeds the app's Elo from each player's `rating`
+(`seed_overrides`), so play *refines the master* rather than starting from raw
+value; the app's **Export** writes a `rating` column per session; those exports
+are committed into `picks/`. Two GitHub Actions close the loop: **Archive Week**
+(`archive-week.yml`) snapshots the current master + `picks/*` into
+`archive/<date>/`; then **Rebuild Master Tiers** (`master-tiers.yml`) runs
+`import-tiers --file picks/*.csv --prices-from <prev master>` which **averages
+the `rating` across all pick files** (one vote each via `_merge_ratings`), folds
+them onto the previous master (un-picked players carry forward), re-derives
+tiers, regenerates `docs/data.js`, and clears the inbox. `import-tiers` falls
+back to a file's integer `manual_tier` only for legacy exports with no `rating`.
+
 **Schema-change note:** `init-db` uses `create_all`, which does **not** alter
 existing tables. When you add columns (as the scoring work did to
 `PlayerGameStats` FG buckets and `TeamGameStats` defensive fields), an existing

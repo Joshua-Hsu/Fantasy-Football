@@ -128,6 +128,7 @@ def build_webapp_data(
     depth: int | dict[str, int] | None = None,
     rookie_max_round: int = 3,
     manual_tiers: dict[str, int] | None = None,
+    seed_overrides: dict[str, float] | None = None,
 ) -> dict[str, list[dict]]:
     """Per-position player data for the static pick game (browser app).
 
@@ -138,12 +139,15 @@ def build_webapp_data(
     so the long tail of undraftable players is left out. Incoming rookies drafted
     in rounds 1..``rookie_max_round`` are added on top (seeded by draft capital so
     they interleave with veterans), since they have no stats to rank them.
-    ``manual_tiers`` (hand-set tiers, by key) pins those players to their tier and
-    seeds them by it so the game/ranking reflect the hard-set order.
+    ``manual_tiers`` (hand-set tiers, by key) keeps those players in the pool.
+    ``seed_overrides`` (by key) is the master's continuous rating: when present a
+    player starts the game from that rating instead of raw value, so the app
+    refines the master rather than starting from scratch each week.
     """
     from .models import Player, Team
 
     manual_tiers = manual_tiers or {}
+    seed_overrides = seed_overrides or {}
     if isinstance(depth, int):
         caps = {pos: depth for pos in ALL_POSITIONS}
     else:
@@ -176,10 +180,13 @@ def build_webapp_data(
     round_slot = {1: 7, 2: 17, 3: 27}
 
     def seed_for(r, fallback):
-        # Value-seeded: every player sits on one continuous value scale, so the
-        # gap between two players reflects their real projected-value difference
-        # (not a fixed tier band). The app's Elo then refines from there, so the
-        # ranking is driven by your head-to-head picks rather than the seed tier.
+        # Seed from the master's continuous rating when we have one (so the app
+        # refines last week's master); otherwise fall back to the player's value.
+        # Either way the seed is a continuous value-scale number, not a tier band,
+        # so the gap between players reflects a real difference and picks move
+        # someone past their neighbours.
+        if r.key in seed_overrides:
+            return seed_overrides[r.key]
         return fallback
 
     def emit(r, seed):
@@ -271,13 +278,14 @@ def write_webapp_data(
     basis: str = "w3yr",
     depth: int | dict[str, int] | None = None,
     manual_tiers: dict[str, int] | None = None,
+    seed_overrides: dict[str, float] | None = None,
 ) -> str:
     """Write the pick-game data as ``docs/data.js`` (``window.FF_DATA = {...}``)."""
     import json
 
     data = build_webapp_data(
         session, year=year, config=config, rules=rules, basis=basis, depth=depth,
-        manual_tiers=manual_tiers,
+        manual_tiers=manual_tiers, seed_overrides=seed_overrides,
     )
     payload = {"basis": basis, "positions": data, "stat_headers": CSV_STAT_HEADERS}
     with open(path, "w") as fh:
@@ -520,24 +528,70 @@ def _safe_cell(value):
     return value
 
 
+def derive_tiers_from_ratings(
+    ratings: dict[str, float], by_key: dict
+) -> dict[str, int]:
+    """Derive integer tiers per position from a continuous rating map.
+
+    Groups keys by position, ranks them best->worst by rating, and applies the
+    same gap-aware sizing the rest of the toolkit uses, so the master's tiers
+    reflect the continuous rating (which the pick game refines).
+    """
+    from .valuation import DEFAULT_TIER_K, assign_sized_tiers
+
+    out: dict[str, int] = {}
+    by_pos: dict[str, list[str]] = {}
+    for key in ratings:
+        r = by_key.get(key)
+        pos = r.position if r else None
+        if pos:
+            by_pos.setdefault(pos, []).append(key)
+    for pos, keys in by_pos.items():
+        keys.sort(key=lambda k: ratings[k], reverse=True)
+        out.update(assign_sized_tiers(
+            keys, [ratings[k] for k in keys], DEFAULT_TIER_K.get(pos, 6)
+        ))
+    return out
+
+
 def write_tiers_csv(
     session: Session,
     path: str,
     *,
-    tiers: dict[str, int],
+    tiers: dict[str, int] | None = None,
+    ratings: dict[str, float] | None = None,
     prices: dict[str, float] | None = None,
     year: int | None = None,
     config: LeagueConfig = DEFAULT_LEAGUE,
     rules: ScoringRules = DEFAULT_RULES,
     basis: str = "w3yr",
 ) -> str:
-    """Write an enriched tiers CSV (names + last-year stats + prices) for editing."""
+    """Write an enriched master/tiers CSV (rating + tiers + stats + prices).
+
+    Pass ``ratings`` (the continuous user rating, e.g. merged from pick exports)
+    and the tiers are derived from it; any player without a rating defaults to
+    their value so the master always carries a rating for the whole pool. Pass
+    ``tiers`` directly for the legacy integer-only path.
+    """
     import csv
 
     prices = prices or {}
     last_year = year or _latest_season(session)
     values = compute_values(session, year=year, config=config, rules=rules, basis=basis)
     by_key = {r.key: r for rows in values.values() for r in rows}
+
+    if ratings is not None:
+        # Default a rating for every selected player (value when not picked), so
+        # the master seeds the whole app; then derive tiers from those ratings.
+        keys = set(ratings) | set(tiers or {})
+        ratings = {
+            k: ratings.get(k, by_key[k].basis_value)
+            for k in keys if k in by_key
+        }
+        tiers = derive_tiers_from_ratings(ratings, by_key)
+    else:
+        tiers = tiers or {}
+        ratings = {}
     pstats = _player_last_year(session, last_year) if last_year else {}
     toff = _team_offense(session, last_year) if last_year else {}
     dstats = _dst_last_year(session, last_year) if last_year else {}
@@ -547,15 +601,20 @@ def write_tiers_csv(
 
     with open(path, "w", newline="") as fh:
         writer = csv.writer(fh)
-        writer.writerow(["key", "manual_tier", "name", "pos", "team", "total", "ppg"]
+        writer.writerow(["key", "manual_tier", "rating", "name", "pos", "team", "total", "ppg"]
                         + CSV_STAT_HEADERS + ["price"])
-        for key, tier in tiers.items():
+        # Order by tier then rating so the file reads top-to-bottom.
+        ordered = sorted(tiers, key=lambda k: (tiers[k], -ratings.get(k, 0.0)))
+        for key in ordered:
+            tier = tiers[key]
             r = by_key.get(key)
             pos = r.position if r else ""
             cols = _stat_columns(key, pos, r.team if r else "", pstats, toff, dstats,
                                  ages, byes, tshares)
+            rating = ratings.get(key)
             writer.writerow(
-                [_safe_cell(key), tier, _safe_cell(r.name if r else key), _safe_cell(pos),
+                [_safe_cell(key), tier, round(rating, 2) if rating is not None else "",
+                 _safe_cell(r.name if r else key), _safe_cell(pos),
                  _safe_cell(r.team if r else ""), r.total if r else "", r.ppg if r else ""]
                 + [cols[h] for h in CSV_STAT_HEADERS]
                 + [prices.get(key, "")]
