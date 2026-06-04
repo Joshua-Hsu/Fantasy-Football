@@ -19,7 +19,6 @@ data/*.db
 # Generated draft artifacts
 *.xlsx
 tiers.csv
-coaching.csv
 
 # Environment
 .env
