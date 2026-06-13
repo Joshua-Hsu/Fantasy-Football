@@ -1,12 +1,13 @@
 name: Rebuild Master Tiers
 
-# Merges every pick export sitting in picks/*.csv (committed from the app's
-# "Export tiers CSV") into a new dated master_tiers.<today>.csv: ratings are
-# averaged across the files, folded onto the previous master so un-picked
-# players carry forward, tiers are re-derived, and prices are preserved. Then
-# it regenerates the pick-game data (so the app re-seeds from the new master)
-# and clears the picks/ inbox. Run the "Archive Week" action FIRST if you want
-# to snapshot the master + picks before they're folded in.
+# Merges every user ranking in picks/*.csv (committed by the app's "Commit to
+# GitHub" button, one file per user) into a new dated master_tiers.<today>.csv:
+# ratings are averaged across the files (one vote each), folded onto the previous
+# master so un-picked players carry forward, tiers are re-derived, and prices are
+# preserved. Then it regenerates the pick-game data so the app re-seeds from the
+# new master. This action does NOT clear picks/, so rebuilding is idempotent and
+# can run repeatedly as users submit. The weekly "Archive Week" action archives
+# picks/ and clears it, so old rankings age out of future rebuilds.
 on:
   workflow_dispatch:
 
@@ -50,7 +51,9 @@ jobs:
             echo "$PICKS"
             python -m fantasy_football.cli import-tiers --file $PICKS --out "$OUT" \
               ${PREV:+--prices-from "$PREV"}
-            git rm -q picks/*.csv   # consume the inbox; archive them first if wanted
+            # We do NOT clear picks/ here - rebuilding is idempotent (averaged
+            # ratings overwrite, not accumulate). The weekly Archive Week action
+            # is what archives + clears picks/ so old rankings age out.
           elif [ -n "$PREV" ]; then
             echo "No picks/*.csv - refreshing newest master $PREV -> $OUT"
             python -m fantasy_football.cli import-tiers --file "$PREV" --out "$OUT" \
