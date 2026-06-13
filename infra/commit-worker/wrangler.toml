@@ -1,0 +1,13 @@
+name = "ff-commit-worker"
+main = "worker.js"
+compatibility_date = "2024-11-01"
+
+# Non-secret config. Edit these for your setup.
+[vars]
+GH_REPO = "Joshua-Hsu/Fantasy-Football"
+GH_BRANCH = "main"
+# Your GitHub Pages origin (no trailing slash). Use "*" to allow any origin.
+ALLOWED_ORIGIN = "https://joshua-hsu.github.io"
+
+# GH_TOKEN is a SECRET - do not put it here. Set it with:
+#   npx wrangler secret put GH_TOKEN

@@ -14,9 +14,21 @@
   // the head-to-head relations, not the seed.
   var SCALE = 400, K = 24, NEAR = 4, NUDGE = 10;
   var STORE = "ff_tier_state_v3";  // v3: seed from master continuous ratings
-  // Where "Commit picks" sends your ratings. The Rebuild Master action reads
-  // picks/*.csv on this branch and averages them into the next master.
-  var REPO = "Joshua-Hsu/Fantasy-Football", BRANCH = "main";
+  // Commit-to-GitHub goes through a tiny serverless proxy (Cloudflare Worker)
+  // that holds the write token; the browser never sees it. Set this to your
+  // deployed Worker URL (see infra/commit-worker/README.md). Empty = not wired.
+  var WORKER_URL = (window.FF_CONFIG && window.FF_CONFIG.workerUrl) || "";
+  // Stable anonymous per-browser id so each person's rankings accumulate into a
+  // single file (picks/u-<id>.csv) that re-submits overwrite - one vote each.
+  var UID_STORE = "ff_user_id";
+  function userId() {
+    var id = localStorage.getItem(UID_STORE);
+    if (!id) {
+      id = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+      localStorage.setItem(UID_STORE, id);
+    }
+    return id;
+  }
   // Flatten + index.
   var ALL = [];
   ORDER.forEach(function (p) { (DATA[p] || []).forEach(function (e) { ALL.push(e); }); });
@@ -156,12 +168,13 @@
       "become user ratings &rarr; tiers. Export to edit by hand, import to load it back.</p>" +
       "<div class='pos-grid'>" + g + "</div>" +
       "<div class='actions'>" +
-      "<button class='btn btn-primary' onclick='FF.commitPicks()'>&#128640; Commit picks to GitHub</button>" +
+      "<button class='btn btn-primary' onclick='FF.commitPicks()'>&#128640; Commit to GitHub</button>" +
       "<button class='btn' onclick='FF.exportTiers()'>&#11015; Export tiers CSV</button>" +
       "<label class='btn' style='cursor:pointer'>&#11014; Import tiers CSV" +
       "<input type='file' accept='.csv' style='display:none' onchange='FF.importTiers(this)'></label>" +
-      "</div><p class='muted'>Commit sends just the players you moved to " +
-      "<code>picks/</code>; run the Rebuild Master action to fold them in.</p>";
+      "</div><p class='muted'>Commit sends your rankings to the shared " +
+      "<code>picks/</code> database; run the Rebuild Master action to fold " +
+      "everyone in. Export is just your personal copy.</p>";
   }
 
   function statBlock(e) {
@@ -227,10 +240,11 @@
       save(S); play(pos);
     },
     commitPicks: function () {
-      // Static pages can't push to git, so we hand GitHub a pre-filled "new file"
-      // editor containing only the players you actually moved (rating != seed),
-      // as key,rating. You land on GitHub already signed in and just click
-      // "Commit". The Rebuild Master action averages every picks/*.csv in.
+      // Push just the players you moved (rating != seed) to the repo through the
+      // serverless proxy, which commits picks/u-<id>.csv on your behalf - no
+      // popup, no download, no token in the browser. Each browser has a stable
+      // id, so re-submitting overwrites your one file (one vote each). Run
+      // "Rebuild Master Tiers" afterward to fold every user's file in.
       var rows = [];
       ALL.forEach(function (e) {
         if (Math.abs((S.ratings[e.key] || 0) - e.seed) > 0.001) {
@@ -238,19 +252,33 @@
         }
       });
       if (!rows.length) { alert("No picks to save yet - play a few matchups first."); return; }
-      var csv = "key,rating\n" + rows.join("\n") + "\n";
-      var ts = new Date().toISOString().replace(/[:.]/g, "-").replace("T", "_").slice(0, 19);
-      var name = "picks/picks-" + ts + ".csv";
-      var url = "https://github.com/" + REPO + "/new/" + BRANCH +
-        "?filename=" + encodeURIComponent(name) + "&value=" + encodeURIComponent(csv);
-      if (url.length > 14000) {  // very long sessions: fall back to a plain download
-        var blob = new Blob([csv], { type: "text/csv" }), u = URL.createObjectURL(blob),
-            a = document.createElement("a");
-        a.href = u; a.download = name.split("/").pop(); a.click(); URL.revokeObjectURL(u);
-        alert("Lots of picks - downloaded the file instead. Upload it into the repo's picks/ folder.");
+      if (!WORKER_URL) {
+        alert("Commit isn't wired up yet: no Worker URL is set.\n" +
+              "See infra/commit-worker/README.md to deploy the proxy and set it.");
         return;
       }
-      window.open(url, "_blank");
+      var csv = "key,rating\n" + rows.join("\n") + "\n";
+      var id = userId();
+      var btn = document.querySelector(".btn-primary");
+      if (btn) { btn.disabled = true; btn.textContent = "Saving…"; }
+      var done = function () { if (btn) { btn.disabled = false; btn.innerHTML = "&#128640; Commit to GitHub"; } };
+      fetch(WORKER_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: id, csv: csv })
+      }).then(function (r) {
+        return r.json().catch(function () { return {}; }).then(function (j) {
+          if (!r.ok) throw new Error(j.error || ("HTTP " + r.status));
+          return j;
+        });
+      }).then(function () {
+        done();
+        alert("Saved your rankings to GitHub (id " + id + ", " + rows.length +
+              " players).\nRun Rebuild Master Tiers to fold everyone in.");
+      }).catch(function (err) {
+        done();
+        alert("Couldn't save to GitHub: " + err.message);
+      });
     },
     exportTiers: function () {
       // key + manual_tier first (so the CLI/Action can read it), then human

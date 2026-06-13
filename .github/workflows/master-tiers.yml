@@ -1,12 +1,12 @@
 name: Rebuild Master Tiers
 
-# Merges every pick export sitting in picks/*.csv (committed from the app's
-# "Export tiers CSV") into a new dated master_tiers.<today>.csv: ratings are
-# averaged across the files, folded onto the previous master so un-picked
-# players carry forward, tiers are re-derived, and prices are preserved. Then
-# it regenerates the pick-game data (so the app re-seeds from the new master)
-# and clears the picks/ inbox. Run the "Archive Week" action FIRST if you want
-# to snapshot the master + picks before they're folded in.
+# Merges every user ranking in picks/*.csv (committed by the app's "Commit to
+# GitHub" button, one file per user) into a new dated master_tiers.<today>.csv:
+# ratings are averaged across the files (one vote each), folded onto the previous
+# master so un-picked players carry forward, tiers are re-derived, and prices are
+# preserved. Then it regenerates the pick-game data so the app re-seeds from the
+# new master. picks/ is a persistent database and is NOT cleared, so rebuilding
+# is idempotent. Run "Archive Week" first if you want a dated snapshot.
 on:
   workflow_dispatch:
 
@@ -50,7 +50,9 @@ jobs:
             echo "$PICKS"
             python -m fantasy_football.cli import-tiers --file $PICKS --out "$OUT" \
               ${PREV:+--prices-from "$PREV"}
-            git rm -q picks/*.csv   # consume the inbox; archive them first if wanted
+            # picks/ is a persistent per-user database (one file per user, the
+            # app overwrites on re-submit), so we do NOT clear it - rebuilding is
+            # idempotent (averaged ratings overwrite, not accumulate).
           elif [ -n "$PREV" ]; then
             echo "No picks/*.csv - refreshing newest master $PREV -> $OUT"
             python -m fantasy_football.cli import-tiers --file "$PREV" --out "$OUT" \
