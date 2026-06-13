@@ -5,8 +5,9 @@ name: Rebuild Master Tiers
 # ratings are averaged across the files (one vote each), folded onto the previous
 # master so un-picked players carry forward, tiers are re-derived, and prices are
 # preserved. Then it regenerates the pick-game data so the app re-seeds from the
-# new master. picks/ is a persistent database and is NOT cleared, so rebuilding
-# is idempotent. Run "Archive Week" first if you want a dated snapshot.
+# new master. This action does NOT clear picks/, so rebuilding is idempotent and
+# can run repeatedly as users submit. The weekly "Archive Week" action archives
+# picks/ and clears it, so old rankings age out of future rebuilds.
 on:
   workflow_dispatch:
 
@@ -50,9 +51,9 @@ jobs:
             echo "$PICKS"
             python -m fantasy_football.cli import-tiers --file $PICKS --out "$OUT" \
               ${PREV:+--prices-from "$PREV"}
-            # picks/ is a persistent per-user database (one file per user, the
-            # app overwrites on re-submit), so we do NOT clear it - rebuilding is
-            # idempotent (averaged ratings overwrite, not accumulate).
+            # We do NOT clear picks/ here - rebuilding is idempotent (averaged
+            # ratings overwrite, not accumulate). The weekly Archive Week action
+            # is what archives + clears picks/ so old rankings age out.
           elif [ -n "$PREV" ]; then
             echo "No picks/*.csv - refreshing newest master $PREV -> $OUT"
             python -m fantasy_football.cli import-tiers --file "$PREV" --out "$OUT" \

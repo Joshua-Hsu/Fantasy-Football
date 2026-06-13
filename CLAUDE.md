@@ -156,14 +156,17 @@ a serverless proxy (`infra/commit-worker/`, a Cloudflare Worker holding the
 write token) that writes `picks/u-<id>.csv` — one stable file per browser, so
 re-submits overwrite (one vote each) and `picks/` accumulates as a persistent
 user-rankings database. (The app's **Export** button is now just a personal CSV
-download, not part of the pipeline.) Two GitHub Actions close the loop: **Archive
-Week** (`archive-week.yml`) snapshots the current master + `picks/*` into
-`archive/<date>/`; then **Rebuild Master Tiers** (`master-tiers.yml`) runs
-`import-tiers --file picks/*.csv --prices-from <prev master>` which **averages
-the `rating` across all pick files** (one vote each via `_merge_ratings`), folds
-them onto the previous master (un-picked players carry forward), re-derives
-tiers, and regenerates `docs/data.js`. It does **not** clear `picks/` (the
-database persists; rebuilding is idempotent). `import-tiers` falls
+download, not part of the pipeline.) Two GitHub Actions close the loop:
+**Rebuild Master Tiers** (`master-tiers.yml`, run manually) runs `import-tiers
+--file picks/*.csv --prices-from <prev master>` which **averages the `rating`
+across all pick files** (one vote each via `_merge_ratings`), folds them onto the
+previous master (un-picked players carry forward), re-derives tiers, and
+regenerates `docs/data.js`; it does **not** clear `picks/`, so it's idempotent
+and can run repeatedly as users submit. **Archive Week** (`archive-week.yml`)
+runs **weekly** (cron, Tuesdays) — it snapshots the current master + `picks/*`
+into `archive/<date>/` and then **removes the pick files from `picks/`**, so each
+week's rebuilds drop last week's rankings and fresh submissions accumulate from
+empty. `import-tiers` falls
 back to a file's integer `manual_tier` only for legacy exports with no `rating`.
 
 **Schema-change note:** `init-db` uses `create_all`, which does **not** alter

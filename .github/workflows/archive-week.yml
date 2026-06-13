@@ -1,10 +1,13 @@
 name: Archive Week
 
-# Snapshots the current master tiers and the pick files currently in the inbox
-# (picks/*.csv) into archive/<date>/, so you keep a record of each week's master
-# and the picks that fed it. Run this BEFORE "Rebuild Master Tiers" (which folds
-# the picks in and clears the inbox). This action does not modify the inbox.
+# Weekly reset of the user-rankings database. Snapshots the current master tiers
+# and every user file in picks/*.csv into archive/<date>/, then REMOVES the pick
+# files from picks/ so the next week's "Rebuild Master Tiers" no longer folds in
+# last week's rankings - fresh submissions accumulate from empty again. Runs
+# automatically once a week (and on demand).
 on:
+  schedule:
+    - cron: "0 9 * * 2"   # Tuesdays 09:00 UTC - after the NFL week wraps up
   workflow_dispatch:
 
 permissions:
@@ -16,7 +19,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Snapshot master + picks
+      - name: Snapshot master + picks, then clear the picks inbox
         run: |
           DATE=$(date +%F)
           DEST="archive/${DATE}"
@@ -24,11 +27,14 @@ jobs:
           PREV=$(ls -1 master_tiers.*.csv 2>/dev/null | sort | tail -1)
           if [ -n "$PREV" ]; then cp "$PREV" "$DEST/"; echo "archived master: $PREV"; fi
           if ls picks/*.csv >/dev/null 2>&1; then
-            cp picks/*.csv "$DEST/"; echo "archived $(ls picks/*.csv | wc -l) pick file(s)"
+            N=$(ls picks/*.csv | wc -l)
+            cp picks/*.csv "$DEST/"
+            git rm -q picks/*.csv          # remove from the inbox so rebuilds drop them
+            echo "archived and cleared $N pick file(s)"
           else
             echo "no picks/*.csv to archive"
           fi
-          if [ -z "$PREV" ] && ! ls picks/*.csv >/dev/null 2>&1; then
+          if [ -z "$PREV" ] && [ -z "$(ls "$DEST" 2>/dev/null)" ]; then
             echo "::warning::nothing to archive"; rmdir "$DEST" 2>/dev/null || true
           fi
 
@@ -37,5 +43,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
-          git commit -m "Archive week $(date +%F) (master + picks)" || echo "nothing to archive"
+          git commit -m "Archive week $(date +%F) (master + picks; cleared inbox)" || echo "nothing to archive"
           git push
