@@ -262,6 +262,50 @@ def test_monotonic_prices_follow_manual_tiers(session):
         assert min(by_tier[hi]) >= max(by_tier[lo])  # monotonic down the board
 
 
+def test_qb_price_cap_and_redistribution(session):
+    """Elite QB dollars clamp at the market cap; the excess flows to the field."""
+    from fantasy_football.valuation import compute_values
+
+    _seed(session)
+    # An elite QB whose production dwarfs the RBs → raw VOR would price him huge.
+    game = session.query(Game).first()
+    qb = Player(full_name="Elite QB", position="QB", slug="qb0")
+    qb2 = Player(full_name="Backup QB", position="QB", slug="qb1")
+    session.add_all([qb, qb2])
+    session.flush()
+    session.add(PlayerGameStats(player_id=qb.id, game_id=game.id, team_id=game.home_team_id,
+                                pass_yards=5000, pass_touchdowns=45, rush_yards=500))
+    session.add(PlayerGameStats(player_id=qb2.id, game_id=game.id, team_id=game.home_team_id,
+                                pass_yards=100))
+    session.commit()
+
+    capped = compute_values(session, year=2025, config=LeagueConfig(teams=1))
+    uncapped = compute_values(session, year=2025,
+                              config=LeagueConfig(teams=1, price_caps={}))
+    qb_capped = capped["QB"][0]
+    qb_raw = uncapped["QB"][0]
+    assert qb_raw.dollars > 30.0            # raw VOR really would overprice him
+    assert qb_capped.dollars == 30.0        # default market cap applied
+    # The excess went to the uncapped positions (top RB got richer).
+    assert capped["RB"][0].dollars > uncapped["RB"][0].dollars
+
+    # POS=0 removes the cap via config.
+    assert uncapped["QB"][0].dollars == qb_raw.dollars
+
+
+def test_price_cap_cli_parsing():
+    """--price-cap POS=N merges over the default; POS=0 removes it."""
+    import argparse
+
+    from fantasy_football.cli import _league_config
+
+    args = argparse.Namespace(teams=12, budget=200, price_caps=["TE=20", "QB=0"])
+    config = _league_config(args)
+    assert config.price_caps == {"TE": 20.0}
+    default = _league_config(argparse.Namespace(teams=12, budget=200, price_caps=None))
+    assert default.price_caps == {"QB": 30.0}
+
+
 def test_negative_ppg_clamped_to_zero():
     """A negative per-game average (bad DSTs, fumble-only lines) displays as 0."""
     from fantasy_football.valuation import _summarize

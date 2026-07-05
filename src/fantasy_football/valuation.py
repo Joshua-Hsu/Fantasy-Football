@@ -55,6 +55,11 @@ class LeagueConfig:
     )
     flex: int = 1  # FLEX spots per team (RB/WR/TE)
     bench: int = 5
+    #: Market-behavior price ceilings per position. Raw VOR overprices elite
+    #: QBs in a 1-QB league (huge margin over QB12, but nobody actually bids
+    #: RB1 money on a QB); the cap encodes what the room will really pay, and
+    #: the excess dollars flow back to the uncapped positions.
+    price_caps: dict[str, float] = field(default_factory=lambda: {"QB": 30.0})
 
     @property
     def roster_size(self) -> int:
@@ -383,6 +388,36 @@ def _assign_prices(
         ent.pop("_svor", None)
 
 
+def _apply_price_caps(entities: list[dict], caps: dict[str, float],
+                      pinned: set) -> None:
+    """Clamp positions to their market-behavior ceiling; excess flows onward.
+
+    Whatever the capped positions "save" is redistributed across the uncapped,
+    unpinned entities in proportion to their price above the $1 floor, so the
+    board still spends the league's full budget. Order within every position is
+    preserved (a clamp only flattens the top; scaling is proportional).
+    """
+    caps = {pos: c for pos, c in (caps or {}).items() if c and c > 0}
+    if not caps:
+        return
+    excess = 0.0
+    for ent in entities:
+        cap = caps.get(ent["position"])
+        if cap is not None and ent["key"] not in pinned and ent["dollars"] > cap:
+            excess += ent["dollars"] - cap
+            ent["dollars"] = round(float(cap), 1)
+    if excess <= 0:
+        return
+    receivers = [e for e in entities
+                 if e["position"] not in caps and e["key"] not in pinned]
+    weight = sum(max(e["dollars"] - 1.0, 0.0) for e in receivers)
+    if weight <= 0:
+        return
+    for e in receivers:
+        share = max(e["dollars"] - 1.0, 0.0) / weight
+        e["dollars"] = round(e["dollars"] + excess * share, 1)
+
+
 # --- Top-level API ---------------------------------------------------------
 
 
@@ -494,6 +529,8 @@ def compute_values(
         pool = sorted((e["dollars"] for e in movable), reverse=True)
         for ent, dollars in zip(movable, pool):
             ent["dollars"] = dollars
+
+    _apply_price_caps(entities, config.price_caps, pinned)
 
     # Overall rank across all positions, by value.
     for rank, ent in enumerate(sorted(entities, key=lambda e: e["basis_value"], reverse=True), 1):
