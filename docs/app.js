@@ -191,6 +191,62 @@
       "everyone in. Export is just your personal copy.</p>";
   }
 
+  function statSegs(e) {
+    // Position-aware last-year box line, built from the structured cols so we
+    // can style value/label pairs instead of dumping a raw text string.
+    var c = e.cols || {};
+    var segs = [];
+    var add = function (val, label) {
+      if (val !== "" && val != null) segs.push([val, label]);
+    };
+    if (e.pos === "QB") {
+      add(c.PaYds, "pa yd"); add(c.PaTD, "pa td"); add(c.INT, "int");
+      add(c.RuYds, "ru yd"); add(c.RuTD, "ru td");
+    } else if (e.pos === "RB") {
+      add(c.RuAtt, "car"); add(c.RuYds, "ru yd"); add(c.RuTD, "ru td");
+      add(c.Rec, "rec"); add(c.ReYds, "re yd"); add(c.ReTD, "re td");
+    } else if (e.pos === "WR" || e.pos === "TE") {
+      add(c.Tgt, "tgt"); add(c.Rec, "rec"); add(c.ReYds, "yd"); add(c.ReTD, "td");
+      add(c["Tgt%"], "tgt%");
+    } else if (e.pos === "K") {
+      if (c.FGM !== "" && c.FGM != null && c.FGA !== "" && c.FGA != null) {
+        segs.push([c.FGM + "/" + c.FGA, "fg"]);
+      }
+      add(c.XPM, "xp");
+    } else if (e.pos === "DST") {
+      add(c.DefPA, "pa/g"); add(c.DefSk, "sack"); add(c.DefINT, "int"); add(c.DefTD, "td");
+    }
+    return segs;
+  }
+
+  function statLine(e) {
+    if (e.rookie) return "";
+    var segs = statSegs(e);
+    if (!segs.length) {   // old data.js without cols: fall back to the raw text
+      return e.stat ? "<div class='muted'>" + esc(e.stat) + "</div>" : "";
+    }
+    return "<div class='statline'>" + segs.map(function (s) {
+      return "<span class='seg'><b>" + esc(s[0]) + "</b><i>" + esc(s[1]) + "</i></span>";
+    }).join("") + "</div>";
+  }
+
+  function teamRankLine(e) {
+    // Team-offense ranks (the TEAM's, not the player's) — shown under the
+    // coaches so the player's situation reads as one block.
+    if (["QB", "RB", "WR", "TE"].indexOf(e.pos) < 0) return "";
+    var c = e.cols || {};
+    if (c.TmYdsRk === "" || c.TmYdsRk == null) {
+      return e.tmoff ? "<div class='muted'>" + esc(e.tmoff) + "</div>" : "";
+    }
+    var rk = function (n, label) {
+      var cls = n <= 10 ? " good" : (n >= 23 ? " bad" : "");
+      return "<span class='seg" + cls + "'><b>#" + n + "</b><i>" + label + "</i></span>";
+    };
+    return "<div class='tm-rank'><span class='tm-lab'>" + esc(e.team || "") +
+      " offense</span>" + rk(c.TmYdsRk, "yds") + rk(c.TmPassRk, "pass") +
+      rk(c.TmRushRk, "rush") + "</div>";
+  }
+
   function statBlock(e) {
     if (!e) return "<div class='muted'>no data</div>";
     var rookie = e.rookie ? "<span class='badge'>R</span>" : "";
@@ -202,13 +258,13 @@
       "<div class='muted'>" + esc(e.pos) + " &middot; " + esc(e.team || "TBD") +
       " &middot; Pos #" + posRank(e) + " &middot; Ovr #" + overallRank(e) + "</div>" +
       "<div class='muted'>HC " + esc(e.hc || "TBD") + " &middot; OC " + esc(e.oc || "TBD") +
-      "</div>" + draftLine +
+      "</div>" +
+      teamRankLine(e) + draftLine +
       "<div class='stats'>" +
       "<div class='row'><span>Last-yr total</span><b>" + stat(e.total) + "</b></div>" +
       "<div class='row'><span>Last-yr PPG</span><b>" + stat(e.ppg) + "</b></div>" +
       "<div class='row'><span>3-yr weighted</span><b>" + stat(e.w3yr) + "</b></div></div>" +
-      (e.stat ? "<div class='muted'>" + esc(e.stat) + "</div>" : "") +
-      (e.tmoff ? "<div class='muted'>" + esc(e.tmoff) + "</div>" : "");
+      statLine(e);
   }
 
   function play(pos) {
