@@ -727,12 +727,20 @@ def derive_tiers_from_ratings(
     return out
 
 
+#: Confidence half-point for the user-rating blend: this many head-to-head
+#: comparisons of a player gives the league's rating a 50% say vs his anchor.
+CONFIDENCE_PICKS = 6
+
+
 def write_tiers_csv(
     session: Session,
     path: str,
     *,
     tiers: dict[str, int] | None = None,
     ratings: dict[str, float] | None = None,
+    user_ratings: dict[str, float] | None = None,
+    comps: dict[str, int] | None = None,
+    confidence: int = CONFIDENCE_PICKS,
     prices: dict[str, float] | None = None,
     notes: dict[tuple[str, int], str] | None = None,
     year: int | None = None,
@@ -742,9 +750,13 @@ def write_tiers_csv(
 ) -> str:
     """Write an enriched master/tiers CSV (rating + tiers + stats + prices).
 
-    Pass ``ratings`` (the continuous user rating, e.g. merged from pick exports)
-    and the tiers are derived from it; any player without a rating defaults to
-    their value so the master always carries a rating for the whole pool. Pass
+    ``ratings`` is the anchor map (the previous master's continuous ratings);
+    any player without one defaults to his production value, so the master
+    always carries a rating for the whole pool. ``user_ratings`` is this
+    round's merged pick-game ratings, blended onto the anchors with a
+    confidence weight ``w = comps / (comps + confidence)`` — a couple of picks
+    nudge a player, many picks dominate. Pick files with no comps information
+    (legacy) get full weight, which is the old override behavior. Pass
     ``tiers`` directly for the legacy integer-only path. ``notes`` is the
     hand-written tier description per (position, tier) — it's repeated on each
     row of that tier so the CSV round-trips it (and you can edit it in place).
@@ -756,7 +768,10 @@ def write_tiers_csv(
     values = compute_values(session, year=year, config=config, rules=rules, basis=basis)
     by_key = {r.key: r for rows in values.values() for r in rows}
 
-    if ratings is not None:
+    if ratings is not None or user_ratings:
+        ratings = ratings or {}
+        user_ratings = user_ratings or {}
+        comps = comps or {}
         # Default a rating for every selected player (value when not picked), so
         # the master seeds the whole app; then derive tiers from those ratings.
         # Repair pass: early masters carried a synthetic near-zero "ladder"
@@ -764,16 +779,27 @@ def write_tiers_csv(
         # the value scale (hundreds), so anything <= 0.5 for a player with actual
         # production is unrated — reseed it from value instead of letting the
         # ladder wreck the tier derivation (phantom gaps -> singleton tiers).
-        keys = set(ratings) | set(tiers or {})
-        ratings = {
+        keys = set(ratings) | set(user_ratings) | set(tiers or {})
+        anchors = {
             k: ratings.get(k, by_key[k].basis_value)
             for k in keys if k in by_key
         }
-        ratings = {
+        anchors = {
             k: (by_key[k].basis_value
                 if r <= 0.5 and by_key[k].basis_value > 0.5 else r)
-            for k, r in ratings.items()
+            for k, r in anchors.items()
         }
+        # Confidence blend: the league's pick-game rating pulls a player away
+        # from his anchor in proportion to how much he was actually compared.
+        ratings = dict(anchors)
+        for k, ur in user_ratings.items():
+            if k not in by_key:
+                continue
+            if ur <= 0.5 and by_key[k].basis_value > 0.5:
+                continue  # ladder value riding along in a refresh: not a real pick
+            n = comps.get(k, 0)
+            w = n / (n + confidence) if n > 0 else 1.0
+            ratings[k] = round(w * ur + (1 - w) * anchors.get(k, by_key[k].basis_value), 2)
         tiers = derive_tiers_from_ratings(ratings, by_key)
     else:
         tiers = tiers or {}
