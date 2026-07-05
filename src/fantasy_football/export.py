@@ -184,6 +184,7 @@ def build_webapp_data(
     ages = _player_ages(session, (last_year or 0) + 1) if last_year else {}
     byes = _team_byes(session)
     tshares = _target_shares(session, last_year) if last_year else {}
+    rshares = _rush_shares(session, last_year) if last_year else {}
     totals = _fantasy_totals(session, last_year, rules) if last_year else []
     fppg = {t[0]: t[6] for t in totals}
     fname_ppg = {t[1].lower(): t[6] for t in totals}
@@ -214,8 +215,9 @@ def build_webapp_data(
         # refines last week's master); otherwise fall back to the player's value.
         # Either way the seed is a continuous value-scale number, not a tier band,
         # so the gap between players reflects a real difference and picks move
-        # someone past their neighbours.
-        if r.key in seed_overrides:
+        # someone past their neighbours. Ladder ratings (<= 0.5, see
+        # write_tiers_csv) are synthetic "unrated" markers — ignore them.
+        if r.key in seed_overrides and (seed_overrides[r.key] > 0.5 or fallback <= 0.5):
             return seed_overrides[r.key]
         return fallback
 
@@ -229,14 +231,15 @@ def build_webapp_data(
             "stat": _format_statline(r.key, r.position, pstats, dstats),
             "tmoff": _format_team_context(r.team, r.position, toff),
             "cols": _stat_columns(r.key, r.position, r.team, pstats, toff, dstats,
-                                  ages, byes, tshares),
+                                  ages, byes, tshares, rshares),
         }
         # Manual tiers only seed the starting `seed` (above) — the app's Elo
         # refines from there, so we deliberately don't lock a tier here.
         if r.is_rookie and rnd:
             row["draft"] = f"R{rnd} P{pick}"
-        if r.key in prices:
-            row["price"] = prices[r.key]
+        # Master market pin when present, else the computed (tier-monotonic)
+        # auction value — so the personal packet always shows a Rec$.
+        row["price"] = prices.get(r.key, r.dollars)
         if r.position != "DST":
             bk_name, bk_ppg = backup_for(r, pool)
             if bk_name:
@@ -344,6 +347,10 @@ def write_webapp_data(
     toff = _team_offense(session, last_year) if last_year else {}
     pf = _team_points_for(session, last_year) if last_year else {}
 
+    tdef = _team_defense_totals(session, last_year) if last_year else {}
+    tvol = _team_volume(session, last_year) if last_year else {}
+    vacated = _vacated_shares(session, last_year) if last_year else {}
+
     teams_payload = []
     for t in sorted(session.scalars(select(Team)), key=lambda t: -pf.get(t.abbreviation, 0)):
         abbr = t.abbreviation
@@ -351,22 +358,36 @@ def write_webapp_data(
         if not off and abbr not in pf:
             continue
         yds, plays = off.get("total_yards", 0), off.get("plays", 0)
+        d = tdef.get(abbr, {})
+        games = d.get("games", 0)
+        vol = tvol.get(abbr, {})
+        vac_t, vac_r = vacated.get(abbr, ("", ""))
         wrs = starters.get((abbr, "WR"), [])
+        rbs = starters.get((abbr, "RB"), [])
         teams_payload.append({
             "team": abbr, "hc": t.head_coach or "", "oc": t.offensive_coordinator or "",
-            "pf": pf.get(abbr, ""), "yds": yds or "", "plays": plays or "",
-            "ypp": round(yds / plays, 1) if plays else "",
-            "pass": off.get("pass", ""), "passRk": off.get("pass_rank", ""),
-            "rush": off.get("rush", ""), "rushRk": off.get("rush_rank", ""),
+            "pf": pf.get(abbr, ""), "pa": d.get("pa", ""),
+            "pag": round(d["pa"] / games, 1) if games else "",
+            "yds": yds or "", "ydsg": round(yds / games, 1) if games and yds else "",
+            "plays": plays or "", "ypp": round(yds / plays, 1) if plays else "",
+            "pass": off.get("pass", ""), "passAtt": vol.get("pass_att", ""),
+            "passRk": off.get("pass_rank", ""),
+            "rush": off.get("rush", ""), "rushAtt": vol.get("rush_att", ""),
+            "rushRk": off.get("rush_rank", ""),
+            "td": (vol.get("pass_td", 0) + vol.get("rush_td", 0)) or "",
+            "patd": vol.get("pass_td", ""), "rutd": vol.get("rush_td", ""),
+            "vacTgt": vac_t, "vacRush": vac_r,
             "qb": ", ".join(starters.get((abbr, "QB"), [])[:1]),
-            "rb": ", ".join(starters.get((abbr, "RB"), [])[:1]),
+            "rb": rbs[0] if len(rbs) > 0 else "",
+            "rb2": rbs[1] if len(rbs) > 1 else "",
             "wr1": wrs[0] if len(wrs) > 0 else "", "wr2": wrs[1] if len(wrs) > 1 else "",
             "wr3": wrs[2] if len(wrs) > 2 else "",
             "te": ", ".join(starters.get((abbr, "TE"), [])[:1]),
         })
 
     top200 = []
-    for key, name, pos, team, g, fpts, ppg in totals[:200]:
+    skill = [t for t in totals if t[2] != "K"]  # no kickers on the Top 200
+    for key, name, pos, team, g, fpts, ppg in skill[:200]:
         s = pstats.get(key, {})
         top200.append([
             name, team, pos, g, fpts, ppg,
@@ -375,8 +396,6 @@ def write_webapp_data(
             s.get("rush_attempts", 0), s.get("rush_yards", 0), s.get("rush_touchdowns", 0),
             s.get("targets", 0), s.get("receptions", 0),
             s.get("receiving_yards", 0), s.get("receiving_touchdowns", 0),
-            s.get("field_goals_made", 0), s.get("field_goals_attempted", 0),
-            s.get("extra_points_made", 0),
         ])
 
     payload = {
@@ -384,7 +403,7 @@ def write_webapp_data(
         "teams": teams_payload,
         "top200_headers": ["Player", "Tm", "Pos", "G", "FPTS", "PPG",
                            "PaYds", "PaTD", "INT", "RuAtt", "RuYds", "RuTD",
-                           "Tgt", "Rec", "ReYds", "ReTD", "FGM", "FGA", "XPM"],
+                           "Tgt", "Rec", "ReYds", "ReTD"],
         "top200": top200,
     }
     with open(path, "w") as fh:
@@ -516,7 +535,8 @@ def _format_team_context(team: str, pos: str, toff: dict) -> str:
 # Canonical individual stat columns (each sortable) used by the CSVs and app.
 CSV_STAT_HEADERS = [
     "Bye", "Age",
-    "PaYds", "PaTD", "INT", "RuAtt", "RuYds", "RuTD", "Tgt", "Rec", "ReYds", "ReTD", "Tgt%", "RZTgt",
+    "PaYds", "PaTD", "INT", "RuAtt", "RuYds", "RuTD", "Tgt", "Rec", "ReYds", "ReTD",
+    "Tgt%", "Rush%", "RZTgt",
     "FGM", "FGA", "XPM", "DefPA", "DefSk", "DefINT", "DefTD",
     "TmYds", "TmYdsRk", "TmPlays", "TmPlaysRk", "TmRush", "TmRushRk", "TmPass", "TmPassRk",
 ]
@@ -580,12 +600,13 @@ def _target_shares(session: Session, year: int) -> dict[str, float]:
 
 def _stat_columns(key: str, pos: str, team: str, pstats: dict, toff: dict, dstats: dict,
                   ages: dict | None = None, byes: dict | None = None,
-                  tshares: dict | None = None) -> dict:
+                  tshares: dict | None = None, rshares: dict | None = None) -> dict:
     """One value per CSV_STAT_HEADERS column for an entity (blank where N/A)."""
     c: dict[str, object] = {h: "" for h in CSV_STAT_HEADERS}
     c["Age"] = (ages or {}).get(key, "")
     c["Bye"] = (byes or {}).get(team, "")
     c["Tgt%"] = (tshares or {}).get(key, "") if pos in ("RB", "WR", "TE") else ""
+    c["Rush%"] = (rshares or {}).get(key, "") if pos in ("RB", "WR") else ""
     if pos == "DST":
         d = dstats.get(key, {})
         c["DefPA"], c["DefSk"] = d.get("PA", ""), d.get("Sack", "")
@@ -684,10 +705,20 @@ def write_tiers_csv(
     if ratings is not None:
         # Default a rating for every selected player (value when not picked), so
         # the master seeds the whole app; then derive tiers from those ratings.
+        # Repair pass: early masters carried a synthetic near-zero "ladder"
+        # (0, -0.1, -0.2, ...) for players nobody had rated. Real ratings live on
+        # the value scale (hundreds), so anything <= 0.5 for a player with actual
+        # production is unrated — reseed it from value instead of letting the
+        # ladder wreck the tier derivation (phantom gaps -> singleton tiers).
         keys = set(ratings) | set(tiers or {})
         ratings = {
             k: ratings.get(k, by_key[k].basis_value)
             for k in keys if k in by_key
+        }
+        ratings = {
+            k: (by_key[k].basis_value
+                if r <= 0.5 and by_key[k].basis_value > 0.5 else r)
+            for k, r in ratings.items()
         }
         tiers = derive_tiers_from_ratings(ratings, by_key)
     else:
@@ -699,6 +730,7 @@ def write_tiers_csv(
     ages = _player_ages(session, (last_year or 0) + 1) if last_year else {}
     byes = _team_byes(session)
     tshares = _target_shares(session, last_year) if last_year else {}
+    rshares = _rush_shares(session, last_year) if last_year else {}
 
     notes = notes or {}
     with open(path, "w", newline="") as fh:
@@ -712,7 +744,7 @@ def write_tiers_csv(
             r = by_key.get(key)
             pos = r.position if r else ""
             cols = _stat_columns(key, pos, r.team if r else "", pstats, toff, dstats,
-                                 ages, byes, tshares)
+                                 ages, byes, tshares, rshares)
             rating = ratings.get(key)
             writer.writerow(
                 [_safe_cell(key), tier, round(rating, 2) if rating is not None else "",
@@ -750,8 +782,9 @@ def _fantasy_totals(session: Session, year: int, rules: ScoringRules):
         if not slug:
             continue
         g, total = int(g or 0), float(total or 0.0)
+        ppg = max(total / g, 0.0) if g else 0.0  # display floor: no negative PPG
         out.append((f"p{slug}", name, pos or "", team or "",
-                    g, round(total, 1), round(total / g, 1) if g else 0.0))
+                    g, round(total, 1), round(ppg, 1)))
     return out
 
 
@@ -775,10 +808,128 @@ def _team_points_for(session: Session, year: int) -> dict[str, int]:
     return pf
 
 
-# Packet position-tab columns (mirrors the hand-made packet: bid columns are
-# left blank to write in during the auction).
-_PACKET_HEADERS = ["Tier", "Team", "PPG", "Starter", "Rec$", "Bid",
-                   "Bkp PPG", "Backup", "Bkp Bid"]
+def _team_defense_totals(session: Session, year: int) -> dict[str, dict[str, int]]:
+    """{team_abbr: {pa, games}} — points allowed + games played, from results."""
+    from .models import Game, Team
+
+    teams = {t.id: t.abbreviation for t in session.scalars(select(Team))}
+    out: dict[str, dict[str, int]] = {}
+    games = session.scalars(
+        select(Game).where(Game.season_year == year, Game.season_type == "regular")
+    )
+    for g in games:
+        if g.home_score is None or g.away_score is None:
+            continue
+        for team_id, allowed in ((g.home_team_id, g.away_score), (g.away_team_id, g.home_score)):
+            abbr = teams.get(team_id)
+            if abbr:
+                d = out.setdefault(abbr, {"pa": 0, "games": 0})
+                d["pa"] += allowed
+                d["games"] += 1
+    return out
+
+
+def _team_volume(session: Session, year: int) -> dict[str, dict[str, int]]:
+    """{team_abbr: {pass_att, rush_att, pass_td, rush_td}} from player lines.
+
+    TeamGameStats doesn't carry attempts or TD splits, so aggregate the player
+    box scores by the team each line was recorded for.
+    """
+    from .models import Game, PlayerGameStats, Team
+
+    query = (
+        select(
+            Team.abbreviation,
+            func.sum(PlayerGameStats.pass_attempts), func.sum(PlayerGameStats.rush_attempts),
+            func.sum(PlayerGameStats.pass_touchdowns), func.sum(PlayerGameStats.rush_touchdowns),
+        )
+        .join(PlayerGameStats, PlayerGameStats.team_id == Team.id)
+        .join(Game, Game.id == PlayerGameStats.game_id)
+        .where(Game.season_year == year, Game.season_type == "regular")
+        .group_by(Team.id)
+    )
+    return {
+        abbr: {"pass_att": int(pa or 0), "rush_att": int(ra or 0),
+               "pass_td": int(ptd or 0), "rush_td": int(rtd or 0)}
+        for abbr, pa, ra, ptd, rtd in session.execute(query)
+    }
+
+
+def _vacated_shares(session: Session, year: int) -> dict[str, tuple[float, float]]:
+    """{team_abbr: (vacated target %, vacated rush-attempt %)}.
+
+    The share of last season's targets / rush attempts that belonged to players
+    who are no longer on that team (moved or inactive) — the volume available
+    for rookies and new arrivals to slot into.
+    """
+    from .models import Game, Player, PlayerGameStats, Team
+
+    rows = session.execute(
+        select(Team.abbreviation, Player.current_team, Player.active,
+               func.sum(PlayerGameStats.targets), func.sum(PlayerGameStats.rush_attempts))
+        .join(PlayerGameStats, PlayerGameStats.team_id == Team.id)
+        .join(Player, Player.id == PlayerGameStats.player_id)
+        .join(Game, Game.id == PlayerGameStats.game_id)
+        .where(Game.season_year == year, Game.season_type == "regular")
+        .group_by(Team.id, Player.id)
+    ).all()
+
+    totals: dict[str, list[float]] = {}
+    gone: dict[str, list[float]] = {}
+    for abbr, cur_team, active, tgt, ratt in rows:
+        tgt, ratt = int(tgt or 0), int(ratt or 0)
+        totals.setdefault(abbr, [0, 0])
+        totals[abbr][0] += tgt
+        totals[abbr][1] += ratt
+        if cur_team != abbr or not active:
+            gone.setdefault(abbr, [0, 0])
+            gone[abbr][0] += tgt
+            gone[abbr][1] += ratt
+    out: dict[str, tuple[float, float]] = {}
+    for abbr, (t_tgt, t_ratt) in totals.items():
+        g_tgt, g_ratt = gone.get(abbr, [0, 0])
+        out[abbr] = (
+            round(g_tgt / t_tgt * 100, 1) if t_tgt else 0.0,
+            round(g_ratt / t_ratt * 100, 1) if t_ratt else 0.0,
+        )
+    return out
+
+
+def _rush_shares(session: Session, year: int) -> dict[str, float]:
+    """{p<id>: average per-game share of his team's rush attempts %}.
+
+    Mirrors :func:`_target_shares` for the ground game.
+    """
+    from collections import defaultdict
+
+    from .models import Game, Player, PlayerGameStats
+
+    rows = session.execute(
+        select(Player.slug, PlayerGameStats.game_id,
+               PlayerGameStats.team_id, PlayerGameStats.rush_attempts)
+        .join(PlayerGameStats, PlayerGameStats.player_id == Player.id)
+        .join(Game, Game.id == PlayerGameStats.game_id)
+        .where(Game.season_year == year, Game.season_type == "regular")
+    ).all()
+
+    team_game_att: dict[tuple, int] = defaultdict(int)
+    for _slug, gid, tid, att in rows:
+        team_game_att[(tid, gid)] += int(att or 0)
+
+    per_game: dict[str, list[float]] = defaultdict(list)
+    for slug, gid, tid, att in rows:
+        ta = team_game_att[(tid, gid)]
+        if ta > 0 and slug:
+            per_game[slug].append(int(att or 0) / ta)
+
+    return {
+        f"p{slug}": round(sum(shares) / len(shares) * 100, 1)
+        for slug, shares in per_game.items() if shares
+    }
+
+
+# Packet position tabs mirror the hand-made packet layout; bid columns are
+# left blank to write in during the auction (they feed the Draft Board).
 
 
 def write_cheatsheet(
@@ -857,11 +1008,24 @@ def write_cheatsheet(
                 return other.name, other.ppg
         return "", ""
 
+    tshares = _target_shares(session, last_year) if last_year else {}
+    rshares = _rush_shares(session, last_year) if last_year else {}
+
     # --- Per-position tier tabs --------------------------------------------
+    # Volume-share columns per position: how much of the team's passing /
+    # rushing volume the player owns (the "how safe is his role" signal).
+    share_cols = {"RB": ["Tgt%", "Rush%"], "WR": ["Tgt%", "Rush%"], "TE": ["Tgt%"]}
+    # Where each player's Bid cell lives, so the Draft Board can watch it.
+    bid_cells: dict[str, tuple[str, str]] = {}  # key -> (sheet title, cell ref)
+
     def _position_sheet(pos: str, rows: list[BoardRow]) -> None:
         ws = wb.create_sheet(pos[:31])
         has_backup = pos != "DST"
-        headers = _PACKET_HEADERS if has_backup else _PACKET_HEADERS[:6]
+        shares = share_cols.get(pos, [])
+        headers = (["Tier", "Team", "PPG", "Starter"] + shares + ["Rec$", "Bid"]
+                   + (["Bkp PPG", "Backup", "Bkp Bid"] if has_backup else []))
+        bid_col = headers.index("Bid") + 1
+        recd_col = headers.index("Rec$") + 1
         ws.append(headers)
         for c in range(1, len(headers) + 1):
             ws.cell(row=1, column=c).font = header_font
@@ -882,8 +1046,11 @@ def write_cheatsheet(
                 )
             name = r.name + (" (R)" if r.is_rookie else "")
             ppg = "" if r.is_rookie else r.ppg
-            line: list = [label if first_of_tier else "", r.team, ppg, name,
-                          r.dollars, None]
+            line: list = [label if first_of_tier else "", r.team, ppg, name]
+            for sh in shares:
+                src = tshares if sh == "Tgt%" else rshares
+                line.append(src.get(r.key, ""))
+            line += [r.dollars, None]
             if has_backup:
                 bk_name, bk_ppg = _backup_for(r, rows)
                 line += [bk_ppg, bk_name, None]
@@ -892,10 +1059,12 @@ def write_cheatsheet(
             for c in range(1, len(headers) + 1):
                 ws.cell(row=row_i, column=c).fill = _tier_fill(r.tier)
             ws.cell(row=row_i, column=1).alignment = wrap
-            ws.cell(row=row_i, column=5).number_format = '"$"0'
+            ws.cell(row=row_i, column=recd_col).number_format = '"$"0'
+            bid_cells[r.key] = (ws.title, f"{get_column_letter(bid_col)}{row_i}")
 
         ws.freeze_panes = "A2"
-        widths = [26, 6, 7, 22, 7, 7, 8, 20, 8]
+        widths = ([26, 6, 7, 22] + [6] * len(shares) + [7, 7]
+                  + ([8, 20, 8] if has_backup else []))
         for c, w in zip(range(1, len(headers) + 1), widths):
             ws.column_dimensions[get_column_letter(c)].width = w
 
@@ -906,10 +1075,16 @@ def write_cheatsheet(
     # --- Team Stats tab ------------------------------------------------------
     from .models import Team
 
+    tdef = _team_defense_totals(session, last_year) if last_year else {}
+    tvol = _team_volume(session, last_year) if last_year else {}
+    vacated = _vacated_shares(session, last_year) if last_year else {}
+
     ws = wb.create_sheet("Team Stats")
-    ts_headers = ["Rk", "Team", "HC", "OC", "PF", "TotYds", "Plays", "Y/P",
-                  "PassYds", "PassRk", "RushYds", "RushRk",
-                  "QB", "RB", "WR1", "WR2", "WR3", "TE"]
+    ts_headers = ["Rk", "Team", "HC", "OC", "PF", "PA", "PA/G",
+                  "Yds", "Yds/G", "Plays", "Y/P",
+                  "PassYds", "PassAtt", "PassRk", "RushYds", "RushAtt", "RushRk",
+                  "TD", "PaTD", "RuTD", "VacTgt%", "VacRush%",
+                  "QB", "RB1", "RB2", "WR1", "WR2", "WR3", "TE"]
     ws.append(ts_headers)
     for c in range(1, len(ts_headers) + 1):
         ws.cell(row=1, column=c).font = header_font
@@ -923,53 +1098,63 @@ def write_cheatsheet(
             continue  # inactive franchises
         rank += 1
         yds, plays = off.get("total_yards", 0), off.get("plays", 0)
+        d = tdef.get(abbr, {})
+        games = d.get("games", 0)
+        vol = tvol.get(abbr, {})
+        vac_t, vac_r = vacated.get(abbr, ("", ""))
         wrs = starters.get((abbr, "WR"), [])
+        rbs = starters.get((abbr, "RB"), [])
         ws.append([
             rank, abbr, t.head_coach or "TBD", t.offensive_coordinator or "TBD",
-            pf.get(abbr, ""), yds or "", plays or "",
-            round(yds / plays, 1) if plays else "",
-            off.get("pass", ""), off.get("pass_rank", ""),
-            off.get("rush", ""), off.get("rush_rank", ""),
+            pf.get(abbr, ""), d.get("pa", ""),
+            round(d["pa"] / games, 1) if games else "",
+            yds or "", round(yds / games, 1) if games and yds else "",
+            plays or "", round(yds / plays, 1) if plays else "",
+            off.get("pass", ""), vol.get("pass_att", ""), off.get("pass_rank", ""),
+            off.get("rush", ""), vol.get("rush_att", ""), off.get("rush_rank", ""),
+            (vol.get("pass_td", 0) + vol.get("rush_td", 0)) or "",
+            vol.get("pass_td", ""), vol.get("rush_td", ""),
+            vac_t, vac_r,
             ", ".join(starters.get((abbr, "QB"), [])[:1]),
-            ", ".join(starters.get((abbr, "RB"), [])[:1]),
+            rbs[0] if len(rbs) > 0 else "", rbs[1] if len(rbs) > 1 else "",
             wrs[0] if len(wrs) > 0 else "", wrs[1] if len(wrs) > 1 else "",
             wrs[2] if len(wrs) > 2 else "",
             ", ".join(starters.get((abbr, "TE"), [])[:1]),
         ])
     ws.freeze_panes = "C2"
     for c, w in zip(range(1, len(ts_headers) + 1),
-                    (4, 6, 18, 18, 6, 8, 7, 6, 8, 7, 8, 7, 16, 16, 16, 16, 16, 16)):
+                    (4, 6, 17, 17, 6, 6, 6, 8, 7, 7, 5, 8, 8, 7, 8, 8, 7,
+                     5, 6, 6, 8, 8, 15, 15, 15, 15, 15, 15, 15)):
         ws.column_dimensions[get_column_letter(c)].width = w
 
-    # --- Top 200 box-stats tab ------------------------------------------------
+    # --- Top 200 box-stats tab (skill players, no kickers) ------------------
     ws = wb.create_sheet("Top 200")
     t2_headers = ["Rk", "Player", "Tm", "Pos", "G", "FPTS", "PPG",
                   "PaYds", "PaTD", "INT", "RuAtt", "RuYds", "RuTD",
-                  "Tgt", "Rec", "ReYds", "ReTD", "FGM", "FGA", "XPM"]
+                  "Tgt", "Rec", "ReYds", "ReTD"]
     ws.append(t2_headers)
     for c in range(1, len(t2_headers) + 1):
         ws.cell(row=1, column=c).font = header_font
         ws.cell(row=1, column=c).alignment = center
-    for i, (key, name, pos, team, g, fpts, ppg) in enumerate(totals[:200], 1):
+    skill = [t for t in totals if t[2] != "K"]
+    for i, (key, name, pos, team, g, fpts, ppg) in enumerate(skill[:200], 1):
         s = player_stats.get(key, {})
         ws.append([
-            i, name, team, pos, g, fpts, ppg,
+            i, name, team, pos, g, fpts, max(ppg, 0),
             s.get("pass_yards", 0), s.get("pass_touchdowns", 0),
             s.get("interceptions_thrown", 0),
             s.get("rush_attempts", 0), s.get("rush_yards", 0), s.get("rush_touchdowns", 0),
             s.get("targets", 0), s.get("receptions", 0),
             s.get("receiving_yards", 0), s.get("receiving_touchdowns", 0),
-            s.get("field_goals_made", 0), s.get("field_goals_attempted", 0),
-            s.get("extra_points_made", 0),
         ])
     ws.freeze_panes = "C2"
-    ws.auto_filter.ref = f"A1:T{ws.max_row}"
+    ws.auto_filter.ref = f"A1:Q{ws.max_row}"
     ws.column_dimensions["B"].width = 22
     for c in ("A", "C", "D", "E", "F", "G"):
         ws.column_dimensions[c].width = 7
 
     # --- Live Draft Board: recommended prices that react to picks ----------
-    _draft_sheet(wb, board, config, header_font, center, _tier_fill)
+    _draft_sheet(wb, board, config, header_font, center, _tier_fill, bid_cells)
     wb.move_sheet("Draft Board", -(len(wb.sheetnames) - 1))  # make it first
 
     wb.save(path)
@@ -978,13 +1163,16 @@ def write_cheatsheet(
 
 # Draft Board column layout (1-indexed):
 #  A Pos  B Tier  C Player  D Base$  E Rec$  F Drafted  G Paid  H Weight(hidden)
-#  I UserRtg  J LastYr  K PPG  L 3yr  M Tm  N Ovr ; control block in P/Q.
+#  I UserRtg  J LastYr  K PPG  L 3yr  M Tm  N Ovr  O PosBid ; controls in P/Q.
 _DRAFT_HEADERS = ["Pos", "Tier", "Player", "Base$", "Rec$", "Drafted", "Paid",
-                  "Weight", "UserRtg", "LastYr", "PPG", "3yrWtd", "Tm", "Ovr"]
+                  "Weight", "UserRtg", "LastYr", "PPG", "3yrWtd", "Tm", "Ovr",
+                  "PosBid"]
 
 
-def _draft_sheet(wb, board, config, header_font, center, tier_fill) -> None:
+def _draft_sheet(wb, board, config, header_font, center, tier_fill,
+                 bid_cells: dict[str, tuple[str, str]] | None = None) -> None:
     ws = wb.create_sheet("Draft Board")
+    bid_cells = bid_cells or {}
     ws.append(_DRAFT_HEADERS)
     for c in range(1, len(_DRAFT_HEADERS) + 1):
         ws.cell(row=1, column=c).font = header_font
@@ -1004,8 +1192,18 @@ def _draft_sheet(wb, board, config, header_font, center, tier_fill) -> None:
         name = r.name + (" (R)" if r.is_rookie else "")
         ws.append([
             r.position, r.tier, name, r.dollars, None, None, None, None,
-            r.user_rating, r.total, r.ppg, r.w3yr, r.team, r.overall_rank,
+            r.user_rating, r.total, r.ppg, r.w3yr, r.team, r.overall_rank, None,
         ])
+        # PosBid mirrors the player's Bid cell on his position tab, so a bid
+        # written there flows straight into the board.
+        sheet_cell = bid_cells.get(r.key)
+        if sheet_cell:
+            sheet, cell = sheet_cell
+            ws.cell(row=i, column=15).value = f"='{sheet}'!{cell}"
+        # Paid defaults to the position-tab bid; Drafted auto-marks once paid.
+        # Both are plain formulas, so typing a value over them still works.
+        ws.cell(row=i, column=7).value = f'=IF(O{i}<>"",O{i},"")'
+        ws.cell(row=i, column=6).value = f'=IF(G{i}<>"","x","")'
         # Weight = max(Base$ - 1, 0); recompute defensively in-sheet.
         ws.cell(row=i, column=8).value = f"=MAX(D{i}-1,0)"
         # Rec$ = paid if drafted, else inflation-adjusted allocation of the
@@ -1032,9 +1230,9 @@ def _draft_sheet(wb, board, config, header_font, center, tier_fill) -> None:
         ws.cell(row=idx, column=17, value=value)
 
     ws.freeze_panes = "A2"
-    ws.auto_filter.ref = f"A1:N{last}"
+    ws.auto_filter.ref = f"A1:O{last}"
     ws.column_dimensions["C"].width = 22
-    for col in ("A", "B", "D", "E", "F", "G", "I", "J", "K", "L", "M", "N"):
+    for col in ("A", "B", "D", "E", "F", "G", "I", "J", "K", "L", "M", "N", "O"):
         ws.column_dimensions[col].width = 9
     ws.column_dimensions["H"].hidden = True
     ws.column_dimensions["P"].width = 16

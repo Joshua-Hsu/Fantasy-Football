@@ -34,7 +34,13 @@ def _seed(session):
         p = Player(full_name=f"RB{i}", position="RB", slug=f"rb{i}")
         session.add(p)
         session.flush()
-        session.add(PlayerGameStats(player_id=p.id, game_id=game.id, team_id=gb.id, rush_yards=yds))
+        session.add(PlayerGameStats(player_id=p.id, game_id=game.id, team_id=gb.id,
+                                    rush_yards=yds, rush_attempts=yds // 10))
+    k = Player(full_name="K0", position="K", slug="k0")
+    session.add(k)
+    session.flush()
+    session.add(PlayerGameStats(player_id=k.id, game_id=game.id, team_id=gb.id,
+                                fg_made_40_49=3, extra_points_made=2))
     session.commit()
 
 
@@ -142,28 +148,46 @@ def test_packet_position_sheet_layout_and_tabs(session, tmp_path):
         assert tab in wb.sheetnames
 
     ws = wb["RB"]
-    assert [c.value for c in ws[1][:9]] == [
-        "Tier", "Team", "PPG", "Starter", "Rec$", "Bid", "Bkp PPG", "Backup", "Bkp Bid"]
+    assert [c.value for c in ws[1][:11]] == [
+        "Tier", "Team", "PPG", "Starter", "Tgt%", "Rush%", "Rec$", "Bid",
+        "Bkp PPG", "Backup", "Bkp Bid"]
     # Row 2 = best RB: hand-written tier note + depth-chart backup.
     assert ws["A2"].value == "Bell cows - pay up"
     assert ws["D2"].value == "RB0"
-    assert ws["H2"].value == "RB5"
+    assert float(ws["F2"].value) > 0        # RB0's rush-attempt share populated
+    assert ws["J2"].value == "RB5"
     # RB1's backup comes from the manual override.
     rows = {ws.cell(row=r, column=4).value: r for r in range(2, ws.max_row + 1)}
-    assert ws.cell(row=rows["RB1"], column=8).value == "Hand Picked"
+    assert ws.cell(row=rows["RB1"], column=10).value == "Hand Picked"
     # A later RB with no depth entry falls back to next same-team RB.
-    assert ws.cell(row=rows["RB2"], column=8).value == "RB3"
+    assert ws.cell(row=rows["RB2"], column=10).value == "RB3"
 
     ts = wb["Team Stats"]
     header = [c.value for c in ts[1]]
-    assert header[:5] == ["Rk", "Team", "HC", "OC", "PF"]
+    assert header[:7] == ["Rk", "Team", "HC", "OC", "PF", "PA", "PA/G"]
+    qb_col = header.index("QB") + 1
+    rb2_col = header.index("RB2") + 1
     gb_row = next(r for r in range(2, ts.max_row + 1) if ts.cell(row=r, column=2).value == "GB")
     assert ts.cell(row=gb_row, column=5).value == 20            # PF from game score
-    assert ts.cell(row=gb_row, column=13).value == "Some QB"    # depth-chart starter
+    assert ts.cell(row=gb_row, column=6).value == 10            # PA from game score
+    assert ts.cell(row=gb_row, column=qb_col).value == "Some QB"  # depth-chart starter
 
     t2 = wb["Top 200"]
     assert [c.value for c in t2[1][:7]] == ["Rk", "Player", "Tm", "Pos", "G", "FPTS", "PPG"]
     assert t2["B2"].value == "RB0"        # top scorer first
+    names = [t2.cell(row=r, column=2).value for r in range(2, t2.max_row + 1)]
+    assert "K0" not in names              # kickers excluded
+
+    db = wb["Draft Board"]
+    dh = [c.value for c in db[1]]
+    assert dh[14] == "PosBid"     # column O; P/Q hold the control block
+    # RB0 is the top row; his PosBid pulls the RB tab's Bid cell, Paid follows
+    # PosBid, Drafted auto-marks from Paid.
+    db_rows = {db.cell(row=r, column=3).value: r for r in range(2, db.max_row + 1)}
+    r0 = db_rows["RB0"]
+    assert str(db.cell(row=r0, column=15).value) == "='RB'!H2"
+    assert str(db.cell(row=r0, column=7).value) == f'=IF(O{r0}<>"",O{r0},"")'
+    assert str(db.cell(row=r0, column=6).value) == f'=IF(G{r0}<>"","x","")'
 
 
 def test_depth_chart_mapping(monkeypatch):
@@ -190,8 +214,82 @@ def test_depth_chart_mapping(monkeypatch):
     assert "w2" not in backups                   # deepest player has no backup
 
     starters = nv.depth_starters(2025)
-    assert starters[("GB", "WR")] == ["Lwr One", "Rwr One"]  # GNB normalized to GB
-    assert starters[("CHI", "QB")] == ["Qb One"]
+    # Rank-1s first (GNB normalized to GB), then the rank-2s behind them.
+    assert starters[("GB", "WR")][:2] == ["Lwr One", "Rwr One"]
+    assert starters[("CHI", "QB")][0] == "Qb One"
+
+
+def test_depth_chart_mapping_2026_schema(monkeypatch):
+    """The 2026 nflverse depth files renamed every column; parser still works."""
+    import pandas as pd
+
+    from fantasy_football.ingest import nflverse as nv
+
+    df = pd.DataFrame({
+        "dt": ["2026-06-20"] * 2 + ["2026-07-01"] * 4,
+        "team": ["GB", "GB", "GB", "GB", "CHI", "CHI"],
+        "player_name": ["Old One", "Old Two", "Lwr One", "Lwr Two", "Qb One", "Qb Two"],
+        "espn_id": [1, 2, 3, 4, 5, 6],
+        "gsis_id": ["o1", "o2", "w1", "w2", "q1", "q2"],
+        "pos_grp": ["offense"] * 6,
+        "pos_abb": ["WR", "WR", "WR", "WR", "QB", "QB"],
+        "pos_slot": ["LWR", "LWR", "LWR", "LWR", "QB", "QB"],
+        "pos_rank": [1, 2, 1, 2, 1, 2],
+    })
+    monkeypatch.setattr(nv, "_fetch_depth_charts", lambda year: df)
+
+    backups = nv.depth_backups(2026)
+    assert backups["w1"] == ("w2", "Lwr Two")   # newest chart (dt) only
+    assert "o1" not in backups                   # stale chart rows dropped
+    assert nv.depth_starters(2026)[("CHI", "QB")][0] == "Qb One"
+
+
+def test_monotonic_prices_follow_manual_tiers(session):
+    """A lower manual tier can never carry a higher price than the tier above."""
+    from fantasy_football.valuation import compute_values
+
+    _seed(session)
+    # Invert the tiers vs production: worst producers get the best tiers.
+    manual = {"prb5": 1, "prb4": 1, "prb0": 2, "prb1": 2, "prb2": 3, "prb3": 3}
+    values = compute_values(session, year=2025, config=LeagueConfig(teams=1),
+                            manual_tiers=manual)
+    rbs = values["RB"]
+    by_tier: dict = {}
+    for r in rbs:
+        by_tier.setdefault(r.tier, []).append(r.dollars)
+    tiers = sorted(by_tier)
+    for hi, lo in zip(tiers, tiers[1:]):
+        assert min(by_tier[hi]) >= max(by_tier[lo])  # monotonic down the board
+
+
+def test_negative_ppg_clamped_to_zero():
+    """A negative per-game average (bad DSTs, fumble-only lines) displays as 0."""
+    from fantasy_football.valuation import _summarize
+
+    ent = {"seasons": {2025: (10, -42.0)}}
+    _summarize(ent, 2025)
+    assert ent["ppg"] == 0.0
+    assert ent["total"] == -42.0   # the true total is still visible
+
+
+def test_ladder_ratings_reseed_from_value(session, tmp_path):
+    """Synthetic near-zero 'ladder' ratings are treated as unrated on rebuild."""
+    import csv as _csv
+
+    from fantasy_football.export import write_tiers_csv
+
+    _seed(session)
+    ratings = {"prb0": 300.0, "prb1": 280.0,       # genuinely rated
+               "prb2": 0.0, "prb3": -0.1, "prb4": -0.2}  # poisoned ladder
+    out = tmp_path / "master.csv"
+    write_tiers_csv(session, str(out), ratings=ratings, year=2025,
+                    config=LeagueConfig(teams=1))
+    rows = {r["key"]: r for r in _csv.DictReader(out.open())}
+    # Ladder players got value-scale ratings back, ranked by production.
+    assert float(rows["prb2"]["rating"]) > 0.5
+    assert float(rows["prb2"]["rating"]) > float(rows["prb3"]["rating"])
+    # The genuinely rated pair is untouched.
+    assert float(rows["prb0"]["rating"]) == 300.0
 
 
 def test_tier_notes_round_trip(session, tmp_path):
