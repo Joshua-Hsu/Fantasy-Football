@@ -214,7 +214,8 @@ def build_webapp_data(
         session, year=year, config=config, rules=rules, basis=basis, manual_tiers=tier_map
     )
     coaching = {
-        t.abbreviation: (t.head_coach or "", t.offensive_coordinator or "")
+        t.abbreviation: (t.head_coach or "", t.offensive_coordinator or "",
+                         bool(t.hc_new), bool(t.oc_new))
         for t in session.scalars(select(Team))
     }
     draft = {
@@ -270,7 +271,7 @@ def build_webapp_data(
         return fallback
 
     def emit(r, seed, pool):
-        hc, oc = coaching.get(r.team, ("", ""))
+        hc, oc, hc_new, oc_new = coaching.get(r.team, ("", "", False, False))
         rnd, pick = draft.get(r.key, (None, None))
         row = {
             "key": r.key, "name": r.name, "team": r.team, "pos": r.position,
@@ -283,6 +284,10 @@ def build_webapp_data(
         }
         # Manual tiers only seed the starting `seed` (above) — the app's Elo
         # refines from there, so we deliberately don't lock a tier here.
+        if hc_new:
+            row["hcN"] = 1
+        if oc_new:
+            row["ocN"] = 1
         if r.is_rookie and rnd:
             row["draft"] = f"R{rnd} P{pick}"
         # Master market pin when present, else the computed (tier-monotonic)
@@ -414,6 +419,7 @@ def write_webapp_data(
         rbs = starters.get((abbr, "RB"), [])
         teams_payload.append({
             "team": abbr, "hc": t.head_coach or "", "oc": t.offensive_coordinator or "",
+            "hcN": 1 if t.hc_new else 0, "ocN": 1 if t.oc_new else 0,
             "pf": pf.get(abbr, ""), "pa": d.get("pa", ""),
             "pag": round(d["pa"] / games, 1) if games else "",
             "yds": yds or "", "ydsg": round(yds / games, 1) if games and yds else "",
@@ -1171,6 +1177,12 @@ def write_cheatsheet(
             wrs[2] if len(wrs) > 2 else "",
             ", ".join(starters.get((abbr, "TE"), [])[:1]),
         ])
+        # New-to-role coaches get a soft accent shade — worth noting on draft day.
+        new_fill = PatternFill("solid", fgColor="E9FAEC")
+        if t.hc_new:
+            ws.cell(row=ws.max_row, column=3).fill = new_fill
+        if t.oc_new:
+            ws.cell(row=ws.max_row, column=4).fill = new_fill
     ws.freeze_panes = "C2"
     for c, w in zip(range(1, len(ts_headers) + 1),
                     (4, 6, 17, 17, 6, 6, 6, 8, 7, 7, 5, 8, 8, 7, 8, 8, 7,

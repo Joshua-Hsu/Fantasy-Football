@@ -422,6 +422,53 @@ def test_webapp_payload_carries_packet_data(session, tmp_path):
     assert len(payload["top200_headers"]) == len(payload["top200"][0])
 
 
+def test_load_coaching_new_role_flags(session, tmp_path, monkeypatch):
+    """Explicit hc_new/oc_new columns are honored; without hc_new, HC newness
+    is auto-detected against last season's schedule coaches."""
+    from fantasy_football.ingest import nflverse as nv
+
+    _seed(session)
+
+    # Explicit flags win.
+    p = tmp_path / "coaching.csv"
+    p.write_text("team,head_coach,offensive_coordinator,hc_new,oc_new\n"
+                 "GB,Matt LaFleur,Adam Stenavich,,1\n"
+                 "CHI,Ben Johnson,Press Taylor,1,\n")
+    nv.load_coaching(session, str(p))
+    teams = {t.abbreviation: t for t in session.query(Team).all()}
+    assert not teams["GB"].hc_new and teams["GB"].oc_new
+    assert teams["CHI"].hc_new and not teams["CHI"].oc_new
+
+    # No hc_new column -> compare against last season's coaches (mocked).
+    monkeypatch.setattr(nv, "latest_head_coaches",
+                        lambda: {"GB": "Matt LaFleur", "CHI": "Matt Eberflus"})
+    p2 = tmp_path / "coaching2.csv"
+    p2.write_text("team,head_coach,offensive_coordinator\n"
+                  "GB,Matt LaFleur,Adam Stenavich\n"
+                  "CHI,Ben Johnson,Press Taylor\n")
+    nv.load_coaching(session, str(p2))
+    teams = {t.abbreviation: t for t in session.query(Team).all()}
+    assert not teams["GB"].hc_new       # same coach as last season
+    assert teams["CHI"].hc_new          # changed -> flagged
+
+
+def test_webapp_payload_carries_coach_flags(session, tmp_path):
+    import json
+
+    from fantasy_football.export import write_webapp_data
+
+    _seed(session)
+    gb = session.query(Team).filter_by(abbreviation="GB").one()
+    gb.head_coach, gb.oc_new = "Someone New", True
+    gb.offensive_coordinator = "Fresh OC"
+    session.commit()
+    out = tmp_path / "data.js"
+    write_webapp_data(session, str(out), year=2025, config=LeagueConfig(teams=1))
+    payload = json.loads(out.read_text().split("window.FF_DATA = ", 1)[1].rstrip(";\n"))
+    gbt = next(t for t in payload["teams"] if t["team"] == "GB")
+    assert gbt["ocN"] == 1 and gbt["hcN"] == 0
+
+
 def test_safe_cell_guards_formulas():
     from fantasy_football.export import _safe_cell
 
