@@ -252,8 +252,10 @@
         return (tiers[a.key] - tiers[b.key]) || (S.ratings[b.key] - S.ratings[a.key]);
       });
       var hasBkp = pos !== "DST";
-      var cols = hasBkp ? 9 : 6;
+      var shareCols = { RB: ["Tgt%", "Rush%"], WR: ["Tgt%", "Rush%"], TE: ["Tgt%"] }[pos] || [];
+      var cols = 6 + shareCols.length + (hasBkp ? 3 : 0);
       var head = "<tr><th class='note-col'>Tier</th><th>Tm</th><th>PPG</th><th>Starter</th>" +
+        shareCols.map(function (h) { return "<th>" + h + "</th>"; }).join("") +
         "<th>$</th><th>Bid</th>" +
         (hasBkp ? "<th>Bkp PPG</th><th>Backup</th><th>Bid</th>" : "") + "</tr>";
       var body = "", lastTier = null;
@@ -272,9 +274,12 @@
               : "");
           }
         }
+        var c = e.cols || {};
         body += "<tr><td class='note-col'>" + esc(label) + "</td><td>" + esc(e.team) +
-          "</td><td>" + (e.rookie ? "R" : e.ppg) + "</td><td class='pk-name'>" + esc(e.name) +
-          "</td><td>" + (e.price != null ? "$" + Math.round(e.price) : "") + "</td><td class='bid'></td>" +
+          "</td><td>" + (e.rookie ? "R" : Math.max(0, e.ppg)) + "</td><td class='pk-name'>" + esc(e.name) +
+          "</td>" +
+          shareCols.map(function (h) { return "<td>" + esc(c[h] == null ? "" : c[h]) + "</td>"; }).join("") +
+          "<td>" + (e.price != null ? "$" + Math.round(e.price) : "") + "</td><td class='bid'></td>" +
           (hasBkp
             ? "<td>" + (e.bkp_ppg != null && e.bkp_ppg !== "" ? e.bkp_ppg : "") + "</td><td>" +
               esc(e.bkp || "") + "</td><td class='bid'></td>"
@@ -287,18 +292,26 @@
 
     var extra = "";
     if (D.teams && D.teams.length) {
+      var v = function (x) { return x == null ? "" : x; };
       var trs = D.teams.map(function (t, i) {
         return "<tr><td>" + (i + 1) + "</td><td>" + esc(t.team) + "</td><td>" + esc(t.hc) +
-          "</td><td>" + esc(t.oc) + "</td><td>" + t.pf + "</td><td>" + t.yds + "</td><td>" + t.plays +
-          "</td><td>" + t.ypp + "</td><td>" + t.pass + "</td><td>" + t.passRk + "</td><td>" + t.rush +
-          "</td><td>" + t.rushRk + "</td><td>" + esc(t.qb) + "</td><td>" + esc(t.rb) +
+          "</td><td>" + esc(t.oc) + "</td><td>" + v(t.pf) + "</td><td>" + v(t.pa) +
+          "</td><td>" + v(t.pag) + "</td><td>" + v(t.yds) + "</td><td>" + v(t.ydsg) +
+          "</td><td>" + v(t.plays) + "</td><td>" + v(t.ypp) +
+          "</td><td>" + v(t.pass) + "</td><td>" + v(t.passAtt) + "</td><td>" + v(t.passRk) +
+          "</td><td>" + v(t.rush) + "</td><td>" + v(t.rushAtt) + "</td><td>" + v(t.rushRk) +
+          "</td><td>" + v(t.td) + "</td><td>" + v(t.patd) + "</td><td>" + v(t.rutd) +
+          "</td><td>" + v(t.vacTgt) + "</td><td>" + v(t.vacRush) +
+          "</td><td>" + esc(t.qb) + "</td><td>" + esc(t.rb) + "</td><td>" + esc(v(t.rb2)) +
           "</td><td>" + esc(t.wr1) + "</td><td>" + esc(t.wr2) + "</td><td>" + esc(t.wr3) +
           "</td><td>" + esc(t.te) + "</td></tr>";
       }).join("");
       extra += "<section class='pk-sec'><h2>Team Stats</h2><div class='table-wrap'>" +
         "<table class='pk'><thead><tr><th>Rk</th><th>Tm</th><th>HC</th><th>OC</th><th>PF</th>" +
-        "<th>Yds</th><th>Plays</th><th>Y/P</th><th>Pass</th><th>Rk</th><th>Rush</th><th>Rk</th>" +
-        "<th>QB</th><th>RB</th><th>WR1</th><th>WR2</th><th>WR3</th><th>TE</th></tr></thead>" +
+        "<th>PA</th><th>PA/G</th><th>Yds</th><th>Yds/G</th><th>Plays</th><th>Y/P</th>" +
+        "<th>Pass</th><th>Att</th><th>Rk</th><th>Rush</th><th>Att</th><th>Rk</th>" +
+        "<th>TD</th><th>PaTD</th><th>RuTD</th><th>VacTgt%</th><th>VacRush%</th>" +
+        "<th>QB</th><th>RB1</th><th>RB2</th><th>WR1</th><th>WR2</th><th>WR3</th><th>TE</th></tr></thead>" +
         "<tbody>" + trs + "</tbody></table></div></section>";
     }
     if (D.top200 && D.top200.length) {

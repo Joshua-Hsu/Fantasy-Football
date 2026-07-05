@@ -167,7 +167,9 @@ def _summarize(entity: dict, latest: int, weights: tuple[int, ...] = (3, 2, 1)) 
     seasons = entity["seasons"]
     games, points = seasons.get(latest, (0, 0.0))
     total = points
-    ppg = points / games if games else 0.0
+    # Display floor: a negative average (possible for DSTs and deep bench guys)
+    # reads as noise on a draft board, so PPG never goes below zero.
+    ppg = max(points / games, 0.0) if games else 0.0
     num = den = 0.0
     for i, w in enumerate(weights):
         yr = latest - i
@@ -479,6 +481,19 @@ def compute_values(
     for ent in entities:
         ent["vor"] = ent["basis_value"] - replacement.get(ent["position"], 0.0)
     _assign_prices(entities, config, tier_smoothing=tier_smoothing, fixed_prices=fixed_prices)
+
+    # Prices must follow the tier order: manual tiers can rank players against
+    # their raw production, which would otherwise let a lower tier out-price a
+    # higher one (e.g. tier-4 QBs at $1 under a $19 tier-5). Keep the computed
+    # dollar *distribution* but reassign it along each position's (tier, value)
+    # order. Explicit market pins (fixed_prices) stay with their player.
+    pinned = set(fixed_prices or ())
+    for group in by_position.values():
+        order = sorted(group, key=lambda e: (e["tier"], -e["basis_value"]))
+        movable = [e for e in order if e["key"] not in pinned]
+        pool = sorted((e["dollars"] for e in movable), reverse=True)
+        for ent, dollars in zip(movable, pool):
+            ent["dollars"] = dollars
 
     # Overall rank across all positions, by value.
     for rank, ent in enumerate(sorted(entities, key=lambda e: e["basis_value"], reverse=True), 1):

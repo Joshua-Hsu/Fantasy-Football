@@ -122,6 +122,14 @@ three value bases (total / ppg / w3yr), a k-means `kmeans_tier`, an effective
 `tier` (manual override if supplied), `vor`, and `dollars`. Pricing is VOR with
 replacement levels from `LeagueConfig` (a real RB/WR/TE **flex pool** in
 `_replacement_values`), scaled to the budget pool and **smoothed within tier**.
+Two invariants: displayed `ppg` is clamped at 0 (negatives read as noise), and
+when manual tiers reorder players away from raw production, the computed dollar
+*distribution* is **reassigned along (tier, value) order** per position so a
+lower tier can never out-price a higher one. Related repair: early masters left
+a synthetic near-zero rating "ladder" on unrated players; `write_tiers_csv`
+treats any rating <= 0.5 (for a player with real production) as unrated and
+reseeds it from value, and `build_webapp_data` ignores such seeds — without
+this the tier derivation sees phantom gaps and emits singleton tiers.
 k-means is pure-Python (`kmeans_1d`) so this module needs no extra dependency.
 Manual tiers (the league's real tiers, from Yahoo prices + H2H) come in via the
 CLI `values --export`/`--tiers-file` CSV round-trip, keyed by entity `key`
@@ -141,12 +149,17 @@ both new tables are created by `create_all`, so no DB rebuild is needed.
 **Draft packet (`export.py`).** `cheatsheet` CLI writes the packet .xlsx
 (optional `export` extra, openpyxl): per-position tabs in tier sections — tier
 note (hand-written, from the master CSV's `tier_note` column; auto "$ range"
-label otherwise) | Team | last-yr fantasy PPG | Starter | Rec$ | Bid | backup
-PPG | most-likely backup | Bid — plus a **Team Stats** tab (HC/OC, PF, yards,
-plays, Y/P, skill depth chart), a **Top 200** box-stats tab, and the live
-**Draft Board** sheet whose recommended prices are Excel formulas — marking a
-player drafted + the price they went for re-prices the rest for auction
-inflation. Backups come from nflverse's ESPN **depth charts**
+label otherwise) | Team | last-yr fantasy PPG | Starter | Tgt%/Rush% (RB/WR;
+TE gets Tgt%) | Rec$ | Bid | backup PPG | most-likely backup | Bid — plus a
+**Team Stats** tab (HC/OC, PF, PA + PA/G, yards + yards/G, plays, Y/P,
+pass/rush yards + attempts + ranks, TD split, **vacated Tgt%/Rush%** = last-yr
+volume of players who left, and the QB/RB1/RB2/WR1-3/TE depth chart), a
+**Top 200** box-stats tab (kickers excluded), and the live **Draft Board**
+sheet whose recommended prices are Excel formulas — marking a player drafted +
+the price they went for re-prices the rest for auction inflation. The board's
+**PosBid** column mirrors each player's Bid cell on his position tab, and
+Paid/Drafted default from it (overridable), so writing a bid on a position tab
+drives the inflation math automatically. Backups come from nflverse's ESPN **depth charts**
 (`depth_backups`/`depth_starters` in the ingest module; slot-aware, so LWR2
 backs up LWR1), overridable via a committed `depth_overrides.csv`
 (player,backup), with a same-team next-in-board heuristic as final fallback.

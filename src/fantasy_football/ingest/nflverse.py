@@ -732,19 +732,21 @@ def latest_depth_chart(year: int) -> pd.DataFrame:
         df = _fetch_depth_charts(year)
     except Exception:  # noqa: BLE001 - offseason: this year's file may 404
         df = _fetch_depth_charts(year - 1)
-    # Column names vary slightly across vintages; pick what's present.
+    # Column names vary across vintages. Old files: club_code / depth_team /
+    # depth_position / position / full_name / week. 2026+ files: team /
+    # pos_rank / pos_slot / pos_abb / player_name / dt (chart date).
     cols = {c.lower(): c for c in df.columns}
     team_c = cols.get("club_code") or cols.get("team")
-    week_c = cols.get("week")
-    rank_c = cols.get("depth_team") or cols.get("depth")
-    slot_c = cols.get("depth_position") or cols.get("position")
-    pos_c = cols.get("position") or cols.get("depth_position")
+    week_c = cols.get("week") or cols.get("dt")
+    rank_c = cols.get("depth_team") or cols.get("depth") or cols.get("pos_rank")
+    slot_c = cols.get("depth_position") or cols.get("pos_slot") or cols.get("position")
+    pos_c = cols.get("position") or cols.get("pos_abb") or cols.get("depth_position")
     gsis_c = cols.get("gsis_id")
-    name_c = cols.get("full_name") or cols.get("football_name")
+    name_c = cols.get("full_name") or cols.get("player_name") or cols.get("football_name")
     if not all((team_c, rank_c, pos_c, name_c)):
         raise ValueError(f"unrecognized depth chart columns: {list(df.columns)}")
     if week_c is not None:
-        # dt-typed weeks (some vintages) sort fine; keep only the newest chart.
+        # Weeks and ISO date strings both sort correctly; keep the newest chart.
         df = df[df[week_c] == df[week_c].max()]
     out = pd.DataFrame(
         {
@@ -779,14 +781,14 @@ def depth_backups(year: int) -> dict[str, tuple[str | None, str]]:
 
 
 def depth_starters(year: int) -> dict[tuple[str, str], list[str]]:
-    """{(team, pos): [starter names in slot order]} for the Team Stats sheet.
+    """{(team, pos): [names in depth order]} for the Team Stats sheet.
 
-    Rank-1 players only; multi-slot positions (WR) yield one starter per slot.
+    Ordered by (rank, slot): all rank-1 players first (one per slot for WR),
+    then rank-2, etc. — so ``[:1]`` is the starter, ``[1]`` is RB2/backup.
     """
     df = latest_depth_chart(year)
     out: dict[tuple[str, str], list[str]] = {}
-    starters = df[df["rank"] == 1].sort_values("slot")
-    for row in starters.itertuples():
+    for row in df.sort_values(["rank", "slot"]).itertuples():
         out.setdefault((row.team, row.pos), [])
         if row.name not in out[(row.team, row.pos)]:
             out[(row.team, row.pos)].append(row.name)
