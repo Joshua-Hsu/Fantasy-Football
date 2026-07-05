@@ -138,12 +138,20 @@ ratings to produce `{key: tier}` that flows into `compute_values(manual_tiers=)`
 (optional `web` extra) launched with `python -m fantasy_football.cli serve`;
 both new tables are created by `create_all`, so no DB rebuild is needed.
 
-**Draft board (`export.py`).** `cheatsheet` CLI writes an .xlsx (optional
-`export` extra, openpyxl): static per-position tier sheets plus a live **Draft
-Board** sheet whose recommended prices are Excel formulas — marking a player
-drafted + the price they went for re-prices the rest for auction inflation
-(allocation weight = recommended − $1; remaining pool/slots shrink). Pure
-in-sheet formulas, no recompute needed.
+**Draft packet (`export.py`).** `cheatsheet` CLI writes the packet .xlsx
+(optional `export` extra, openpyxl): per-position tabs in tier sections — tier
+note (hand-written, from the master CSV's `tier_note` column; auto "$ range"
+label otherwise) | Team | last-yr fantasy PPG | Starter | Rec$ | Bid | backup
+PPG | most-likely backup | Bid — plus a **Team Stats** tab (HC/OC, PF, yards,
+plays, Y/P, skill depth chart), a **Top 200** box-stats tab, and the live
+**Draft Board** sheet whose recommended prices are Excel formulas — marking a
+player drafted + the price they went for re-prices the rest for auction
+inflation. Backups come from nflverse's ESPN **depth charts**
+(`depth_backups`/`depth_starters` in the ingest module; slot-aware, so LWR2
+backs up LWR1), overridable via a committed `depth_overrides.csv`
+(player,backup), with a same-team next-in-board heuristic as final fallback.
+Depth release files are blocked from the web sandbox (fetch fails → heuristic);
+they work in GitHub Actions.
 
 **Master tiers + weekly loop.** `master_tiers.<date>.csv` is the base used
 everywhere. It carries a continuous **`rating`** column (the user rating from the

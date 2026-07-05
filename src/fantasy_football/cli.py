@@ -222,6 +222,39 @@ def _read_ratings(path: str | None) -> dict[str, float]:
     return ratings
 
 
+def _read_tier_notes(path: str | None) -> dict[tuple[str, int], str]:
+    """Read hand-written tier descriptions from a master CSV's ``tier_note``.
+
+    Keyed by (position, tier). The note is stored on every row of its tier;
+    the first non-empty one wins. Same hardening: lenient parsing, size caps,
+    bad rows skipped, note length clamped.
+    """
+    import csv
+    import os
+
+    if not path or not os.path.exists(path):
+        return {}
+    notes: dict[tuple[str, int], str] = {}
+    with open(path, newline="") as fh:
+        reader = csv.DictReader(fh)
+        fields = reader.fieldnames or []
+        if not {"tier_note", "pos", "manual_tier"} <= set(fields):
+            return {}
+        for i, row in enumerate(reader):
+            if i >= _MAX_TIERS_ROWS:
+                break
+            note = (row.get("tier_note") or "").strip()
+            pos = (row.get("pos") or "").strip().upper()
+            if not note or not pos:
+                continue
+            try:
+                tier = int(float((row.get("manual_tier") or "").strip()))
+            except ValueError:
+                continue
+            notes.setdefault((pos, tier), note[:200])
+    return notes
+
+
 def _merge_ratings(paths: list[str], base: dict[str, float]) -> dict[str, float]:
     """Merge the ``rating`` columns of several pick exports into one map.
 
@@ -337,11 +370,16 @@ def _cmd_import_tiers(args: argparse.Namespace) -> int:
     existing_prices.update(_read_fixed_prices(getattr(args, "prices_from", None)))
     existing_prices.update(_read_fixed_prices(args.out))
 
+    # Tier notes carry forward from the previous master (incoming pick files
+    # don't have them). Note: tiers are re-derived, so if the boundaries move a
+    # note may land on a shifted group — review them after a rebuild.
+    notes = _read_tier_notes(getattr(args, "prices_from", None))
+
     with _open_session(args) as session:
         write_tiers_csv(
             session, args.out,
             ratings=ratings or None, tiers=legacy_tiers or None,
-            prices=existing_prices,
+            prices=existing_prices, notes=notes or None,
         )
     print(f"Merged {len(files)} pick file(s) -> {args.out}: "
           f"{len(ratings)} ratings (base carried: {len(base_ratings)}), "
@@ -434,7 +472,35 @@ def _cmd_coaching_template(args: argparse.Namespace) -> int:
     return 0
 
 
+def _read_depth_overrides(path: str | None) -> dict[str, str]:
+    """Read manual backup corrections: CSV with ``player,backup`` columns.
+
+    Keyed by the starter's name (lowercased). Wins over the fetched depth
+    chart, so you can hand-fix any slot you disagree with.
+    """
+    import csv
+    import os
+
+    if not path or not os.path.exists(path):
+        return {}
+    out: dict[str, str] = {}
+    with open(path, newline="") as fh:
+        reader = csv.DictReader(fh)
+        if not {"player", "backup"} <= set(reader.fieldnames or []):
+            return {}
+        for i, row in enumerate(reader):
+            if i >= _MAX_TIERS_ROWS:
+                break
+            player = (row.get("player") or "").strip()
+            backup = (row.get("backup") or "").strip()
+            if player and backup:
+                out[player.lower()] = backup[:64]
+    return out
+
+
 def _cmd_cheatsheet(args: argparse.Namespace) -> int:
+    import datetime as _dt
+
     from .export import write_cheatsheet
     from .scoring import PRESETS
     from .valuation import LeagueConfig
@@ -442,13 +508,31 @@ def _cmd_cheatsheet(args: argparse.Namespace) -> int:
     config = LeagueConfig(teams=args.teams, budget=args.budget)
     manual = _read_manual_tiers(getattr(args, "tiers_file", None))
     prices = _read_fixed_prices(getattr(args, "tiers_file", None))
+    notes = _read_tier_notes(getattr(args, "tiers_file", None))
+    overrides = _read_depth_overrides(getattr(args, "depth_overrides", None))
+
+    # Real depth charts (nflverse/ESPN) drive the "most likely backup" column;
+    # on any fetch failure the packet falls back to the same-team heuristic.
+    backups: dict = {}
+    starters: dict = {}
+    if not getattr(args, "no_depth", False):
+        from .ingest import depth_backups, depth_starters
+
+        depth_year = args.year or _dt.date.today().year
+        try:
+            backups = depth_backups(depth_year)
+            starters = depth_starters(depth_year)
+        except Exception as exc:  # noqa: BLE001 - packet still builds without depth
+            print(f"warning: depth charts unavailable ({exc}); using heuristic backups")
+
     with _open_session(args) as session:
         path = write_cheatsheet(
             session, args.out, year=args.year, config=config,
             rules=PRESETS[args.scoring], basis=args.basis,
-            manual_tiers=manual, fixed_prices=prices,
+            manual_tiers=manual, fixed_prices=prices, tier_notes=notes,
+            backups=backups, starters=starters, backup_overrides=overrides,
         )
-    print(f"Wrote tiered draft board to {path}")
+    print(f"Wrote draft packet to {path}")
     return 0
 
 
@@ -610,6 +694,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_sheet.add_argument("--budget", type=int, default=200)
     p_sheet.add_argument("--tiers-file", default=None, dest="tiers_file",
                         help="CSV of hard-set tiers (key,manual_tier) to override computed tiers")
+    p_sheet.add_argument("--depth-overrides", default="depth_overrides.csv", dest="depth_overrides",
+                        help="CSV of manual backup fixes (player,backup); wins over depth charts")
+    p_sheet.add_argument("--no-depth", action="store_true", dest="no_depth",
+                        help="Skip fetching depth charts (backups fall back to the heuristic)")
     p_sheet.set_defaults(func=_cmd_cheatsheet)
 
     p_webapp = sub.add_parser("build-webapp", help="Generate docs/data.js for the static pick game")

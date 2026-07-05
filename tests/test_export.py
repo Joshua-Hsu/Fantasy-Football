@@ -114,7 +114,7 @@ def test_master_round_trip_rating_and_derived_tiers(session, tmp_path):
     write_tiers_csv(session, str(out), ratings=ratings, prices={"prb0": 42.0}, year=2025,
                     config=LeagueConfig(teams=1))
     text = out.read_text()
-    assert text.splitlines()[0].startswith("key,manual_tier,rating,name")
+    assert text.splitlines()[0].startswith("key,manual_tier,rating,tier_note,name")
     back = _read_ratings(str(out))
     assert back["prb0"] == 500.0
     # Boosted prb0 lands in the top tier.
@@ -122,6 +122,100 @@ def test_master_round_trip_rating_and_derived_tiers(session, tmp_path):
     rows = {r["key"]: r for r in _csv.DictReader(out.open())}
     assert int(rows["prb0"]["manual_tier"]) == 1
     assert rows["prb0"]["price"] == "42.0"
+
+
+def test_packet_position_sheet_layout_and_tabs(session, tmp_path):
+    """Position tabs use the packet layout; Team Stats and Top 200 exist."""
+    _seed(session)
+    out = tmp_path / "packet.xlsx"
+    write_cheatsheet(
+        session, str(out), year=2025, config=LeagueConfig(teams=1),
+        tier_notes={("RB", 1): "Bell cows - pay up"},
+        backups={"rb0": ("rb5", "RB5")},          # depth chart: RB5 backs up RB0
+        starters={("GB", "RB"): ["RB0"], ("GB", "QB"): ["Some QB"]},
+        backup_overrides={"rb1": "Hand Picked"},  # manual fix wins for RB1
+    )
+    from openpyxl import load_workbook
+
+    wb = load_workbook(out)
+    for tab in ("Draft Board", "RB", "Team Stats", "Top 200"):
+        assert tab in wb.sheetnames
+
+    ws = wb["RB"]
+    assert [c.value for c in ws[1][:9]] == [
+        "Tier", "Team", "PPG", "Starter", "Rec$", "Bid", "Bkp PPG", "Backup", "Bkp Bid"]
+    # Row 2 = best RB: hand-written tier note + depth-chart backup.
+    assert ws["A2"].value == "Bell cows - pay up"
+    assert ws["D2"].value == "RB0"
+    assert ws["H2"].value == "RB5"
+    # RB1's backup comes from the manual override.
+    rows = {ws.cell(row=r, column=4).value: r for r in range(2, ws.max_row + 1)}
+    assert ws.cell(row=rows["RB1"], column=8).value == "Hand Picked"
+    # A later RB with no depth entry falls back to next same-team RB.
+    assert ws.cell(row=rows["RB2"], column=8).value == "RB3"
+
+    ts = wb["Team Stats"]
+    header = [c.value for c in ts[1]]
+    assert header[:5] == ["Rk", "Team", "HC", "OC", "PF"]
+    gb_row = next(r for r in range(2, ts.max_row + 1) if ts.cell(row=r, column=2).value == "GB")
+    assert ts.cell(row=gb_row, column=5).value == 20            # PF from game score
+    assert ts.cell(row=gb_row, column=13).value == "Some QB"    # depth-chart starter
+
+    t2 = wb["Top 200"]
+    assert [c.value for c in t2[1][:7]] == ["Rk", "Player", "Tm", "Pos", "G", "FPTS", "PPG"]
+    assert t2["B2"].value == "RB0"        # top scorer first
+
+
+def test_depth_chart_mapping(monkeypatch):
+    """Slot-aware backups: LWR2 backs up LWR1, not the other starting WR."""
+    import pandas as pd
+
+    from fantasy_football.ingest import nflverse as nv
+
+    df = pd.DataFrame({
+        "club_code": ["GNB"] * 4 + ["CHI"] * 2,
+        "week": [3, 3, 3, 3, 3, 3],
+        "depth_team": [1, 2, 1, 2, 1, 2],
+        "position": ["WR", "WR", "WR", "WR", "QB", "QB"],
+        "depth_position": ["LWR", "LWR", "RWR", "RWR", "QB", "QB"],
+        "gsis_id": ["w1", "w2", "w3", "w4", "q1", "q2"],
+        "full_name": ["Lwr One", "Lwr Two", "Rwr One", "Rwr Two", "Qb One", "Qb Two"],
+    })
+    monkeypatch.setattr(nv, "_fetch_depth_charts", lambda year: df)
+
+    backups = nv.depth_backups(2025)
+    assert backups["w1"] == ("w2", "Lwr Two")   # same slot, not the RWR
+    assert backups["w3"] == ("w4", "Rwr Two")
+    assert backups["q1"] == ("q2", "Qb Two")
+    assert "w2" not in backups                   # deepest player has no backup
+
+    starters = nv.depth_starters(2025)
+    assert starters[("GB", "WR")] == ["Lwr One", "Rwr One"]  # GNB normalized to GB
+    assert starters[("CHI", "QB")] == ["Qb One"]
+
+
+def test_tier_notes_round_trip(session, tmp_path):
+    """Notes written per tier come back via the CLI reader (carry-forward path)."""
+    _seed(session)
+    from fantasy_football.cli import _read_tier_notes
+    from fantasy_football.export import write_tiers_csv
+
+    out = tmp_path / "master.csv"
+    write_tiers_csv(session, str(out), ratings={"prb0": 500.0, "prb1": 120.0},
+                    notes={("RB", 1): "Proven elite vets"}, year=2025,
+                    config=LeagueConfig(teams=1))
+    notes = _read_tier_notes(str(out))
+    assert notes[("RB", 1)] == "Proven elite vets"
+
+
+def test_read_depth_overrides(tmp_path):
+    from fantasy_football.cli import _read_depth_overrides
+
+    p = tmp_path / "depth_overrides.csv"
+    p.write_text("player,backup\nBijan Robinson,Tyler Allgeier\n,missing\nX,\n")
+    over = _read_depth_overrides(str(p))
+    assert over == {"bijan robinson": "Tyler Allgeier"}
+    assert _read_depth_overrides(str(tmp_path / "nope.csv")) == {}
 
 
 def test_safe_cell_guards_formulas():
