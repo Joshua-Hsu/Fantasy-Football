@@ -1,7 +1,10 @@
 name: Draft Board
 
-# Builds the tiered auction draft board (.xlsx) from nflverse data and uploads
-# it as a workflow artifact. Run it on demand from the Actions tab.
+# Builds the draft packet (.xlsx) from nflverse data and uploads it as a
+# workflow artifact: per-position tier tabs (tier notes, starter + most likely
+# backup from real depth charts, bid columns), a live auction Draft Board,
+# Team Stats, and a Top 200 box-stats tab. Run on demand from the Actions tab.
+# Backup fixes: commit a depth_overrides.csv (player,backup) to correct slots.
 on:
   workflow_dispatch:
     inputs:
@@ -73,22 +76,25 @@ jobs:
             python -m fantasy_football.cli load-coaching --file coaching.csv
           fi
 
-      - name: Generate draft board
+      - name: Generate draft packet
         run: |
-          # Build from the newest committed master tiers file (your picks/prices).
+          # Build from the newest committed master tiers file (your picks,
+          # prices, and hand-written tier_note column). Depth charts are
+          # fetched inside the cheatsheet command; depth_overrides.csv (if
+          # committed) wins for any starter it names.
           MASTER=$(ls -1 master_tiers.*.csv 2>/dev/null | sort | tail -1)
           TIERS=""
           [ -n "$MASTER" ] && TIERS="--tiers-file $MASTER" && echo "Using tiers: $MASTER"
           python -m fantasy_football.cli cheatsheet \
-            --out draft_board.xlsx $TIERS \
+            --out draft_packet.xlsx $TIERS \
             --basis "${{ inputs.basis }}" \
             --scoring "${{ inputs.scoring }}" \
             --teams "${{ inputs.teams }}" \
             --budget "${{ inputs.budget }}"
 
-      - name: Upload draft board
+      - name: Upload draft packet
         uses: actions/upload-artifact@v4
         with:
-          name: draft-board
-          path: draft_board.xlsx
+          name: draft-packet
+          path: draft_packet.xlsx
           retention-days: 30

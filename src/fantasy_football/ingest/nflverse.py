@@ -55,6 +55,10 @@ PBP_URL = (
     "https://github.com/nflverse/nflverse-data/releases/download/"
     "pbp/play_by_play_{year}.parquet"
 )
+DEPTH_URL = (
+    "https://github.com/nflverse/nflverse-data/releases/download/"
+    "depth_charts/depth_charts_{year}.csv"
+)
 
 # Team-code aliases: roster/draft sources use a few codes that differ from the
 # canonical nflverse stats codes. Normalize so current_team/team join correctly.
@@ -701,6 +705,92 @@ def load_coaching(session: Session, path: str) -> int:
             updated += 1
     session.commit()
     return updated
+
+
+def _fetch_depth_charts(year: int) -> pd.DataFrame:
+    return _read(lambda: pd.read_csv(DEPTH_URL.format(year=year), low_memory=False))
+
+
+# ESPN depth-chart position labels folded onto our fantasy positions.
+_DEPTH_POS = {
+    "QB": "QB", "RB": "RB", "HB": "RB", "FB": "RB", "TB": "RB",
+    "WR": "WR", "LWR": "WR", "RWR": "WR", "SWR": "WR",
+    "TE": "TE", "PK": "K", "K": "K",
+}
+
+
+def latest_depth_chart(year: int) -> pd.DataFrame:
+    """The most recent published depth chart for ``year``, tidied.
+
+    One row per (team, slot, rank, player) with normalized columns:
+    ``team`` (canonical abbr), ``pos`` (fantasy position), ``slot`` (the source
+    depth slot, e.g. LWR vs RWR — backups are per-slot), ``rank`` (1 = starter),
+    ``gsis_id``, ``name``. Falls back to the prior season's chart if ``year``
+    has none published yet (early offseason).
+    """
+    try:
+        df = _fetch_depth_charts(year)
+    except Exception:  # noqa: BLE001 - offseason: this year's file may 404
+        df = _fetch_depth_charts(year - 1)
+    # Column names vary slightly across vintages; pick what's present.
+    cols = {c.lower(): c for c in df.columns}
+    team_c = cols.get("club_code") or cols.get("team")
+    week_c = cols.get("week")
+    rank_c = cols.get("depth_team") or cols.get("depth")
+    slot_c = cols.get("depth_position") or cols.get("position")
+    pos_c = cols.get("position") or cols.get("depth_position")
+    gsis_c = cols.get("gsis_id")
+    name_c = cols.get("full_name") or cols.get("football_name")
+    if not all((team_c, rank_c, pos_c, name_c)):
+        raise ValueError(f"unrecognized depth chart columns: {list(df.columns)}")
+    if week_c is not None:
+        # dt-typed weeks (some vintages) sort fine; keep only the newest chart.
+        df = df[df[week_c] == df[week_c].max()]
+    out = pd.DataFrame(
+        {
+            "team": df[team_c].map(lambda v: _norm_team(_opt_str(v))),
+            "pos": df[pos_c].map(lambda v: _DEPTH_POS.get((_opt_str(v) or "").upper())),
+            "slot": df[slot_c].map(lambda v: (_opt_str(v) or "").upper()),
+            "rank": df[rank_c].map(_opt_int),
+            "gsis_id": df[gsis_c].map(_opt_str) if gsis_c else None,
+            "name": df[name_c].map(_opt_str),
+        }
+    )
+    out = out.dropna(subset=["team", "pos", "rank", "name"])
+    return out[out["pos"].isin({"QB", "RB", "WR", "TE", "K"})]
+
+
+def depth_backups(year: int) -> dict[str, tuple[str | None, str]]:
+    """{gsis_id: (backup_gsis_id, backup_name)} from the latest depth chart.
+
+    A player's "most likely backup" is the next rank in his own depth slot
+    (LWR2 backs up LWR1 — not the other starting WR), falling back to the
+    position-wide next rank for teams that list a single column.
+    """
+    df = latest_depth_chart(year)
+    out: dict[str, tuple[str | None, str]] = {}
+    for (_team, _pos, _slot), grp in df.groupby(["team", "pos", "slot"]):
+        ordered = grp.sort_values("rank").drop_duplicates("rank")
+        rows = list(ordered.itertuples())
+        for cur, nxt in zip(rows, rows[1:]):
+            if cur.gsis_id:
+                out[cur.gsis_id] = (nxt.gsis_id, nxt.name)
+    return out
+
+
+def depth_starters(year: int) -> dict[tuple[str, str], list[str]]:
+    """{(team, pos): [starter names in slot order]} for the Team Stats sheet.
+
+    Rank-1 players only; multi-slot positions (WR) yield one starter per slot.
+    """
+    df = latest_depth_chart(year)
+    out: dict[tuple[str, str], list[str]] = {}
+    starters = df[df["rank"] == 1].sort_values("slot")
+    for row in starters.itertuples():
+        out.setdefault((row.team, row.pos), [])
+        if row.name not in out[(row.team, row.pos)]:
+            out[(row.team, row.pos)].append(row.name)
+    return out
 
 
 def _fetch_pbp(year: int) -> pd.DataFrame:
