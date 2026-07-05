@@ -262,6 +262,38 @@ def test_monotonic_prices_follow_manual_tiers(session):
         assert min(by_tier[hi]) >= max(by_tier[lo])  # monotonic down the board
 
 
+def test_small_gap_between_near_equals_does_not_split_tier():
+    """An 8.6-point dip on a 312-point scale (Gibbs vs Bijan) shares a tier."""
+    from fantasy_football.valuation import assign_sized_tiers
+
+    # Real shape of the RB master: two near-equals up top, a real cliff, then a
+    # long smooth tail whose tiny gaps would otherwise drag the threshold down.
+    values = [312.5, 303.9, 283.7, 271.7, 261.5, 261.2, 255.9, 250.3, 247.2]
+    values += [float(v) for v in range(228, 80, -4)]  # smooth 4-point-gap tail
+    keys = [f"k{i}" for i in range(len(values))]
+    tiers = assign_sized_tiers(keys, values, 8)
+    assert tiers["k0"] == tiers["k1"]            # Gibbs + Bijan together
+    assert tiers["k1"] != tiers["k2"]            # the 20-point cliff still breaks
+
+
+def test_unified_tiers_unmastered_player_cannot_outrank(session):
+    """A player missing from the master slots in by value - his tier can never
+    beat a mastered player who out-rates him (the Kyren/Corum inversion)."""
+    from fantasy_football.export import build_board
+
+    _seed(session)
+    # Master rated only the top three RBs; rb3-rb5 are absent from it.
+    overrides = {"prb0": 300.0, "prb1": 280.0, "prb2": 250.0}
+    board = build_board(session, year=2025, config=LeagueConfig(teams=1),
+                        rating_overrides=overrides)
+    rbs = {r.name: r for r in board["RB"]}
+    # Unmastered rb3 (lower production) must not out-tier mastered rb2.
+    assert rbs["RB3"].tier >= rbs["RB2"].tier
+    # And the board order follows production/rating order throughout.
+    ordered = [r.name for r in board["RB"]]
+    assert ordered == [f"RB{i}" for i in range(6)]
+
+
 def test_qb_price_cap_and_redistribution(session):
     """Elite QB dollars clamp at the market cap; the excess flows to the field."""
     from fantasy_football.valuation import compute_values

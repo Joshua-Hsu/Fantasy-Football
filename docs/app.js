@@ -42,10 +42,19 @@
     s.comps = s.comps || {};
     s.picks = s.picks || 0;
     s.notes = s.notes || {};   // {pos: {tier: "hand-written tier description"}}
+    var healed = false;
     ALL.forEach(function (e) {              // seed any missing
       if (s.ratings[e.key] == null) s.ratings[e.key] = e.seed;
       if (s.comps[e.key] == null) s.comps[e.key] = 0;
+      // Heal ratings cached from the poisoned-ladder era: a stored value near
+      // zero for a player the data now seeds on the real scale was never a
+      // genuine pick result - re-baseline him from the fresh seed.
+      if (s.ratings[e.key] <= 0.5 && e.seed > 0.5) {
+        s.ratings[e.key] = e.seed;
+        healed = true;
+      }
     });
+    if (healed) localStorage.setItem(STORE, JSON.stringify(s));
     return s;
   }
   function save(s) { localStorage.setItem(STORE, JSON.stringify(s)); }
@@ -124,6 +133,9 @@
     var gaps = []; for (var g = 0; g < n - 1; g++) gaps.push(values[g] - values[g + 1]);
     var positive = gaps.filter(function (x) { return x > 0; }).sort(function (a, b) { return a - b; });
     var thr = positive.length ? positive[Math.floor(0.75 * (positive.length - 1))] : Infinity;
+    // Floor: a break needs >= 5% of the position's spread, so a 2-3% dip
+    // between near-equals never splits a tier (mirrors assign_sized_tiers).
+    if (n > 1) thr = Math.max(thr, 0.05 * (values[0] - values[n - 1]));
     var tier = 1, count = 0, i = 0;
     while (i < n) {
       labels[i] = tier; count++;
