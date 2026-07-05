@@ -259,6 +259,10 @@
 </head>
 <body>
 <div id="app">Loading…</div>
+<script>
+  // Commit-to-GitHub proxy (Cloudflare Worker holding the write token).
+  window.FF_CONFIG = { workerUrl: "https://ff-commit-worker.joshuahsu2.workers.dev" };
+</script>
 <script src="data.js?v=20260705"></script>
 <script src="app.js?v=20260706c"></script>
 </body>
