@@ -41,6 +41,7 @@
     s.ratings = s.ratings || {};
     s.comps = s.comps || {};
     s.picks = s.picks || 0;
+    s.notes = s.notes || {};   // {pos: {tier: "hand-written tier description"}}
     ALL.forEach(function (e) {              // seed any missing
       if (s.ratings[e.key] == null) s.ratings[e.key] = e.seed;
       if (s.comps[e.key] == null) s.comps[e.key] = 0;
@@ -169,6 +170,7 @@
       "<div class='pos-grid'>" + g + "</div>" +
       "<div class='actions'>" +
       "<button class='btn btn-primary' onclick='FF.commitPicks()'>&#128640; Commit to GitHub</button>" +
+      "<button class='btn' onclick=\"location.hash='#/packet'\">&#128424; My draft packet</button>" +
       "<button class='btn' onclick='FF.exportTiers()'>&#11015; Export tiers CSV</button>" +
       "<label class='btn' style='cursor:pointer'>&#11014; Import tiers CSV" +
       "<input type='file' accept='.csv' style='display:none' onchange='FF.importTiers(this)'></label>" +
@@ -217,19 +219,119 @@
   function rank(pos) {
     var tiers = tiersFor(pos);
     var pool = (DATA[pos] || []).slice().sort(function (a, b) { return S.ratings[b.key] - S.ratings[a.key]; });
-    var rows = pool.map(function (e, i) {
-      return "<tr><td>" + (i + 1) + "</td><td>" + esc(e.name) + (e.rookie ? " <span class='badge'>R</span>" : "") +
+    var rows = "", lastTier = null;
+    pool.forEach(function (e, i) {
+      var t = tiers[e.key];
+      if (t !== lastTier) {
+        lastTier = t;
+        var note = (S.notes[pos] || {})[t] || "";
+        rows += "<tr class='tier-head'><td colspan='6'><span class='tier'>" + t + "</span> " +
+          "<input class='note-input' placeholder='Describe this tier (shows on your packet)…' " +
+          "value=\"" + esc(note) + "\" " +
+          "oninput=\"FF.setNote('" + pos + "'," + t + ",this.value)\"></td></tr>";
+      }
+      rows += "<tr><td>" + (i + 1) + "</td><td>" + esc(e.name) + (e.rookie ? " <span class='badge'>R</span>" : "") +
         "</td><td>" + esc(e.team) + "</td><td>" + Math.round(S.ratings[e.key]) +
-        "</td><td><span class='tier'>" + tiers[e.key] + "</span></td><td>" + S.comps[e.key] + "</td></tr>";
-    }).join("");
+        "</td><td><span class='tier'>" + t + "</span></td><td>" + S.comps[e.key] + "</td></tr>";
+    });
     app.innerHTML = nav(" &middot; <a href='#/play/" + pos + "'>play " + pos + "</a>") +
-      "<h1>" + pos + " ranking</h1><p class='lead'>Ordered by your user rating; tiers via k-means on ratings.</p>" +
+      "<h1>" + pos + " ranking</h1><p class='lead'>Ordered by your user rating; tiers via k-means " +
+      "on ratings. Name each tier &mdash; the notes become section labels on your draft packet.</p>" +
       "<div class='table-wrap'><table><thead><tr><th>#</th><th>Player</th><th>Tm</th><th>Rating</th><th>Tier</th><th>Picks</th></tr></thead>" +
       "<tbody>" + rows + "</tbody></table></div>";
   }
 
+  function packet() {
+    var D = window.FF_DATA || {};
+    var secs = "";
+    ORDER.forEach(function (pos) {
+      var pool = (DATA[pos] || []).slice();
+      if (!pool.length) return;
+      var tiers = tiersFor(pos);
+      pool.sort(function (a, b) {
+        return (tiers[a.key] - tiers[b.key]) || (S.ratings[b.key] - S.ratings[a.key]);
+      });
+      var hasBkp = pos !== "DST";
+      var cols = hasBkp ? 9 : 6;
+      var head = "<tr><th class='note-col'>Tier</th><th>Tm</th><th>PPG</th><th>Starter</th>" +
+        "<th>$</th><th>Bid</th>" +
+        (hasBkp ? "<th>Bkp PPG</th><th>Backup</th><th>Bid</th>" : "") + "</tr>";
+      var body = "", lastTier = null;
+      pool.forEach(function (e) {
+        var t = tiers[e.key], first = t !== lastTier;
+        if (first && lastTier !== null) body += "<tr class='tier-gap'><td colspan='" + cols + "'></td></tr>";
+        lastTier = t;
+        var label = "";
+        if (first) {
+          label = (S.notes[pos] || {})[t] || "";
+          if (!label) {
+            var ps = pool.filter(function (x) { return tiers[x.key] === t && x.price != null; })
+              .map(function (x) { return x.price; });
+            label = "Tier " + t + (ps.length
+              ? " — $" + Math.round(Math.min.apply(null, ps)) + "-" + Math.round(Math.max.apply(null, ps))
+              : "");
+          }
+        }
+        body += "<tr><td class='note-col'>" + esc(label) + "</td><td>" + esc(e.team) +
+          "</td><td>" + (e.rookie ? "R" : e.ppg) + "</td><td class='pk-name'>" + esc(e.name) +
+          "</td><td>" + (e.price != null ? "$" + Math.round(e.price) : "") + "</td><td class='bid'></td>" +
+          (hasBkp
+            ? "<td>" + (e.bkp_ppg != null && e.bkp_ppg !== "" ? e.bkp_ppg : "") + "</td><td>" +
+              esc(e.bkp || "") + "</td><td class='bid'></td>"
+            : "") +
+          "</tr>";
+      });
+      secs += "<section class='pk-sec'><h2>" + pos + "</h2><div class='table-wrap'>" +
+        "<table class='pk'><thead>" + head + "</thead><tbody>" + body + "</tbody></table></div></section>";
+    });
+
+    var extra = "";
+    if (D.teams && D.teams.length) {
+      var trs = D.teams.map(function (t, i) {
+        return "<tr><td>" + (i + 1) + "</td><td>" + esc(t.team) + "</td><td>" + esc(t.hc) +
+          "</td><td>" + esc(t.oc) + "</td><td>" + t.pf + "</td><td>" + t.yds + "</td><td>" + t.plays +
+          "</td><td>" + t.ypp + "</td><td>" + t.pass + "</td><td>" + t.passRk + "</td><td>" + t.rush +
+          "</td><td>" + t.rushRk + "</td><td>" + esc(t.qb) + "</td><td>" + esc(t.rb) +
+          "</td><td>" + esc(t.wr1) + "</td><td>" + esc(t.wr2) + "</td><td>" + esc(t.wr3) +
+          "</td><td>" + esc(t.te) + "</td></tr>";
+      }).join("");
+      extra += "<section class='pk-sec'><h2>Team Stats</h2><div class='table-wrap'>" +
+        "<table class='pk'><thead><tr><th>Rk</th><th>Tm</th><th>HC</th><th>OC</th><th>PF</th>" +
+        "<th>Yds</th><th>Plays</th><th>Y/P</th><th>Pass</th><th>Rk</th><th>Rush</th><th>Rk</th>" +
+        "<th>QB</th><th>RB</th><th>WR1</th><th>WR2</th><th>WR3</th><th>TE</th></tr></thead>" +
+        "<tbody>" + trs + "</tbody></table></div></section>";
+    }
+    if (D.top200 && D.top200.length) {
+      var hs = (D.top200_headers || []).map(function (h) { return "<th>" + esc(h) + "</th>"; }).join("");
+      var rs = D.top200.map(function (row, i) {
+        return "<tr><td>" + (i + 1) + "</td>" + row.map(function (v, j) {
+          return "<td" + (j === 0 ? " class='pk-name'" : "") + ">" + esc(v) + "</td>";
+        }).join("") + "</tr>";
+      }).join("");
+      extra += "<section class='pk-sec'><h2>Top 200</h2><div class='table-wrap'>" +
+        "<table class='pk'><thead><tr><th>#</th>" + hs + "</tr></thead><tbody>" + rs +
+        "</tbody></table></div></section>";
+    }
+    if (!extra) {
+      extra = "<p class='muted'>Team Stats / Top 200 need a regenerated data.js " +
+        "(run the Rebuild Master Tiers action).</p>";
+    }
+
+    app.innerHTML = nav(" &middot; <span class='muted'>my packet</span>") +
+      "<div class='no-print'><h1>My draft packet</h1><p class='lead'>Built from your ratings and " +
+      "tier notes. Print it (or save as PDF) and write bids in the blank columns.</p>" +
+      "<div class='actions'><button class='btn btn-primary' onclick='window.print()'>&#128424; Print / Save PDF</button></div></div>" +
+      "<div class='packet'>" + secs + extra + "</div>";
+  }
+
   // ---- public actions ----
   window.FF = {
+    setNote: function (pos, tier, text) {
+      S.notes[pos] = S.notes[pos] || {};
+      text = String(text || "").slice(0, 200);
+      if (text) S.notes[pos][tier] = text; else delete S.notes[pos][tier];
+      save(S);
+    },
     choose: function (winner, loser, pos) { pick(winner, loser); play(pos); },
     again: function (pos) { play(pos); },
     noPick: function (a, b, pos) {
@@ -283,9 +385,11 @@
     exportTiers: function () {
       // key + manual_tier first (so the CLI/Action can read it), then human
       // columns (name/pos/rookie) so you can edit it by hand in a spreadsheet.
+      // tier_note repeats your tier description on each row of the tier, the
+      // same layout the master CSV uses, so notes survive the round trip.
       var q = function (s) { return '"' + String(s == null ? "" : s).replace(/"/g, '""') + '"'; };
       var HEADERS = (window.FF_DATA && window.FF_DATA.stat_headers) || [];
-      var lines = [["key,manual_tier,rating,name,pos,team,rookie,total,ppg"].concat(HEADERS).join(",")];
+      var lines = [["key,manual_tier,rating,tier_note,name,pos,team,rookie,total,ppg"].concat(HEADERS).join(",")];
       ORDER.forEach(function (p) {
         var t = tiersFor(p);
         var pool = (DATA[p] || []).slice().sort(function (a, b) {
@@ -295,6 +399,7 @@
           var c = e.cols || {};
           // rating is the continuous user rating the rebuild action averages.
           var row = [e.key, t[e.key], Math.round(S.ratings[e.key] * 100) / 100,
+                     q((S.notes[p] || {})[t[e.key]] || ""),
                      q(e.name), e.pos, e.team || "", e.rookie ? 1 : 0, e.total, e.ppg];
           HEADERS.forEach(function (h) { row.push(c[h] == null ? "" : c[h]); });
           lines.push(row.join(","));
@@ -307,28 +412,55 @@
     importTiers: function (input) {
       var file = input.files && input.files[0];
       if (!file) return;
+      // Quote-aware CSV field split (notes/names may contain commas).
+      var splitCsv = function (line) {
+        var out = [], cur = "", inQ = false;
+        for (var i = 0; i < line.length; i++) {
+          var ch = line[i];
+          if (inQ) {
+            if (ch === '"' && line[i + 1] === '"') { cur += '"'; i++; }
+            else if (ch === '"') { inQ = false; }
+            else cur += ch;
+          } else if (ch === '"') { inQ = true; }
+          else if (ch === ",") { out.push(cur); cur = ""; }
+          else cur += ch;
+        }
+        out.push(cur);
+        return out;
+      };
       var reader = new FileReader();
       reader.onload = function () {
         var lines = String(reader.result).split(/\r?\n/).filter(function (l) { return l.trim(); });
         // Header-aware: find the key / rating / manual_tier columns by name.
         var hasHeader = /^\s*key\s*,/i.test(lines[0]);
-        var cols = hasHeader ? lines[0].split(",").map(function (s) { return s.trim().toLowerCase(); }) : [];
+        var cols = hasHeader ? splitCsv(lines[0]).map(function (s) { return s.trim().toLowerCase(); }) : [];
         var iKey = hasHeader ? cols.indexOf("key") : 0;
         var iRating = hasHeader ? cols.indexOf("rating") : -1;
         var iTier = hasHeader ? cols.indexOf("manual_tier") : 1;
+        var iNote = hasHeader ? cols.indexOf("tier_note") : -1;
+        var iPos = hasHeader ? cols.indexOf("pos") : -1;
         var n = 0;
         for (var i = hasHeader ? 1 : 0; i < lines.length; i++) {
-          var parts = lines[i].split(",");
+          var parts = splitCsv(lines[i]);
           var key = (parts[iKey] || "").trim();
           if (!key || !(key in S.ratings)) continue;
           var rating = iRating >= 0 ? parseFloat(parts[iRating]) : NaN;
+          var tier = parseInt(parts[iTier], 10);
           if (!isNaN(rating)) {
             S.ratings[key] = rating;            // continuous master rating: use as-is
           } else {
-            var tier = parseInt(parts[iTier], 10);
             if (!tier) continue;
             var e = BYKEY[key];                 // legacy tiers-only file: anchor by tier
             S.ratings[key] = (8 - tier) * 40 + (e ? e.seed * 0.001 : 0);
+          }
+          // Bring tier notes along (keyed by the file's pos + tier).
+          if (iNote >= 0 && iPos >= 0 && tier) {
+            var note = (parts[iNote] || "").trim();
+            var pos = (parts[iPos] || "").trim().toUpperCase();
+            if (note && pos) {
+              S.notes[pos] = S.notes[pos] || {};
+              if (!S.notes[pos][tier]) S.notes[pos][tier] = note.slice(0, 200);
+            }
           }
           n++;
         }
@@ -344,6 +476,7 @@
     var h = location.hash || "#/";
     var m = h.match(/^#\/play\/(\w+)/); if (m) return play(m[1]);
     m = h.match(/^#\/rank\/(\w+)/); if (m) return rank(m[1]);
+    if (h.indexOf("#/packet") === 0) return packet();
     home();
   }
   window.addEventListener("hashchange", route);

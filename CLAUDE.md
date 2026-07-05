@@ -153,6 +153,16 @@ backs up LWR1), overridable via a committed `depth_overrides.csv`
 Depth release files are blocked from the web sandbox (fetch fails → heuristic);
 they work in GitHub Actions.
 
+**Personal packet (in-app).** The Tier Builder also renders a printable
+**personal** draft packet at `#/packet` (print → PDF), built entirely from the
+browser's own ratings + tier notes — no server. The rank view (`#/rank/<pos>`)
+has an editable note input per tier (stored in localStorage `S.notes`, exported/
+imported via the CSV's `tier_note` column). To power it, `build-webapp` embeds
+in `data.js`: per-entity `price` (master Rec$), `bkp`/`bkp_ppg` (most-likely
+backup, same resolution as the packet), plus payload-level `teams` (coaching,
+PF, offense totals, depth starters) and `top200` box-stats tables. The app
+degrades gracefully when `data.js` predates these fields.
+
 **Master tiers + weekly loop.** `master_tiers.<date>.csv` is the base used
 everywhere. It carries a continuous **`rating`** column (the user rating from the
 pick game) alongside the integer `manual_tier` (derived from the rating via

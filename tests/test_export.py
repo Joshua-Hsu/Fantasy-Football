@@ -218,6 +218,36 @@ def test_read_depth_overrides(tmp_path):
     assert _read_depth_overrides(str(tmp_path / "nope.csv")) == {}
 
 
+def test_webapp_payload_carries_packet_data(session, tmp_path):
+    """data.js embeds prices, backups, the teams table, and the top-200 table."""
+    import json
+
+    from fantasy_football.export import write_webapp_data
+
+    _seed(session)
+    out = tmp_path / "data.js"
+    write_webapp_data(
+        session, str(out), year=2025, config=LeagueConfig(teams=1),
+        prices={"prb0": 57.0},
+        backups={"rb0": ("rb5", "RB5")},
+        starters={("GB", "QB"): ["Some QB"], ("GB", "WR"): ["W One", "W Two"]},
+        backup_overrides={"rb1": "Hand Picked"},
+    )
+    payload = json.loads(out.read_text().split("window.FF_DATA = ", 1)[1].rstrip(";\n"))
+
+    rbs = {e["name"]: e for e in payload["positions"]["RB"]}
+    assert rbs["RB0"]["price"] == 57.0
+    assert rbs["RB0"]["bkp"] == "RB5"            # depth chart
+    assert rbs["RB1"]["bkp"] == "Hand Picked"    # manual override wins
+    assert rbs["RB2"]["bkp"] == "RB3"            # heuristic: next same-team RB
+
+    gb = next(t for t in payload["teams"] if t["team"] == "GB")
+    assert gb["pf"] == 20 and gb["qb"] == "Some QB" and gb["wr2"] == "W Two"
+
+    assert payload["top200"][0][0] == "RB0"      # best scorer first
+    assert len(payload["top200_headers"]) == len(payload["top200"][0])
+
+
 def test_safe_cell_guards_formulas():
     from fantasy_football.export import _safe_cell
 

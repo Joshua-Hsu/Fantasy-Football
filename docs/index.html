@@ -148,11 +148,44 @@
     .cards{ grid-template-columns:1fr; }
     h1{ font-size:1.8rem; }
   }
+
+  /* ---- Tier notes (rank view) ---- */
+  tr.tier-head td {
+    background:var(--surface-2); text-align:left; padding:.45rem .8rem;
+  }
+  .note-input {
+    font:inherit; font-size:.86rem; color:var(--ink);
+    background:var(--surface); border:1px solid var(--line); border-radius:8px;
+    padding:.3rem .55rem; width:min(34rem, 75%);
+  }
+  .note-input:focus { outline:none; border-color:var(--accent); }
+
+  /* ---- Personal draft packet ---- */
+  .packet h2 { font-size:1.3rem; letter-spacing:-.01em; margin:1.6rem 0 .5rem; }
+  .pk-sec { margin-bottom:1rem; }
+  table.pk { font-size:.82rem; }
+  table.pk th, table.pk td { padding:.32rem .5rem; }
+  table.pk td.note-col { text-align:left; max-width:15rem; font-size:.78rem; color:var(--muted); }
+  table.pk th.note-col { text-align:left; }
+  table.pk td.pk-name { text-align:left; font-weight:600; }
+  table.pk td.bid { min-width:3rem; background:var(--surface-2); }
+  tr.tier-gap td { border-bottom:2px solid var(--ink); padding:0; height:.4rem; background:var(--surface-2); }
+
+  @media print {
+    .nav, .no-print, .actions { display:none !important; }
+    body { max-width:none; padding:0; background:#fff; color:#000; }
+    .table-wrap { border:1px solid #999; box-shadow:none; border-radius:0; overflow:visible; }
+    table.pk { font-size:8.5pt; }
+    .packet h2 { break-before:page; page-break-before:always; margin-top:0; }
+    .packet section:first-child h2 { break-before:auto; page-break-before:auto; }
+    thead { display:table-header-group; }   /* repeat headers across pages */
+    tr { break-inside:avoid; }
+  }
 </style>
 </head>
 <body>
 <div id="app">Loading…</div>
 <script src="data.js?v=20260605"></script>
-<script src="app.js?v=20260613"></script>
+<script src="app.js?v=20260615"></script>
 </body>
 </html>
