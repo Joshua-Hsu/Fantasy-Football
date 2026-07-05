@@ -149,6 +149,35 @@
     h1{ font-size:1.8rem; }
   }
 
+  /* ---- Card stat strip + team-offense ranks ---- */
+  .seg { white-space:nowrap; font-variant-numeric:tabular-nums; }
+  .seg b { font-weight:700; font-size:.85rem; color:var(--ink); }
+  .seg i {
+    font-style:normal; color:var(--muted);
+    font-size:.64rem; margin-left:.18rem;
+    text-transform:uppercase; letter-spacing:.04em;
+  }
+  .seg.good b { color:var(--accent-ink); }
+  .seg.bad b { color:var(--down); }
+  .tm-rank {
+    display:flex; flex-wrap:nowrap; gap:.7rem; align-items:baseline;
+    overflow:hidden; margin-top:.2rem; font-size:.8rem;
+  }
+  .tm-rank .tm-lab {
+    color:var(--muted); font-size:.64rem; font-weight:700;
+    text-transform:uppercase; letter-spacing:.05em; white-space:nowrap;
+  }
+  .statline {
+    display:flex; flex-wrap:nowrap; gap:.75rem; justify-content:space-between;
+    overflow:hidden; margin-top:.55rem; padding-top:.45rem;
+    border-top:1px solid var(--line);
+  }
+  @media (max-width:520px){
+    .statline { gap:.45rem; }
+    .statline .seg b, .tm-rank .seg b { font-size:.78rem; }
+    .seg i { font-size:.58rem; }
+  }
+
   /* ---- Tier notes (rank view) ---- */
   tr.tier-head td {
     background:var(--surface-2); text-align:left; padding:.45rem .8rem;
@@ -186,6 +215,6 @@
 <body>
 <div id="app">Loading…</div>
 <script src="data.js?v=20260705"></script>
-<script src="app.js?v=20260705b"></script>
+<script src="app.js?v=20260705c"></script>
 </body>
 </html>
