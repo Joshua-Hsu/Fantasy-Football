@@ -51,6 +51,36 @@ class BoardRow(NamedTuple):
     is_rookie: bool
 
 
+def effective_pool_ratings(
+    session: Session,
+    rating_overrides: dict[str, float] | None,
+    *,
+    year: int | None = None,
+    config: LeagueConfig = DEFAULT_LEAGUE,
+    rules: ScoringRules = DEFAULT_RULES,
+    basis: str = "w3yr",
+) -> tuple[dict[str, float], dict[str, int]]:
+    """One rating + ONE tier numbering for the whole draftable pool.
+
+    The master's continuous rating where a player has one (ladder-guarded, see
+    write_tiers_csv), his production value otherwise — both on the same scale —
+    then tiers derived from those ratings across the full pool. This is the fix
+    for mixing two independently-numbered tier schemes (master vs value k-means),
+    which let a backup missing from the master out-tier his own starter.
+    """
+    pre = compute_values(session, year=year, config=config, rules=rules, basis=basis)
+    by_key = {r.key: r for rows in pre.values() for r in rows}
+    overrides = rating_overrides or {}
+    eff: dict[str, float] = {}
+    for key, r in by_key.items():
+        o = overrides.get(key)
+        if o is not None and (o > 0.5 or r.basis_value <= 0.5):
+            eff[key] = o
+        else:
+            eff[key] = r.basis_value
+    return eff, derive_tiers_from_ratings(eff, by_key)
+
+
 def build_board(
     session: Session,
     *,
@@ -60,23 +90,32 @@ def build_board(
     basis: str = "w3yr",
     manual_tiers: dict[str, int] | None = None,
     fixed_prices: dict[str, float] | None = None,
+    rating_overrides: dict[str, float] | None = None,
 ) -> dict[str, list[BoardRow]]:
     """Per-position rows grouped by tier, with within-tier and overall ranks.
 
-    Tiers come from the head-to-head user ratings; any explicit ``manual_tiers``
-    (hand-set or exported from the pick game) are shown verbatim, taking
-    precedence. ``fixed_prices`` pins expected market prices for specific
+    With ``rating_overrides`` (the master's continuous ratings) the whole pool
+    gets a single tier numbering via :func:`effective_pool_ratings` — players
+    absent from the master slot in by production value, so a lower producer can
+    never out-tier a higher one unless the user rated him higher. Without
+    overrides, falls back to the legacy DB user-rating tiers merged with
+    ``manual_tiers``. ``fixed_prices`` pins expected market prices for specific
     players; the field re-prices around them.
     """
-    seed_ratings(session, year=year, config=config, rules=rules, basis=basis)
-    tiers = user_rating_tiers(session)
-    if manual_tiers:
-        tiers = {**tiers, **manual_tiers}
+    if rating_overrides:
+        ratings, tiers = effective_pool_ratings(
+            session, rating_overrides, year=year, config=config, rules=rules, basis=basis
+        )
+    else:
+        seed_ratings(session, year=year, config=config, rules=rules, basis=basis)
+        tiers = user_rating_tiers(session)
+        if manual_tiers:
+            tiers = {**tiers, **manual_tiers}
+        ratings = {r.key: r.rating for r in session.scalars(select(UserRating))}
     values = compute_values(
         session, year=year, config=config, rules=rules, basis=basis, manual_tiers=tiers,
         fixed_prices=fixed_prices,
     )
-    ratings = {r.key: r.rating for r in session.scalars(select(UserRating))}
 
     board: dict[str, list[BoardRow]] = {}
     for pos in ALL_POSITIONS:
@@ -162,8 +201,17 @@ def build_webapp_data(
     else:
         caps = {**DEFAULT_WEBAPP_DEPTH, **(depth or {})}
 
+    # With master ratings, tier/price the whole pool on ONE numbering (players
+    # missing from the master slot in by value) — same fix as the packet.
+    # manual_tiers itself stays as the master's keys: it also drives pool
+    # retention below, which must not balloon to every player.
+    tier_map = manual_tiers
+    if seed_overrides:
+        _eff, tier_map = effective_pool_ratings(
+            session, seed_overrides, year=year, config=config, rules=rules, basis=basis
+        )
     values = compute_values(
-        session, year=year, config=config, rules=rules, basis=basis, manual_tiers=manual_tiers
+        session, year=year, config=config, rules=rules, basis=basis, manual_tiers=tier_map
     )
     coaching = {
         t.abbreviation: (t.head_coach or "", t.offensive_coordinator or "")
@@ -946,6 +994,7 @@ def write_cheatsheet(
     backups: dict[str, tuple[str | None, str]] | None = None,
     starters: dict[tuple[str, str], list[str]] | None = None,
     backup_overrides: dict[str, str] | None = None,
+    ratings: dict[str, float] | None = None,
 ) -> str:
     """Write the draft packet to an .xlsx file. Returns the path.
 
@@ -969,6 +1018,7 @@ def write_cheatsheet(
     board = build_board(
         session, year=year, config=config, rules=rules, basis=basis,
         manual_tiers=manual_tiers, fixed_prices=fixed_prices,
+        rating_overrides=ratings,
     )
     tier_notes = tier_notes or {}
     backups = backups or {}

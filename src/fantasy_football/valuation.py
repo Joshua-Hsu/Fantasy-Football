@@ -216,8 +216,12 @@ def assign_sized_tiers(ranked_keys: list[str], values: list[float], k: int,
     capped = max(k - 2, 1)
     gaps = [values[j] - values[j + 1] for j in range(n - 1)]
     positive = sorted(g for g in gaps if g > 0)
-    # A "notable" drop = top quartile of gaps; these become tier boundaries.
+    # A "notable" drop = top quartile of gaps, but never less than 5% of the
+    # position's full spread. The long smooth tail makes the quartile tiny; a
+    # 2-3% dip between near-equals (Gibbs vs Bijan) must not split a tier.
+    spread = values[0] - values[-1] if n > 1 else 0.0
     thr = positive[int(0.75 * (len(positive) - 1))] if positive else float("inf")
+    thr = max(thr, 0.05 * spread)
 
     tier = 1
     count = 0

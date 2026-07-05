@@ -554,6 +554,7 @@ def _cmd_cheatsheet(args: argparse.Namespace) -> int:
             rules=PRESETS[args.scoring], basis=args.basis,
             manual_tiers=manual, fixed_prices=prices, tier_notes=notes,
             backups=backups, starters=starters, backup_overrides=overrides,
+            ratings=_read_ratings(getattr(args, "tiers_file", None)),
         )
     print(f"Wrote draft packet to {path}")
     return 0

@@ -125,7 +125,12 @@ replacement levels from `LeagueConfig` (a real RB/WR/TE **flex pool** in
 Two invariants: displayed `ppg` is clamped at 0 (negatives read as noise), and
 when manual tiers reorder players away from raw production, the computed dollar
 *distribution* is **reassigned along (tier, value) order** per position so a
-lower tier can never out-price a higher one. `LeagueConfig.price_caps`
+lower tier can never out-price a higher one. Tier breaks require a gap >=
+max(top-quartile of gaps, 5% of the position's spread) so near-equals never
+split into singleton tiers. The packet/webapp use `effective_pool_ratings`
+(export.py) to put the WHOLE pool on one tier numbering — master rating where
+present, production value otherwise — so a backup missing from the master can
+never out-tier his starter. `LeagueConfig.price_caps`
 (default `{"QB": 30}`) encodes market behavior raw VOR misses: in a 1-QB
 league nobody pays RB1 money for a QB, so prices clamp at the cap and the
 excess redistributes to uncapped positions (CLI: `--price-cap POS=N`,
