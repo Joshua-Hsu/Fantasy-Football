@@ -442,7 +442,8 @@
       var rows = [];
       ALL.forEach(function (e) {
         if (Math.abs((S.ratings[e.key] || 0) - e.seed) > 0.001) {
-          rows.push(e.key + "," + (Math.round(S.ratings[e.key] * 100) / 100));
+          rows.push(e.key + "," + (Math.round(S.ratings[e.key] * 100) / 100) +
+                    "," + (S.comps[e.key] || 0));
         }
       });
       if (!rows.length) { alert("No picks to save yet - play a few matchups first."); return; }
@@ -451,7 +452,7 @@
               "See infra/commit-worker/README.md to deploy the proxy and set it.");
         return;
       }
-      var csv = "key,rating\n" + rows.join("\n") + "\n";
+      var csv = "key,rating,comps\n" + rows.join("\n") + "\n";
       var id = userId();
       var btn = document.querySelector(".btn-primary");
       if (btn) { btn.disabled = true; btn.textContent = "Saving…"; }
@@ -481,7 +482,7 @@
       // same layout the master CSV uses, so notes survive the round trip.
       var q = function (s) { return '"' + String(s == null ? "" : s).replace(/"/g, '""') + '"'; };
       var HEADERS = (window.FF_DATA && window.FF_DATA.stat_headers) || [];
-      var lines = [["key,manual_tier,rating,tier_note,name,pos,team,rookie,total,ppg"].concat(HEADERS).join(",")];
+      var lines = [["key,manual_tier,rating,comps,tier_note,name,pos,team,rookie,total,ppg"].concat(HEADERS).join(",")];
       ORDER.forEach(function (p) {
         var t = tiersFor(p);
         var pool = (DATA[p] || []).slice().sort(function (a, b) {
@@ -491,6 +492,7 @@
           var c = e.cols || {};
           // rating is the continuous user rating the rebuild action averages.
           var row = [e.key, t[e.key], Math.round(S.ratings[e.key] * 100) / 100,
+                     S.comps[e.key] || 0,
                      q((S.notes[p] || {})[t[e.key]] || ""),
                      q(e.name), e.pos, e.team || "", e.rookie ? 1 : 0, e.total, e.ppg];
           HEADERS.forEach(function (h) { row.push(c[h] == null ? "" : c[h]); });
@@ -531,6 +533,7 @@
         var iTier = hasHeader ? cols.indexOf("manual_tier") : 1;
         var iNote = hasHeader ? cols.indexOf("tier_note") : -1;
         var iPos = hasHeader ? cols.indexOf("pos") : -1;
+        var iComps = hasHeader ? cols.indexOf("comps") : -1;
         var n = 0;
         for (var i = hasHeader ? 1 : 0; i < lines.length; i++) {
           var parts = splitCsv(lines[i]);
@@ -540,6 +543,10 @@
           var tier = parseInt(parts[iTier], 10);
           if (!isNaN(rating)) {
             S.ratings[key] = rating;            // continuous master rating: use as-is
+            if (iComps >= 0) {                  // restore pick counts (device migration)
+              var cN = parseInt(parts[iComps], 10);
+              if (!isNaN(cN) && cN > 0) S.comps[key] = cN;
+            }
           } else {
             if (!tier) continue;
             var e = BYKEY[key];                 // legacy tiers-only file: anchor by tier

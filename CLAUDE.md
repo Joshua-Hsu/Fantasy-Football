@@ -199,10 +199,15 @@ user-rankings database. (The app's **Export** button is now just a personal CSV
 download, not part of the pipeline.) Two GitHub Actions close the loop:
 **Rebuild Master Tiers** (`master-tiers.yml`, run manually) runs `import-tiers
 --file picks/*.csv --prices-from <prev master>` which **averages the `rating`
-across all pick files** (one vote each via `_merge_ratings`), folds them onto the
-previous master (un-picked players carry forward), re-derives tiers, and
-regenerates `docs/data.js`; it does **not** clear `picks/`, so it's idempotent
-and can run repeatedly as users submit. **Archive Week** (`archive-week.yml`)
+across all pick files** (one vote each via `_merge_ratings`) and
+**confidence-blends** the result onto each player's anchor (prev-master rating,
+else production value): weight = `comps / (comps + 6)`, where `comps` is the
+total head-to-head comparisons of that player across all pick files (the app
+ships a `comps` column in commits/exports; legacy files without it get full
+weight). A couple of picks nudge a player; many picks dominate
+(`--confidence N` tunes it). Un-picked players carry forward, tiers re-derive,
+and `docs/data.js` regenerates; it does **not** clear `picks/`, so it's
+idempotent and can run repeatedly as users submit. **Archive Week** (`archive-week.yml`)
 runs **weekly** (cron, Tuesdays) — it snapshots the current master + `picks/*`
 into `archive/<date>/` and then **removes the pick files from `picks/`**, so each
 week's rebuilds drop last week's rankings and fresh submissions accumulate from

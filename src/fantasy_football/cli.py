@@ -278,6 +278,45 @@ def _read_tier_notes(path: str | None) -> dict[tuple[str, int], str]:
     return notes
 
 
+def _read_comps(path: str | None) -> dict[str, int]:
+    """Read per-player head-to-head comparison counts (``comps`` column).
+
+    Same hardening as the other readers; returns {} when the column is absent
+    (legacy pick files).
+    """
+    import csv
+    import os
+
+    if not path or not os.path.exists(path):
+        return {}
+    comps: dict[str, int] = {}
+    with open(path, newline="") as fh:
+        reader = csv.DictReader(fh)
+        if "comps" not in (reader.fieldnames or []):
+            return {}
+        for i, row in enumerate(reader):
+            if i >= _MAX_TIERS_ROWS:
+                break
+            key = (row.get("key") or "").strip()
+            value = (row.get("comps") or "").strip()
+            if not _KEY_RE.match(key) or not value:
+                continue
+            try:
+                comps[key] = max(0, min(int(float(value)), 100000))
+            except ValueError:
+                continue
+    return comps
+
+
+def _merge_comps(paths: list[str]) -> dict[str, int]:
+    """Total comparisons per player across every pick file (all users)."""
+    total: dict[str, int] = {}
+    for path in paths:
+        for key, n in _read_comps(path).items():
+            total[key] = total.get(key, 0) + n
+    return total
+
+
 def _merge_ratings(paths: list[str], base: dict[str, float]) -> dict[str, float]:
     """Merge the ``rating`` columns of several pick exports into one map.
 
@@ -367,18 +406,22 @@ def _cmd_values(args: argparse.Namespace) -> int:
 def _cmd_import_tiers(args: argparse.Namespace) -> int:
     """Rebuild the master tiers by merging one or more pick-game exports.
 
-    Each ``--file`` is an app export carrying a continuous ``rating`` column. The
-    ratings are averaged across all the files (one vote each), folded onto the
-    previous master's ratings (``--prices-from``) so un-compared players carry
-    forward, and the integer tiers are re-derived from the merged ratings. Prices
-    are preserved. Falls back to a file's integer ``manual_tier`` if it has no
-    ``rating`` column (legacy exports).
+    Each ``--file`` is an app export carrying continuous ``rating`` (and
+    ``comps``) columns. Ratings are averaged across the files (one vote each)
+    and **confidence-blended** onto the previous master's ratings
+    (``--prices-from``): a player's pull toward the league's pick-game view is
+    ``comps / (comps + confidence)``, so a couple of picks nudge him and many
+    picks dominate. Un-compared players carry forward; integer tiers re-derive
+    from the blended ratings; prices are preserved. Falls back to a file's
+    integer ``manual_tier`` if it has no ``rating`` column (legacy exports).
     """
     from .export import write_tiers_csv
 
     files = args.file if isinstance(args.file, list) else [args.file]
     base_ratings = _read_ratings(getattr(args, "prices_from", None))
-    ratings = _merge_ratings(files, base_ratings)
+    user_ratings = _merge_ratings(files, base={})   # picked players only
+    comps = _merge_comps(files)
+    ratings = _merge_ratings(files, base_ratings)   # legacy detection / counts
     # Legacy fallback: if no file carried a rating column, use the integer tiers.
     legacy_tiers: dict[str, int] = {}
     if not ratings:
@@ -401,12 +444,18 @@ def _cmd_import_tiers(args: argparse.Namespace) -> int:
     with _open_session(args) as session:
         write_tiers_csv(
             session, args.out,
-            ratings=ratings or None, tiers=legacy_tiers or None,
+            ratings=(base_ratings or None) if ratings else None,
+            user_ratings=user_ratings or None,
+            comps=comps or None,
+            confidence=getattr(args, "confidence", None) or 6,
+            tiers=legacy_tiers or None,
             prices=existing_prices, notes=notes or None,
         )
+    blended = sum(1 for k in user_ratings if comps.get(k))
     print(f"Merged {len(files)} pick file(s) -> {args.out}: "
-          f"{len(ratings)} ratings (base carried: {len(base_ratings)}), "
-          f"prices preserved: {len(existing_prices)}. Rebuild the board/app to apply.")
+          f"{len(user_ratings)} picked ({blended} confidence-blended; base carried: "
+          f"{len(base_ratings)}), prices preserved: {len(existing_prices)}. "
+          f"Rebuild the board/app to apply.")
     return 0
 
 
@@ -702,6 +751,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_import.add_argument("--out", default="manual_tiers.csv", help="Output CSV path")
     p_import.add_argument("--prices-from", default=None, dest="prices_from",
                          help="Previous master: carry its ratings (un-picked players) and prices forward")
+    p_import.add_argument("--confidence", type=int, default=6,
+                         help="Comparisons for a 50%% user-rating weight vs the anchor (default 6)")
     p_import.set_defaults(func=_cmd_import_tiers)
 
     p_draft = sub.add_parser("load-draft", help="Add incoming rookies (top rounds) to the pool")

@@ -469,6 +469,50 @@ def test_webapp_payload_carries_coach_flags(session, tmp_path):
     assert gbt["ocN"] == 1 and gbt["hcN"] == 0
 
 
+def test_confidence_blend_scales_with_comps(session, tmp_path):
+    """Few picks nudge a player off his anchor; many picks dominate."""
+    import csv as _csv
+
+    from fantasy_football.export import write_tiers_csv
+
+    _seed(session)
+    base = {"prb0": 300.0, "prb1": 200.0, "prb2": 200.0}
+    # Users rated rb1 and rb2 identically higher (260), but rb1 was compared
+    # 60 times and rb2 only twice.
+    write_tiers_csv(session, str(tmp_path / "m.csv"),
+                    ratings=base,
+                    user_ratings={"prb1": 260.0, "prb2": 260.0},
+                    comps={"prb1": 60, "prb2": 2}, confidence=6,
+                    year=2025, config=LeagueConfig(teams=1))
+    rows = {r["key"]: float(r["rating"]) for r in _csv.DictReader((tmp_path / "m.csv").open())}
+    assert rows["prb0"] == 300.0                       # untouched anchor
+    assert 250 < rows["prb1"] <= 260                   # 60 comps: ~91% of the way
+    assert 210 < rows["prb2"] < 230                    # 2 comps: ~25% of the way
+    assert rows["prb1"] > rows["prb2"]
+
+    # Legacy pick file (no comps info) keeps the full-override behavior.
+    write_tiers_csv(session, str(tmp_path / "m2.csv"),
+                    ratings=base, user_ratings={"prb1": 260.0}, comps={},
+                    year=2025, config=LeagueConfig(teams=1))
+    rows2 = {r["key"]: float(r["rating"]) for r in _csv.DictReader((tmp_path / "m2.csv").open())}
+    assert rows2["prb1"] == 260.0
+
+
+def test_read_comps_hardened(tmp_path):
+    from fantasy_football.cli import _merge_comps, _read_comps
+
+    p = tmp_path / "picks.csv"
+    p.write_text("key,rating,comps\nprb0,250,12\nprb1,240,\nbad key,1,5\nprb2,230,-3\n")
+    comps = _read_comps(str(p))
+    assert comps == {"prb0": 12, "prb2": 0}   # blank skipped, bad key skipped, clamped
+    q = tmp_path / "picks2.csv"
+    q.write_text("key,rating,comps\nprb0,260,8\n")
+    assert _merge_comps([str(p), str(q)]) == {"prb0": 20, "prb2": 0}
+    r = tmp_path / "legacy.csv"
+    r.write_text("key,rating\nprb0,260\n")
+    assert _read_comps(str(r)) == {}
+
+
 def test_safe_cell_guards_formulas():
     from fantasy_football.export import _safe_cell
 
