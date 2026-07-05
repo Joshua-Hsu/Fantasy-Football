@@ -125,7 +125,11 @@ replacement levels from `LeagueConfig` (a real RB/WR/TE **flex pool** in
 Two invariants: displayed `ppg` is clamped at 0 (negatives read as noise), and
 when manual tiers reorder players away from raw production, the computed dollar
 *distribution* is **reassigned along (tier, value) order** per position so a
-lower tier can never out-price a higher one. Related repair: early masters left
+lower tier can never out-price a higher one. `LeagueConfig.price_caps`
+(default `{"QB": 30}`) encodes market behavior raw VOR misses: in a 1-QB
+league nobody pays RB1 money for a QB, so prices clamp at the cap and the
+excess redistributes to uncapped positions (CLI: `--price-cap POS=N`,
+repeatable; `POS=0` removes). Related repair: early masters left
 a synthetic near-zero rating "ladder" on unrated players; `write_tiers_csv`
 treats any rating <= 0.5 (for a player with real production) as unrated and
 reseeds it from value, and `build_webapp_data` ignores such seeds — without

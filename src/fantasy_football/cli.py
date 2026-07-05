@@ -222,6 +222,29 @@ def _read_ratings(path: str | None) -> dict[str, float]:
     return ratings
 
 
+def _league_config(args: argparse.Namespace):
+    """Build the LeagueConfig from CLI args, including --price-cap overrides.
+
+    ``--price-cap POS=N`` (repeatable) replaces the default cap for POS;
+    ``POS=0`` removes it entirely.
+    """
+    from .valuation import LeagueConfig
+
+    caps = dict(LeagueConfig().price_caps)
+    for spec in getattr(args, "price_caps", None) or []:
+        pos, _, num = spec.partition("=")
+        pos = pos.strip().upper()
+        try:
+            value = float(num)
+        except ValueError:
+            raise SystemExit(f"bad --price-cap {spec!r}; expected POS=NUMBER")
+        if value > 0:
+            caps[pos] = value
+        else:
+            caps.pop(pos, None)
+    return LeagueConfig(teams=args.teams, budget=args.budget, price_caps=caps)
+
+
 def _read_tier_notes(path: str | None) -> dict[tuple[str, int], str]:
     """Read hand-written tier descriptions from a master CSV's ``tier_note``.
 
@@ -281,7 +304,7 @@ def _cmd_values(args: argparse.Namespace) -> int:
     from .scoring import PRESETS
     from .valuation import ALL_POSITIONS, LeagueConfig, compute_values
 
-    config = LeagueConfig(teams=args.teams, budget=args.budget)
+    config = _league_config(args)
     manual_tiers = _read_manual_tiers(args.tiers_file)
     fixed_prices = _read_fixed_prices(args.tiers_file)
 
@@ -505,7 +528,7 @@ def _cmd_cheatsheet(args: argparse.Namespace) -> int:
     from .scoring import PRESETS
     from .valuation import LeagueConfig
 
-    config = LeagueConfig(teams=args.teams, budget=args.budget)
+    config = _league_config(args)
     manual = _read_manual_tiers(getattr(args, "tiers_file", None))
     prices = _read_fixed_prices(getattr(args, "tiers_file", None))
     notes = _read_tier_notes(getattr(args, "tiers_file", None))
@@ -543,7 +566,7 @@ def _cmd_build_webapp(args: argparse.Namespace) -> int:
     from .scoring import PRESETS
     from .valuation import LeagueConfig
 
-    config = LeagueConfig(teams=args.teams, budget=args.budget)
+    config = _league_config(args)
     manual = _read_manual_tiers(getattr(args, "tiers_file", None))
     seeds = _read_ratings(getattr(args, "tiers_file", None))  # seed app from master rating
     prices = _read_fixed_prices(getattr(args, "tiers_file", None))
@@ -648,6 +671,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_values.add_argument("--limit", type=int, default=20, help="Rows per position (default 20)")
     p_values.add_argument("--teams", type=int, default=12, help="League size (default 12)")
     p_values.add_argument("--budget", type=int, default=200, help="Auction budget (default 200)")
+    p_values.add_argument("--price-cap", action="append", dest="price_caps",
+                        metavar="POS=N", help="Market price ceiling, e.g. QB=30 (repeatable; POS=0 removes the default QB cap)")
     p_values.add_argument(
         "--tiers-file", default=None, dest="tiers_file",
         help="CSV of manual tier overrides (columns: key,manual_tier)",
@@ -712,6 +737,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_sheet.add_argument("--scoring", choices=["standard", "half_ppr", "ppr"], default="half_ppr")
     p_sheet.add_argument("--teams", type=int, default=12)
     p_sheet.add_argument("--budget", type=int, default=200)
+    p_sheet.add_argument("--price-cap", action="append", dest="price_caps",
+                        metavar="POS=N", help="Market price ceiling, e.g. QB=30 (repeatable; POS=0 removes the default QB cap)")
     p_sheet.add_argument("--tiers-file", default=None, dest="tiers_file",
                         help="CSV of hard-set tiers (key,manual_tier) to override computed tiers")
     p_sheet.add_argument("--depth-overrides", default="depth_overrides.csv", dest="depth_overrides",
@@ -727,6 +754,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_webapp.add_argument("--scoring", choices=["standard", "half_ppr", "ppr"], default="half_ppr")
     p_webapp.add_argument("--teams", type=int, default=12)
     p_webapp.add_argument("--budget", type=int, default=200)
+    p_webapp.add_argument("--price-cap", action="append", dest="price_caps",
+                        metavar="POS=N", help="Market price ceiling, e.g. QB=30 (repeatable; POS=0 removes the default QB cap)")
     p_webapp.add_argument(
         "--depth", type=int, default=None,
         help="Max players per position in the pick game (default: draftable depth per position)",
