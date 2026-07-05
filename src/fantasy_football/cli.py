@@ -537,6 +537,8 @@ def _cmd_cheatsheet(args: argparse.Namespace) -> int:
 
 
 def _cmd_build_webapp(args: argparse.Namespace) -> int:
+    import datetime as _dt
+
     from .export import write_webapp_data
     from .scoring import PRESETS
     from .valuation import LeagueConfig
@@ -544,11 +546,29 @@ def _cmd_build_webapp(args: argparse.Namespace) -> int:
     config = LeagueConfig(teams=args.teams, budget=args.budget)
     manual = _read_manual_tiers(getattr(args, "tiers_file", None))
     seeds = _read_ratings(getattr(args, "tiers_file", None))  # seed app from master rating
+    prices = _read_fixed_prices(getattr(args, "tiers_file", None))
+    overrides = _read_depth_overrides(getattr(args, "depth_overrides", None))
+
+    # Depth charts feed the in-browser personal packet's backup column; on any
+    # fetch failure the app falls back to the same-team heuristic.
+    backups: dict = {}
+    starters: dict = {}
+    if not getattr(args, "no_depth", False):
+        from .ingest import depth_backups, depth_starters
+
+        depth_year = args.year or _dt.date.today().year
+        try:
+            backups = depth_backups(depth_year)
+            starters = depth_starters(depth_year)
+        except Exception as exc:  # noqa: BLE001 - app still builds without depth
+            print(f"warning: depth charts unavailable ({exc}); using heuristic backups")
+
     with _open_session(args) as session:
         path = write_webapp_data(
             session, args.out, year=args.year, config=config,
             rules=PRESETS[args.scoring], basis=args.basis, depth=args.depth,
-            manual_tiers=manual, seed_overrides=seeds,
+            manual_tiers=manual, seed_overrides=seeds, prices=prices,
+            backups=backups, starters=starters, backup_overrides=overrides,
         )
     print(f"Wrote pick-game data to {path}")
     return 0
@@ -713,6 +733,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_webapp.add_argument("--tiers-file", default=None, dest="tiers_file",
                          help="CSV of hard-set tiers (key,manual_tier) to pin in the game")
+    p_webapp.add_argument("--depth-overrides", default="depth_overrides.csv", dest="depth_overrides",
+                         help="CSV of manual backup fixes (player,backup); wins over depth charts")
+    p_webapp.add_argument("--no-depth", action="store_true", dest="no_depth",
+                         help="Skip fetching depth charts (backups fall back to the heuristic)")
     p_webapp.set_defaults(func=_cmd_build_webapp)
 
     return parser

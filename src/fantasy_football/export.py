@@ -129,6 +129,9 @@ def build_webapp_data(
     rookie_max_round: int = 3,
     manual_tiers: dict[str, int] | None = None,
     seed_overrides: dict[str, float] | None = None,
+    prices: dict[str, float] | None = None,
+    backups: dict[str, tuple[str | None, str]] | None = None,
+    backup_overrides: dict[str, str] | None = None,
 ) -> dict[str, list[dict]]:
     """Per-position player data for the static pick game (browser app).
 
@@ -143,11 +146,17 @@ def build_webapp_data(
     ``seed_overrides`` (by key) is the master's continuous rating: when present a
     player starts the game from that rating instead of raw value, so the app
     refines the master rather than starting from scratch each week.
+    ``prices`` (master Rec$ per key), ``backups`` (depth-chart gsis map) and
+    ``backup_overrides`` (starter name -> backup name) feed the in-browser
+    personal draft packet: each entity carries its price and most-likely backup.
     """
     from .models import Player, Team
 
     manual_tiers = manual_tiers or {}
     seed_overrides = seed_overrides or {}
+    prices = prices or {}
+    backups = backups or {}
+    backup_overrides = backup_overrides or {}
     if isinstance(depth, int):
         caps = {pos: depth for pos in ALL_POSITIONS}
     else:
@@ -175,6 +184,27 @@ def build_webapp_data(
     ages = _player_ages(session, (last_year or 0) + 1) if last_year else {}
     byes = _team_byes(session)
     tshares = _target_shares(session, last_year) if last_year else {}
+    totals = _fantasy_totals(session, last_year, rules) if last_year else []
+    fppg = {t[0]: t[6] for t in totals}
+    fname_ppg = {t[1].lower(): t[6] for t in totals}
+
+    def backup_for(r, pool) -> tuple[str, object]:
+        """(most-likely backup name, his fantasy PPG or "") — same resolution
+        order as the packet: manual override, depth chart, same-team next."""
+        override = backup_overrides.get(r.name.lower())
+        if override:
+            return override, fname_ppg.get(override.lower(), "")
+        gsis = r.key[1:] if r.key.startswith("p") else None
+        if gsis and gsis in backups:
+            bk_gsis, bk_name = backups[gsis]
+            return bk_name, fppg.get(f"p{bk_gsis}", "") if bk_gsis else ""
+        seen = False
+        for other in pool:  # value-sorted; the next same-team player after r
+            if other.key == r.key:
+                seen = True
+            elif seen and other.team == r.team:
+                return other.name, other.ppg
+        return "", ""
 
     # Where a rookie of each round slots into a position's value scale.
     round_slot = {1: 7, 2: 17, 3: 27}
@@ -189,7 +219,7 @@ def build_webapp_data(
             return seed_overrides[r.key]
         return fallback
 
-    def emit(r, seed):
+    def emit(r, seed, pool):
         hc, oc = coaching.get(r.team, ("", ""))
         rnd, pick = draft.get(r.key, (None, None))
         row = {
@@ -205,6 +235,13 @@ def build_webapp_data(
         # refines from there, so we deliberately don't lock a tier here.
         if r.is_rookie and rnd:
             row["draft"] = f"R{rnd} P{pick}"
+        if r.key in prices:
+            row["price"] = prices[r.key]
+        if r.position != "DST":
+            bk_name, bk_ppg = backup_for(r, pool)
+            if bk_name:
+                row["bkp"] = bk_name
+                row["bkp_ppg"] = bk_ppg
         return row
 
     def rookie_seed(r, vet_seeds):
@@ -264,7 +301,7 @@ def build_webapp_data(
                 have.add(r.key)
 
         chosen.sort(key=lambda x: x[1], reverse=True)
-        out[pos] = [emit(r, s) for r, s in chosen]
+        out[pos] = [emit(r, s, rows) for r, s in chosen]
     return out
 
 
@@ -279,15 +316,77 @@ def write_webapp_data(
     depth: int | dict[str, int] | None = None,
     manual_tiers: dict[str, int] | None = None,
     seed_overrides: dict[str, float] | None = None,
+    prices: dict[str, float] | None = None,
+    backups: dict[str, tuple[str | None, str]] | None = None,
+    starters: dict[tuple[str, str], list[str]] | None = None,
+    backup_overrides: dict[str, str] | None = None,
 ) -> str:
-    """Write the pick-game data as ``docs/data.js`` (``window.FF_DATA = {...}``)."""
+    """Write the pick-game data as ``docs/data.js`` (``window.FF_DATA = {...}``).
+
+    Besides the per-position pools, the payload carries everything the
+    in-browser personal draft packet needs: per-entity prices/backups (see
+    :func:`build_webapp_data`), a ``teams`` table (coaching, PF, offense totals,
+    skill depth chart) and a ``top200`` box-stats table.
+    """
     import json
+
+    from .models import Team
 
     data = build_webapp_data(
         session, year=year, config=config, rules=rules, basis=basis, depth=depth,
         manual_tiers=manual_tiers, seed_overrides=seed_overrides,
+        prices=prices, backups=backups, backup_overrides=backup_overrides,
     )
-    payload = {"basis": basis, "positions": data, "stat_headers": CSV_STAT_HEADERS}
+    starters = starters or {}
+    last_year = year or _latest_season(session)
+    totals = _fantasy_totals(session, last_year, rules) if last_year else []
+    pstats = _player_last_year(session, last_year) if last_year else {}
+    toff = _team_offense(session, last_year) if last_year else {}
+    pf = _team_points_for(session, last_year) if last_year else {}
+
+    teams_payload = []
+    for t in sorted(session.scalars(select(Team)), key=lambda t: -pf.get(t.abbreviation, 0)):
+        abbr = t.abbreviation
+        off = toff.get(abbr, {})
+        if not off and abbr not in pf:
+            continue
+        yds, plays = off.get("total_yards", 0), off.get("plays", 0)
+        wrs = starters.get((abbr, "WR"), [])
+        teams_payload.append({
+            "team": abbr, "hc": t.head_coach or "", "oc": t.offensive_coordinator or "",
+            "pf": pf.get(abbr, ""), "yds": yds or "", "plays": plays or "",
+            "ypp": round(yds / plays, 1) if plays else "",
+            "pass": off.get("pass", ""), "passRk": off.get("pass_rank", ""),
+            "rush": off.get("rush", ""), "rushRk": off.get("rush_rank", ""),
+            "qb": ", ".join(starters.get((abbr, "QB"), [])[:1]),
+            "rb": ", ".join(starters.get((abbr, "RB"), [])[:1]),
+            "wr1": wrs[0] if len(wrs) > 0 else "", "wr2": wrs[1] if len(wrs) > 1 else "",
+            "wr3": wrs[2] if len(wrs) > 2 else "",
+            "te": ", ".join(starters.get((abbr, "TE"), [])[:1]),
+        })
+
+    top200 = []
+    for key, name, pos, team, g, fpts, ppg in totals[:200]:
+        s = pstats.get(key, {})
+        top200.append([
+            name, team, pos, g, fpts, ppg,
+            s.get("pass_yards", 0), s.get("pass_touchdowns", 0),
+            s.get("interceptions_thrown", 0),
+            s.get("rush_attempts", 0), s.get("rush_yards", 0), s.get("rush_touchdowns", 0),
+            s.get("targets", 0), s.get("receptions", 0),
+            s.get("receiving_yards", 0), s.get("receiving_touchdowns", 0),
+            s.get("field_goals_made", 0), s.get("field_goals_attempted", 0),
+            s.get("extra_points_made", 0),
+        ])
+
+    payload = {
+        "basis": basis, "positions": data, "stat_headers": CSV_STAT_HEADERS,
+        "teams": teams_payload,
+        "top200_headers": ["Player", "Tm", "Pos", "G", "FPTS", "PPG",
+                           "PaYds", "PaTD", "INT", "RuAtt", "RuYds", "RuTD",
+                           "Tgt", "Rec", "ReYds", "ReTD", "FGM", "FGA", "XPM"],
+        "top200": top200,
+    }
     with open(path, "w") as fh:
         fh.write("// Generated by `fantasy_football build-webapp` - do not edit by hand.\n")
         fh.write("window.FF_DATA = ")
