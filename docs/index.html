@@ -149,6 +149,45 @@
     h1{ font-size:1.8rem; }
   }
 
+  /* ---- Duel screen: both cards fit the viewport, no scrolling ---- */
+  body:has(.duel) { padding-bottom:0; }
+  .duel {
+    display:flex; flex-direction:column;
+    height:100dvh; min-height:0; overflow:hidden;
+  }
+  .duel h1 { font-size:clamp(1.05rem, 4.2vh, 1.9rem); margin:.45rem 0 .45rem; }
+  .duel .nav { position:static; }
+  .duel .cards { flex:1; min-height:0; }
+  .duel .card { min-height:0; overflow:hidden; }
+  .duel .vs { margin:.6rem 0 .2rem; }
+  .vals {
+    display:flex; flex-wrap:nowrap; gap:.6rem; justify-content:space-between;
+    overflow:hidden; margin-top:.5rem; padding-top:.45rem;
+    border-top:1px solid var(--line);
+  }
+  .vals .seg b { font-size:1.05rem; }
+  @media (max-width:520px){
+    .duel .cards { grid-template-rows:minmax(0,1fr) minmax(0,1fr); }
+  }
+  /* Progressively condense on short screens so the cards always fit. */
+  @media (max-height:760px){
+    .duel .card { padding:.8rem .9rem; }
+    .duel .card .name { font-size:1.05rem; margin-bottom:.05rem; }
+    .duel .muted { font-size:.78rem; }
+    .duel .vals { margin-top:.35rem; padding-top:.3rem; }
+    .duel .vals .seg b { font-size:.95rem; }
+    .duel .statline { margin-top:.35rem; padding-top:.3rem; }
+  }
+  @media (max-height:640px){
+    .duel h1 { margin:.25rem 0; }
+    .duel .card { padding:.55rem .7rem; }
+    .duel .muted { font-size:.72rem; }
+    .duel .vals .seg b { font-size:.85rem; }
+    .duel .statline .seg b { font-size:.72rem; }
+    .duel .seg i { font-size:.54rem; }
+    .duel .btn { padding:.4rem .8rem; font-size:.85rem; }
+  }
+
   /* ---- New-to-role coach highlight ---- */
   .coach-new {
     background:var(--accent-soft); color:var(--accent-ink);
@@ -221,6 +260,6 @@
 <body>
 <div id="app">Loading…</div>
 <script src="data.js?v=20260705"></script>
-<script src="app.js?v=20260706"></script>
+<script src="app.js?v=20260706b"></script>
 </body>
 </html>

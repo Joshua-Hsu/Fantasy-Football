@@ -269,10 +269,11 @@
       "<div class='muted'>HC " + coachName(e.hc, e.hcN) + " &middot; OC " + coachName(e.oc, e.ocN) +
       "</div>" +
       teamRankLine(e) + draftLine +
-      "<div class='stats'>" +
-      "<div class='row'><span>Last-yr total</span><b>" + stat(e.total) + "</b></div>" +
-      "<div class='row'><span>Last-yr PPG</span><b>" + stat(e.ppg) + "</b></div>" +
-      "<div class='row'><span>3-yr weighted</span><b>" + stat(e.w3yr) + "</b></div></div>" +
+      "<div class='vals'>" +
+      "<span class='seg'><b>" + stat(e.total) + "</b><i>last yr</i></span>" +
+      "<span class='seg'><b>" + stat(e.ppg) + "</b><i>ppg</i></span>" +
+      "<span class='seg'><b>" + stat(e.w3yr) + "</b><i>3-yr wtd</i></span>" +
+      "</div>" +
       statLine(e);
   }
 
@@ -281,7 +282,8 @@
     if (!m) { app.innerHTML = nav() + "<h1>" + pos + "</h1><p>Not enough " + pos + " players.</p>"; return; }
     var a = m[0], b = m[1];
     lastPair = [a.key, b.key];  // next pair will avoid these two
-    app.innerHTML = nav(" &middot; <a href='#/rank/" + pos + "'>" + pos + " ranking</a>") +
+    app.innerHTML = "<div class='duel'>" +
+      nav(" &middot; <a href='#/rank/" + pos + "'>" + pos + " ranking</a>") +
       "<h1>" + pos + " &mdash; who'd you rather?</h1>" +
       "<div class='cards'>" +
         "<button class='card' onclick=\"FF.choose('" + a.key + "','" + b.key + "','" + pos + "')\">" + statBlock(a) + "</button>" +
@@ -290,7 +292,7 @@
         "<button class='btn' onclick=\"FF.again('" + pos + "')\">&#8635; different pair</button> " +
         "<button class='btn' onclick=\"FF.noPick('" + a.key + "','" + b.key + "','" + pos + "')\">" +
         "&#8856; no pick</button>" +
-      "</p>";
+      "</p></div>";
   }
 
   function rank(pos) {
