@@ -487,9 +487,9 @@ def _cmd_coaching_template(args: argparse.Namespace) -> int:
     teams = sorted(known & set(coaches)) or sorted(known)
     with open(args.out, "w", newline="") as fh:
         writer = csv.writer(fh)
-        writer.writerow(["team", "head_coach", "offensive_coordinator"])
+        writer.writerow(["team", "head_coach", "offensive_coordinator", "hc_new", "oc_new"])
         for team in teams:
-            writer.writerow([team, coaches.get(team, ""), ""])
+            writer.writerow([team, coaches.get(team, ""), "", "", ""])
     print(f"Wrote coaching template ({len(teams)} teams) to {args.out} "
           f"- fill OC, then load-coaching --file {args.out}")
     return 0

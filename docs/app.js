@@ -191,6 +191,15 @@
       "everyone in. Export is just your personal copy.</p>";
   }
 
+  function coachName(name, isNew) {
+    // Shade coaches new to the role this season - same soft-chip language as
+    // the rookie badge, so "highlighted = new" reads consistently.
+    if (!name) return "TBD";
+    return isNew
+      ? "<span class='coach-new' title='New to this role this season'>" + esc(name) + "</span>"
+      : esc(name);
+  }
+
   function statSegs(e) {
     // Position-aware last-year box line, built from the structured cols so we
     // can style value/label pairs instead of dumping a raw text string.
@@ -257,7 +266,7 @@
     return "<div class='name'>" + esc(e.name) + rookie + "</div>" +
       "<div class='muted'>" + esc(e.pos) + " &middot; " + esc(e.team || "TBD") +
       " &middot; Pos #" + posRank(e) + " &middot; Ovr #" + overallRank(e) + "</div>" +
-      "<div class='muted'>HC " + esc(e.hc || "TBD") + " &middot; OC " + esc(e.oc || "TBD") +
+      "<div class='muted'>HC " + coachName(e.hc, e.hcN) + " &middot; OC " + coachName(e.oc, e.ocN) +
       "</div>" +
       teamRankLine(e) + draftLine +
       "<div class='stats'>" +
@@ -362,8 +371,8 @@
     if (D.teams && D.teams.length) {
       var v = function (x) { return x == null ? "" : x; };
       var trs = D.teams.map(function (t, i) {
-        return "<tr><td>" + (i + 1) + "</td><td>" + esc(t.team) + "</td><td>" + esc(t.hc) +
-          "</td><td>" + esc(t.oc) + "</td><td>" + v(t.pf) + "</td><td>" + v(t.pa) +
+        return "<tr><td>" + (i + 1) + "</td><td>" + esc(t.team) + "</td><td class='pk-name'>" + coachName(t.hc, t.hcN) +
+          "</td><td class='pk-name'>" + coachName(t.oc, t.ocN) + "</td><td>" + v(t.pf) + "</td><td>" + v(t.pa) +
           "</td><td>" + v(t.pag) + "</td><td>" + v(t.yds) + "</td><td>" + v(t.ydsg) +
           "</td><td>" + v(t.plays) + "</td><td>" + v(t.ypp) +
           "</td><td>" + v(t.pass) + "</td><td>" + v(t.passAtt) + "</td><td>" + v(t.passRk) +

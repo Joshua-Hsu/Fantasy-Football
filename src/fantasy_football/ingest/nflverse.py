@@ -688,21 +688,49 @@ def load_byes(session: Session, year: int) -> int:
 
 
 def load_coaching(session: Session, path: str) -> int:
-    """Load team coaching staff from a CSV: team,head_coach,offensive_coordinator."""
+    """Load team coaching staff from a CSV: team,head_coach,offensive_coordinator.
+
+    Optional truthy ``hc_new`` / ``oc_new`` columns flag a coach as new to the
+    role this season (shaded on cards/packet). When the CSV has no ``hc_new``
+    column, HC newness is auto-detected against last season's schedule coaches
+    (best-effort; skipped if the fetch fails). OC history has no data source,
+    so ``oc_new`` is manual-only.
+    """
     import csv
 
+    def truthy(v: str | None) -> bool:
+        return (v or "").strip().lower() in ("1", "true", "yes", "y", "x", "new")
+
     teams = {t.abbreviation: t for t in session.scalars(select(Team))}
-    updated = 0
     with open(path, newline="") as fh:
-        for row in csv.DictReader(fh):
-            team = teams.get((row.get("team") or "").strip().upper())
-            if team is None:
-                continue
-            team.head_coach = _opt_str(row.get("head_coach")) or team.head_coach
-            team.offensive_coordinator = (
-                _opt_str(row.get("offensive_coordinator")) or team.offensive_coordinator
-            )
-            updated += 1
+        reader = csv.DictReader(fh)
+        fields = set(reader.fieldnames or [])
+        rows = list(reader)
+
+    prev_hc: dict[str, str] = {}
+    if "hc_new" not in fields:
+        try:
+            prev_hc = latest_head_coaches()
+        except Exception:  # noqa: BLE001 - offline: leave flags at 0
+            prev_hc = {}
+
+    updated = 0
+    for row in rows:
+        abbr = (row.get("team") or "").strip().upper()
+        team = teams.get(abbr)
+        if team is None:
+            continue
+        team.head_coach = _opt_str(row.get("head_coach")) or team.head_coach
+        team.offensive_coordinator = (
+            _opt_str(row.get("offensive_coordinator")) or team.offensive_coordinator
+        )
+        if "hc_new" in fields:
+            team.hc_new = truthy(row.get("hc_new"))
+        elif prev_hc and team.head_coach:
+            team.hc_new = prev_hc.get(abbr, "").strip().lower() != team.head_coach.strip().lower()
+        if "oc_new" in fields:
+            team.oc_new = truthy(row.get("oc_new"))
+        updated += 1
     session.commit()
     return updated
 

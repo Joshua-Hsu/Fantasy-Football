@@ -70,6 +70,9 @@ class Team(Base):
     # Coaching staff (loaded from a user-supplied CSV; shown on player cards).
     head_coach: Mapped[str | None] = mapped_column(String(64))
     offensive_coordinator: Mapped[str | None] = mapped_column(String(64))
+    #: Coach is new to this role this season — flagged on cards/packet.
+    hc_new: Mapped[bool] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    oc_new: Mapped[bool] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     bye_week: Mapped[int | None] = mapped_column(Integer)
 
     home_games: Mapped[list[Game]] = relationship(
