@@ -34,6 +34,11 @@ jobs:
           else
             echo "no picks/*.csv to archive"
           fi
+          if ls picks/quarantine/*.csv >/dev/null 2>&1; then
+            mkdir -p "$DEST/quarantine"
+            git mv picks/quarantine/*.csv "$DEST/quarantine/"
+            echo "swept quarantined files into the archive"
+          fi
           if [ -z "$PREV" ] && [ -z "$(ls "$DEST" 2>/dev/null)" ]; then
             echo "::warning::nothing to archive"; rmdir "$DEST" 2>/dev/null || true
           fi

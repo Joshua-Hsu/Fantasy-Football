@@ -1,0 +1,62 @@
+name: Picks Watchdog
+
+# Near-real-time flagging for the public picks inbox. Every push that touches
+# picks/ (each Worker submission is one commit) re-audits the inbox against the
+# newest master; anything suspicious opens - or comments on - a "picks-audit"
+# issue, which emails the maintainer. Report-only: quarantining happens in the
+# Rebuild Master Tiers run, so a false positive here costs nothing.
+on:
+  push:
+    branches: [main]
+    paths: ["picks/**"]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install (core only - the audit needs no data extras)
+        run: pip install -e .
+
+      - name: Audit the inbox
+        run: |
+          PREV=$(ls -1 master_tiers.*.csv 2>/dev/null | sort | tail -1)
+          if ls picks/*.csv >/dev/null 2>&1; then
+            python -m fantasy_football.cli audit-picks \
+              --file picks/*.csv --master "$PREV" | tee audit.log
+          else
+            echo "audit clean: empty inbox" | tee audit.log
+          fi
+
+      - name: Alert on findings (open or comment on the picks-audit issue)
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          grep -q '^FLAG' audit.log || { echo "clean - no alert"; exit 0; }
+          {
+            echo "Suspicious pick submissions detected (commit ${GITHUB_SHA:0:7}):"
+            echo
+            grep '^FLAG' audit.log | sed 's/^FLAG|/- **/; s/|/**: /'
+            echo
+            echo "Nothing is blended until Rebuild Master Tiers runs; that run"
+            echo "will quarantine these automatically. Delete obvious junk from"
+            echo "picks/ (and consider enabling Turnstile) if this keeps firing."
+          } > body.md
+          EXISTING=$(gh issue list --label picks-audit --state open --json number --jq '.[0].number' 2>/dev/null || true)
+          if [ -n "$EXISTING" ] && [ "$EXISTING" != "null" ]; then
+            gh issue comment "$EXISTING" --body-file body.md
+          else
+            gh issue create --title "Picks audit: suspicious submissions" \
+              --body-file body.md --label picks-audit \
+              || gh issue create --title "Picks audit: suspicious submissions" --body-file body.md
+          fi

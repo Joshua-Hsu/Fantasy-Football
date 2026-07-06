@@ -13,6 +13,7 @@ on:
 
 permissions:
   contents: write
+  issues: write
 
 jobs:
   build:
@@ -38,6 +39,35 @@ jobs:
           python -m fantasy_football.cli load-draft --year 2026 --max-round 3
           if [ -f coaching.csv ]; then
             python -m fantasy_football.cli load-coaching --file coaching.csv
+          fi
+
+      - name: Audit picks (quarantine junk before it touches the blend)
+        run: |
+          PREV=$(ls -1 master_tiers.*.csv 2>/dev/null | sort | tail -1)
+          if ls picks/*.csv >/dev/null 2>&1; then
+            python -m fantasy_football.cli audit-picks \
+              --file picks/*.csv --master "$PREV" \
+              --quarantine picks/quarantine | tee audit.log
+          else
+            echo "audit clean: empty inbox" | tee audit.log
+          fi
+
+      - name: Open an issue if anything was quarantined
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if grep -q '^FLAG' audit.log; then
+            TITLE="Picks audit: files quarantined during rebuild $(date +%F)"
+            {
+              echo "The Rebuild Master Tiers run quarantined suspicious pick files."
+              echo "They were EXCLUDED from the blend and moved to picks/quarantine/."
+              echo "Review them; git mv a file back into picks/ if it is a false positive."
+              echo
+              grep '^FLAG' audit.log | sed 's/^FLAG|/- **/; s/|/**: /'
+            } > issue.md
+            gh issue create --title "$TITLE" --body-file issue.md --label picks-audit \
+              || gh issue create --title "$TITLE" --body-file issue.md
           fi
 
       - name: Rebuild master from picks
