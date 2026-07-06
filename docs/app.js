@@ -194,7 +194,7 @@
       req: "under 200 picks",
       smack: "Everyone starts somewhere. Right now your mock drafts are mocking you." },
     { name: "Scrub", emoji: "\ud83e\uddfd", min: 200,
-      req: "200+ picks",
+      req: "200+ picks", img: "img/trophy-scrub.webp",
       smack: "You can tell a sleeper from a bust... barely. Keep clicking." },
     { name: "Taco", emoji: "\ud83c\udf2e", min: 500,
       req: "500+ picks",
@@ -548,7 +548,10 @@
     var trophies = LEVELS.map(function (lv) {
       var won = (S.trophies || {})[lv.name];
       if (won) {
-        return "<div class='tr-card tr-won'>" + cheerleaderSvg() +
+        var art = lv.img
+          ? "<img class='tr-img' src='" + lv.img + "' alt='' loading='lazy'>"
+          : cheerleaderSvg();
+        return "<div class='tr-card tr-won'>" + art +
           "<div class='lv-name'>" + lv.emoji + " " + esc(lv.name) + "</div>" +
           "<div class='muted'>Congratulations - you reached " + esc(lv.name) + "!</div></div>";
       }
