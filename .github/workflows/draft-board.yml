@@ -82,11 +82,14 @@ jobs:
           # prices, and hand-written tier_note column). Depth charts are
           # fetched inside the cheatsheet command; depth_overrides.csv (if
           # committed) wins for any starter it names.
+          DATE=$(date +%F)
+          OUT="draft_packet.${DATE}.xlsx"
+          echo "OUT=$OUT" >> "$GITHUB_ENV"
           MASTER=$(ls -1 master_tiers.*.csv 2>/dev/null | sort | tail -1)
           TIERS=""
           [ -n "$MASTER" ] && TIERS="--tiers-file $MASTER" && echo "Using tiers: $MASTER"
           python -m fantasy_football.cli cheatsheet \
-            --out draft_packet.xlsx $TIERS \
+            --out "$OUT" $TIERS \
             --basis "${{ inputs.basis }}" \
             --scoring "${{ inputs.scoring }}" \
             --teams "${{ inputs.teams }}" \
@@ -96,5 +99,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: draft-packet
-          path: draft_packet.xlsx
+          path: ${{ env.OUT }}
           retention-days: 30
