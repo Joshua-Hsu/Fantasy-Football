@@ -569,8 +569,179 @@
       "<div class='tr-grid'>" + trophies + "</div>";
   }
 
+  // ---- commissioner: drag-and-drop master tier editor (#/admin) ----
+  // The page is reachable by anyone (static site), but Overwrite only works
+  // with the ADMIN_CODE secret held by the Worker. Edits move players on the
+  // MASTER rating scale (e.seed), not your personal ratings, and tiers
+  // re-derive live with the exact same algorithm the rebuild uses.
+  var AD_STORE = "ff_admin_state";
+  var AD = null, adSel = null, adDragKey = null;
+  function adInit() {
+    if (AD) return;
+    try { AD = JSON.parse(localStorage.getItem(AD_STORE)); } catch (e) {}
+    AD = AD || {};
+    AD.ratings = AD.ratings || {};
+    AD.changed = AD.changed || {};
+    ALL.forEach(function (e) {
+      if (AD.ratings[e.key] == null) AD.ratings[e.key] = e.seed;
+    });
+  }
+  function adSave() { localStorage.setItem(AD_STORE, JSON.stringify(AD)); }
+  function adPool(pos) {
+    return (DATA[pos] || []).slice().sort(function (a, b) {
+      return AD.ratings[b.key] - AD.ratings[a.key];
+    });
+  }
+  function adTiers(pos) {
+    var pool = adPool(pos);
+    var labels = sizedTiers(pool.map(function (e) { return AD.ratings[e.key]; }),
+                            TIER_K[pos] || 6, 7);
+    var out = {}; pool.forEach(function (e, i) { out[e.key] = labels[i]; });
+    return out;
+  }
+  function adPlace(pos, key, rating) {
+    AD.ratings[key] = rating;
+    AD.changed[key] = 1;
+    adSave();
+    adminPage(pos);
+  }
+  function adMoveAbove(pos, key, targetKey) {
+    if (key === targetKey) return;
+    var list = adPool(pos).filter(function (e) { return e.key !== key; });
+    var idx = -1;
+    list.forEach(function (e, i) { if (e.key === targetKey) idx = i; });
+    if (idx < 0) return;
+    var below = AD.ratings[targetKey];
+    var above = idx > 0 ? AD.ratings[list[idx - 1].key] : null;
+    adPlace(pos, key, above === null ? below + 12 : (above + below) / 2);
+  }
+  function adMoveTierEnd(pos, key, tier) {
+    var tiers = adTiers(pos);
+    var list = adPool(pos).filter(function (e) { return e.key !== key; });
+    var last = -1;
+    list.forEach(function (e, i) { if (tiers[e.key] <= tier) last = i; });
+    if (last < 0) return;                      // empty target: nothing to anchor on
+    var above = AD.ratings[list[last].key];
+    var below = last + 1 < list.length ? AD.ratings[list[last + 1].key] : null;
+    adPlace(pos, key, below === null ? above - 12 : (above + below) / 2);
+  }
+
+  function adminPage(pos) {
+    adInit();
+    pos = pos || "RB";
+    var tiers = adTiers(pos);
+    var pool = adPool(pos);
+    var changed = Object.keys(AD.changed).length;
+
+    var tabs = ORDER.filter(function (p) { return (DATA[p] || []).length; })
+      .map(function (p) {
+        return p === pos
+          ? "<span class='tier'>" + p + "</span>"
+          : "<a href='#/admin/" + p + "'>" + p + "</a>";
+      }).join(" &middot; ");
+
+    var body = "", lastTier = null;
+    pool.forEach(function (e) {
+      var t = tiers[e.key];
+      if (t !== lastTier) {
+        lastTier = t;
+        body += "<div class='ad-tier-head' ondragover='event.preventDefault()' " +
+          "ondrop=\"FF.adDropTier(event,'" + pos + "'," + t + ")\" " +
+          "onclick=\"FF.adClickTier('" + pos + "'," + t + ")\">" +
+          "Tier " + t + " <span class='muted'>(drop or tap here = bottom of tier)</span></div>";
+      }
+      var cls = "ad-row" + (AD.changed[e.key] ? " ad-chg" : "") +
+                (adSel === e.key ? " ad-sel" : "");
+      body += "<div class='" + cls + "' draggable='true' data-key='" + e.key + "' " +
+        "ondragstart=\"FF.adDragStart('" + e.key + "')\" " +
+        "ondragover='event.preventDefault()' " +
+        "ondrop=\"FF.adDropRow(event,'" + pos + "','" + e.key + "')\" " +
+        "onclick=\"FF.adClickRow('" + pos + "','" + e.key + "')\">" +
+        "<b>" + esc(e.name) + "</b><span class='muted'> " + esc(e.team || "") +
+        " &middot; " + Math.round(AD.ratings[e.key]) + "</span>" +
+        (AD.changed[e.key] ? "<span class='ad-dot'>&#9679;</span>" : "") +
+        "</div>";
+    });
+
+    app.innerHTML = nav(" &middot; <span class='muted'>admin</span>") +
+      "<h1>Commissioner tiers</h1>" +
+      "<p class='lead'>Drag a player (or tap him, then tap a destination) to force " +
+      "him into a tier. Tiers re-derive live exactly as the rebuild computes them. " +
+      "Overwrite pushes only the <b>" + changed + " changed</b> player" +
+      (changed === 1 ? "" : "s") + " and triggers a master rebuild.</p>" +
+      "<p>" + tabs + "</p>" +
+      "<div class='actions'>" +
+      "<button class='btn btn-primary' onclick=\"FF.adOverwrite('" + pos + "')\">" +
+      "&#9888; Overwrite master tiers (" + changed + ")</button>" +
+      "<button class='btn' onclick='FF.adReset()'>Reset edits</button>" +
+      "</div>" +
+      "<div class='ad-list'>" + body + "</div>";
+  }
+
   // ---- public actions ----
+
   window.FF = {
+    adDragStart: function (key) { adDragKey = key; },
+    adDropRow: function (ev, pos, targetKey) {
+      ev.preventDefault(); ev.stopPropagation();
+      if (adDragKey) { adMoveAbove(pos, adDragKey, targetKey); adDragKey = null; }
+    },
+    adDropTier: function (ev, pos, tier) {
+      ev.preventDefault();
+      if (adDragKey) { adMoveTierEnd(pos, adDragKey, tier); adDragKey = null; }
+    },
+    adClickRow: function (pos, key) {
+      if (adSel && adSel !== key) { var k = adSel; adSel = null; adMoveAbove(pos, k, key); }
+      else { adSel = adSel === key ? null : key; adminPage(pos); }
+    },
+    adClickTier: function (pos, tier) {
+      if (adSel) { var k = adSel; adSel = null; adMoveTierEnd(pos, k, tier); }
+    },
+    adReset: function () {
+      if (!confirm("Discard all local tier edits?")) return;
+      localStorage.removeItem(AD_STORE);
+      AD = null; adSel = null;
+      route();
+    },
+    adOverwrite: function (pos) {
+      adInit();
+      var keys = Object.keys(AD.changed);
+      if (!keys.length) { alert("No changes to push - drag someone first."); return; }
+      if (!WORKER_URL) { alert("No Worker URL configured."); return; }
+      var code = localStorage.getItem("ff_admin_code") ||
+                 prompt("Admin code (commissioner only):", "");
+      if (!code) return;
+      code = code.trim();
+      var csv = "key,rating\n" + keys.map(function (k) {
+        return k + "," + Math.round(AD.ratings[k] * 100) / 100;
+      }).join("\n") + "\n";
+      if (!confirm("Overwrite master tiers for " + keys.length +
+                   " player(s)? This pins them over the crowd blend.")) return;
+      fetch(WORKER_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ kind: "admin", code: code, csv: csv, ts: tsToken })
+      }).then(function (r) {
+        return r.json().catch(function () { return {}; }).then(function (j) {
+          if (!r.ok) throw new Error(j.error || ("HTTP " + r.status));
+          return j;
+        });
+      }).then(function (j) {
+        localStorage.setItem("ff_admin_code", code);
+        AD.changed = {};
+        adSave();
+        alert("Master overwrite saved (" + j.rows + " players). Rebuild: " +
+              j.rebuild + ".\nThe live tiers refresh when the rebuild finishes (~2 min).");
+        adminPage(pos);
+      }).catch(function (err) {
+        if (String(err.message).indexOf("admin code") >= 0) {
+          localStorage.removeItem("ff_admin_code");
+          alert("Admin code rejected.");
+        } else {
+          alert("Overwrite failed: " + err.message);
+        }
+      });
+    },
     setNote: function (pos, tier, text) {
       S.notes[pos] = S.notes[pos] || {};
       text = String(text || "").slice(0, 200);
@@ -743,6 +914,7 @@
     m = h.match(/^#\/rank\/(\w+)/); if (m) return rank(m[1]);
     if (h.indexOf("#/packet") === 0) return packet();
     if (h.indexOf("#/levels") === 0) return levelsPage();
+    m = h.match(/^#\/admin(?:\/(\w+))?/); if (m) return adminPage(m[1]);
     home();
   }
   window.addEventListener("hashchange", route);

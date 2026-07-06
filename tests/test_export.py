@@ -639,3 +639,28 @@ def test_webapp_payload_carries_leaders(session, tmp_path):
                       leaders={"abc123": 1500, "def456": 40})
     payload = json.loads(out.read_text().split("window.FF_DATA = ", 1)[1].rstrip(";\n"))
     assert payload["leaders"] == {"abc123": 1500, "def456": 40}
+
+
+def test_admin_pins_win_over_crowd_blend(session, tmp_path):
+    """Commissioner pins are applied after the confidence blend, full weight."""
+    import csv as _csv
+
+    from fantasy_football.export import write_tiers_csv
+
+    _seed(session)
+    base = {"prb0": 300.0, "prb1": 200.0}
+    write_tiers_csv(session, str(tmp_path / "m.csv"),
+                    ratings=base,
+                    user_ratings={"prb1": 260.0},        # crowd loves him...
+                    comps={"prb1": 60},
+                    pinned_ratings={"prb1": 111.0},      # ...commissioner says no
+                    year=2025, config=LeagueConfig(teams=1))
+    rows = {r["key"]: float(r["rating"]) for r in _csv.DictReader((tmp_path / "m.csv").open())}
+    assert rows["prb1"] == 111.0
+
+    # Pins alone (no picks this week) still apply against the carried master.
+    write_tiers_csv(session, str(tmp_path / "m2.csv"),
+                    ratings=base, pinned_ratings={"prb0": 150.0},
+                    year=2025, config=LeagueConfig(teams=1))
+    rows2 = {r["key"]: float(r["rating"]) for r in _csv.DictReader((tmp_path / "m2.csv").open())}
+    assert rows2["prb0"] == 150.0 and rows2["prb1"] == 200.0
