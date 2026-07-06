@@ -311,6 +311,35 @@ def _read_comps(path: str | None) -> dict[str, int]:
     return comps
 
 
+def _pick_leaderboard(dirs: list[str]) -> dict[str, int]:
+    """{user id: best lifetime pick count} from every u-<id>.csv on disk.
+
+    The app's comps counters are lifetime totals per device, so a user's most
+    recent submission already contains their whole history: across weekly
+    archives we take the MAX per id, never the sum. Pick count ~= total
+    comps / 2 (each matchup touches two players). Per-player comps are
+    clamped by _read_comps, which also caps how far a gamed file can inflate
+    its owner's level.
+    """
+    import glob
+    import os
+    import re as _re
+
+    best: dict[str, int] = {}
+    for d in dirs:
+        if not os.path.isdir(d):
+            continue
+        for path in glob.glob(os.path.join(d, "**", "u-*.csv"), recursive=True):
+            m = _re.match(r"u-([a-z0-9]{4,40})\.csv$", os.path.basename(path), _re.I)
+            if not m:
+                continue
+            uid = m.group(1)
+            total = sum(_read_comps(path).values()) // 2
+            if total > best.get(uid, -1):
+                best[uid] = total
+    return best
+
+
 def _merge_comps(paths: list[str]) -> dict[str, int]:
     """Total comparisons per player across every pick file (all users)."""
     total: dict[str, int] = {}
@@ -672,12 +701,17 @@ def _cmd_build_webapp(args: argparse.Namespace) -> int:
         except Exception as exc:  # noqa: BLE001 - app still builds without depth
             print(f"warning: depth charts unavailable ({exc}); using heuristic backups")
 
+    # All-time pick leaderboard for the app's levels page: current inbox plus
+    # every weekly archive (max per user - comps are lifetime counters).
+    leaders = _pick_leaderboard(["picks", "archive"])
+
     with _open_session(args) as session:
         path = write_webapp_data(
             session, args.out, year=args.year, config=config,
             rules=PRESETS[args.scoring], basis=args.basis, depth=args.depth,
             manual_tiers=manual, seed_overrides=seeds, prices=prices,
             backups=backups, starters=starters, backup_overrides=overrides,
+            leaders=leaders,
         )
     print(f"Wrote pick-game data to {path}")
     return 0

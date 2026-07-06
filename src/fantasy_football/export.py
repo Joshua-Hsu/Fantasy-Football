@@ -376,6 +376,7 @@ def write_webapp_data(
     backups: dict[str, tuple[str | None, str]] | None = None,
     starters: dict[tuple[str, str], list[str]] | None = None,
     backup_overrides: dict[str, str] | None = None,
+    leaders: dict[str, int] | None = None,
 ) -> str:
     """Write the pick-game data as ``docs/data.js`` (``window.FF_DATA = {...}``).
 
@@ -452,8 +453,12 @@ def write_webapp_data(
             s.get("receiving_yards", 0), s.get("receiving_touchdowns", 0),
         ])
 
+    # Leaderboard for the levels page: keep it bounded (top 1000 committers).
+    top_leaders = dict(sorted((leaders or {}).items(),
+                              key=lambda kv: -kv[1])[:1000])
     payload = {
         "basis": basis, "positions": data, "stat_headers": CSV_STAT_HEADERS,
+        "leaders": top_leaders,
         "teams": teams_payload,
         "top200_headers": ["Player", "Tm", "Pos", "G", "FPTS", "PPG",
                            "PaYds", "PaTD", "INT", "RuAtt", "RuYds", "RuTD",

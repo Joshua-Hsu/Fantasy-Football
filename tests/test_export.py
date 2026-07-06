@@ -606,3 +606,36 @@ def test_audit_cli_quarantines(tmp_path, capsys):
     assert "FLAG|" in out and "u-junk.csv" in out
     assert (q / "u-junk.csv").exists()      # junk moved out of the inbox
     assert good.exists()                    # legit file untouched
+
+
+def test_pick_leaderboard_max_across_weeks(tmp_path, monkeypatch):
+    """Comps are lifetime counters, so a user's best file wins - never the sum."""
+    from fantasy_football.cli import _pick_leaderboard
+
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "picks").mkdir()
+    (tmp_path / "archive" / "2026-07-01").mkdir(parents=True)
+    # Week 1 archive: user abc at 10 comps -> 5 picks. This week: 30 -> 15.
+    (tmp_path / "archive" / "2026-07-01" / "u-abc123.csv").write_text(
+        "key,rating,comps\nprb0,250,4\nprb1,240,6\n")
+    (tmp_path / "picks" / "u-abc123.csv").write_text(
+        "key,rating,comps\nprb0,255,14\nprb1,238,16\n")
+    (tmp_path / "picks" / "u-def456.csv").write_text(
+        "key,rating,comps\nprb0,260,8\n")
+    (tmp_path / "picks" / "not-a-user.csv").write_text("key,rating\nprb0,1\n")
+
+    board = _pick_leaderboard(["picks", "archive"])
+    assert board == {"abc123": 15, "def456": 4}   # max per uid, comps//2
+
+
+def test_webapp_payload_carries_leaders(session, tmp_path):
+    import json
+
+    from fantasy_football.export import write_webapp_data
+
+    _seed(session)
+    out = tmp_path / "data.js"
+    write_webapp_data(session, str(out), year=2025, config=LeagueConfig(teams=1),
+                      leaders={"abc123": 1500, "def456": 40})
+    payload = json.loads(out.read_text().split("window.FF_DATA = ", 1)[1].rstrip(";\n"))
+    assert payload["leaders"] == {"abc123": 1500, "def456": 40}
