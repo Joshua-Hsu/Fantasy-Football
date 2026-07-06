@@ -538,3 +538,71 @@ def test_safe_cell_guards_formulas():
     assert _safe_cell("-2") == "'-2"
     assert _safe_cell("Ja'Marr Chase") == "Ja'Marr Chase"   # normal text untouched
     assert _safe_cell(123) == 123
+
+
+def test_audit_flags_junk_and_spares_legit(tmp_path):
+    """Unknown keys, off-scale ratings, degenerate files, and sybil clones are
+    flagged; a normal submission is not."""
+    from fantasy_football.audit import audit_pick_files
+
+    master = {f"prb{i}": 300.0 - i * 10 for i in range(20)}
+
+    def mk(name, rows):
+        p = tmp_path / name
+        p.write_text("key,rating\n" + "\n".join(rows) + "\n")
+        return str(p)
+
+    legit = mk("u-legit.csv", [f"prb{i},{295 - i * 10}" for i in range(10)])
+    unknown = mk("u-unknown.csv", [f"pfake{i},100" for i in range(10)])
+    offscale = mk("u-offscale.csv", [f"prb{i},99999" for i in range(10)])
+    flat = mk("u-flat.csv", [f"prb{i},200" for i in range(12)])
+    clone_a = mk("u-clonea.csv", [f"prb{i},{290 - i * 10}" for i in range(10)])
+    clone_b = mk("u-cloneb.csv", [f"prb{i},{290 - i * 10}" for i in range(10)])
+
+    findings = audit_pick_files(
+        [legit, unknown, offscale, flat, clone_a, clone_b], master)
+    flagged = {f.path: f.reason for f in findings}
+    assert legit not in flagged
+    assert clone_a not in flagged                 # first of the pair is kept
+    assert "unknown players" in flagged[unknown]
+    assert "off the value scale" in flagged[offscale]
+    assert "identical rating" in flagged[flat]
+    assert "sybil clone" in flagged[clone_b]
+
+
+def test_audit_volume_tripwire(tmp_path):
+    from fantasy_football.audit import audit_pick_files
+
+    files = []
+    for i in range(5):
+        p = tmp_path / f"u{i}.csv"
+        p.write_text(f"key,rating\nprb0,{250 + i}\n")
+        files.append(str(p))
+    findings = audit_pick_files(files, {"prb0": 300.0}, max_files=3)
+    assert any("possible flood" in f.reason for f in findings)
+    assert not audit_pick_files(files, {"prb0": 300.0}, max_files=50)
+
+
+def test_audit_cli_quarantines(tmp_path, capsys):
+    """The CLI moves flagged files out of the blend glob and reports FLAG lines."""
+    import argparse
+
+    from fantasy_football.cli import _cmd_audit_picks
+
+    master = tmp_path / "master.csv"
+    master.write_text("key,manual_tier,rating\n" +
+                      "\n".join(f"prb{i},1,{300 - i * 10}" for i in range(10)) + "\n")
+    good = tmp_path / "picks" / "u-good.csv"
+    good.parent.mkdir()
+    good.write_text("key,rating\nprb0,295\nprb1,285\n")
+    junk = tmp_path / "picks" / "u-junk.csv"
+    junk.write_text("key,rating\n" + "\n".join(f"pzz{i},50" for i in range(8)) + "\n")
+
+    q = tmp_path / "picks" / "quarantine"
+    _cmd_audit_picks(argparse.Namespace(
+        file=[str(good), str(junk)], master=str(master),
+        quarantine=str(q), max_files=300))
+    out = capsys.readouterr().out
+    assert "FLAG|" in out and "u-junk.csv" in out
+    assert (q / "u-junk.csv").exists()      # junk moved out of the inbox
+    assert good.exists()                    # legit file untouched

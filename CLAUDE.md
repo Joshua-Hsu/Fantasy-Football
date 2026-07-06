@@ -211,7 +211,15 @@ idempotent and can run repeatedly as users submit. **Archive Week** (`archive-we
 runs **weekly** (cron, Tuesdays) — it snapshots the current master + `picks/*`
 into `archive/<date>/` and then **removes the pick files from `picks/`**, so each
 week's rebuilds drop last week's rankings and fresh submissions accumulate from
-empty. `import-tiers` falls
+empty (quarantined files sweep into the archive too). **Junk flagging**
+(`audit.py` + `audit-picks` CLI): submissions are audited against the newest
+master — unknown player keys, off-scale ratings, degenerate all-identical
+files, sybil clones (same content under several ids), and an inbox volume
+tripwire. The rebuild quarantines flagged files into `picks/quarantine/`
+(excluded from the blend, nothing deleted) and opens a GitHub issue; the
+**Picks Watchdog** workflow re-audits on every push to `picks/` and
+opens/comments a `picks-audit` issue, so junk pages the maintainer instead of
+waiting to be noticed. `import-tiers` falls
 back to a file's integer `manual_tier` only for legacy exports with no `rating`.
 
 **Schema-change note:** `init-db` uses `create_all`, which does **not** alter

@@ -463,6 +463,38 @@ def _cmd_import_tiers(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_audit_picks(args: argparse.Namespace) -> int:
+    """Flag junk pick files; optionally quarantine them out of the blend.
+
+    Prints one machine-readable line per finding (``FLAG|path|reason``) plus a
+    GitHub Actions ``::warning::`` for run logs. With ``--quarantine DIR``,
+    flagged files are moved there so the rebuild's ``picks/*.csv`` glob no
+    longer sees them. Exit code is 0 either way - workflows react to output,
+    not failures.
+    """
+    import os
+    import shutil
+
+    from .audit import audit_pick_files
+
+    files = args.file if isinstance(args.file, list) else [args.file]
+    files = [f for f in files if os.path.exists(f)]
+    master = _read_ratings(getattr(args, "master", None))
+    findings = audit_pick_files(files, master, max_files=args.max_files)
+
+    if not findings:
+        print(f"audit clean: {len(files)} pick file(s) look legitimate")
+        return 0
+    for f in findings:
+        print(f"FLAG|{f.path}|{f.reason}")
+        print(f"::warning file={f.path}::{f.reason}")
+        if args.quarantine and os.path.isfile(f.path):
+            os.makedirs(args.quarantine, exist_ok=True)
+            shutil.move(f.path, os.path.join(args.quarantine, os.path.basename(f.path)))
+            print(f"quarantined {f.path} -> {args.quarantine}/")
+    return 0
+
+
 def _cmd_load_active(args: argparse.Namespace) -> int:
     import datetime as _dt
 
@@ -758,6 +790,14 @@ def build_parser() -> argparse.ArgumentParser:
     p_import.add_argument("--confidence", type=int, default=6,
                          help="Comparisons for a 50%% user-rating weight vs the anchor (default 6)")
     p_import.set_defaults(func=_cmd_import_tiers)
+
+    p_audit = sub.add_parser("audit-picks", help="Flag junk pick files (unknown keys, off-scale, clones)")
+    p_audit.add_argument("--file", required=True, nargs="+", help="Pick files to audit")
+    p_audit.add_argument("--master", default=None, help="Newest master CSV (defines pool + rating scale)")
+    p_audit.add_argument("--quarantine", default=None, help="Move flagged files into this directory")
+    p_audit.add_argument("--max-files", type=int, default=300, dest="max_files",
+                        help="Inbox volume tripwire (default 300)")
+    p_audit.set_defaults(func=_cmd_audit_picks)
 
     p_draft = sub.add_parser("load-draft", help="Add incoming rookies (top rounds) to the pool")
     p_draft.add_argument("--year", type=int, default=None, help="Draft year (default: current year)")
