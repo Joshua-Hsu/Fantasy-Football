@@ -314,9 +314,9 @@
         "<button class='card' onclick=\"FF.choose('" + a.key + "','" + b.key + "','" + pos + "')\">" + statBlock(a) + "</button>" +
         "<button class='card' onclick=\"FF.choose('" + b.key + "','" + a.key + "','" + pos + "')\">" + statBlock(b) + "</button>" +
       "</div><p class='vs'>" +
-        "<button class='btn' onclick=\"FF.again('" + pos + "')\">&#8635; different pair</button> " +
+        "<button class='btn' onclick=\"FF.again('" + pos + "')\">&#8635; skip</button> " +
         "<button class='btn' onclick=\"FF.noPick('" + a.key + "','" + b.key + "','" + pos + "')\">" +
-        "&#8856; no pick</button>" +
+        "&#8856; fade both</button>" +
       "</p></div>";
   }
 
