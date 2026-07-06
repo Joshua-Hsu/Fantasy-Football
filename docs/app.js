@@ -191,7 +191,7 @@
   var LEADERS = (window.FF_DATA || {}).leaders || {};
   var LEVELS = [
     { name: "NOOB", emoji: "\ud83c\udf7c", min: 0,
-      req: "under 200 picks",
+      req: "under 200 picks", img: "img/trophy-noob.webp",
       smack: "Everyone starts somewhere. Right now your mock drafts are mocking you." },
     { name: "Scrub", emoji: "\ud83e\uddfd", min: 200,
       req: "200+ picks", img: "img/trophy-scrub.webp",
