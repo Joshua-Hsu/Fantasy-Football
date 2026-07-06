@@ -206,13 +206,13 @@
       req: "2,000+ picks", img: "img/trophy-bully.webp",
       smack: "You're out here stealing lunch money from your division rivals." },
     { name: "Contender", emoji: "\ud83d\udd25", min: 3500,
-      req: "3,500+ picks",
+      req: "3,500+ picks", img: "img/trophy-contender.webp",
       smack: "The room goes quiet when you nominate. One more push." },
     { name: "Super Bowl Player", emoji: "\u2b50", min: 5000, rank: 106,
-      req: "5,000+ picks & top 106 all-time",
+      req: "5,000+ picks & top 106 all-time", img: "img/trophy-sbp.webp",
       smack: "Top 106 in the world - that's a full two-deep NFL roster of drafters, and you made the trip." },
     { name: "League Champ", emoji: "\ud83c\udfc6", min: 5000, rank: 11,
-      req: "5,000+ picks & top 11 all-time",
+      req: "5,000+ picks & top 11 all-time", img: "img/trophy-champ.webp",
       smack: "Top 11. You ARE the starting lineup. Everyone else is drafting for second." }
   ];
   function myTotalPicks() {
