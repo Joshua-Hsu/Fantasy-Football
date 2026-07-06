@@ -58,9 +58,27 @@ curl -X POST https://ff-commit-worker.<you>.workers.dev \
 
 Then delete the test file from `picks/` if you don't want it counted.
 
+## League code (abuse protection)
+
+The site is public, so the Worker gates writes behind a shared passcode:
+
+```bash
+npx wrangler secret put LEAGUE_CODE    # or dashboard: Settings -> Variables -> Secret
+```
+
+Pick any phrase, share it with your league; the app asks each member for it
+once (stored in their browser) and sends it with every commit. Wrong/missing
+code -> 401, and the app re-prompts. If the code ever leaks, set a new secret
+value and tell the league — old submissions are unaffected. While the secret
+is unset the Worker is open (bootstrap mode).
+
 ## Security notes
 
 - The GitHub token lives only in Cloudflare; it's never shipped to browsers.
-- CORS is restricted to `ALLOWED_ORIGIN` — set it to your site's origin.
+- Cross-origin requests are **rejected** (not just CORS-headered) unless they
+  come from `ALLOWED_ORIGIN`; no-Origin callers (curl) still need the code.
+- Payloads are capped (64 KB, 400 rows) and every row must parse as
+  `key,number[,number]`.
 - The Worker hard-codes the `picks/u-<id>.csv` path, so callers can't write
-  anywhere else in the repo.
+  anywhere else in the repo. Worst case with a leaked code is junk CSVs in
+  `picks/` — delete them and rotate the secret.
