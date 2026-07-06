@@ -188,6 +188,34 @@
     .duel .btn { padding:.4rem .8rem; font-size:.85rem; }
   }
 
+  /* ---- Levels & trophy case ---- */
+  a.lv-pill { color:var(--accent-ink); }
+  .lv-h2 { font-size:1.25rem; letter-spacing:-.01em; margin:1.6rem 0 .6rem; }
+  .lv-grid, .tr-grid { display:grid; gap:.7rem; }
+  .lv-grid { grid-template-columns:1fr; }
+  .tr-grid { grid-template-columns:repeat(auto-fill, minmax(160px, 1fr)); }
+  .lv-card {
+    display:flex; align-items:center; gap:.9rem;
+    border:1px solid var(--line); border-radius:var(--radius);
+    padding:.8rem 1rem; background:var(--surface); box-shadow:var(--shadow);
+  }
+  .lv-emoji { font-size:2rem; line-height:1; }
+  .lv-name { font-weight:800; letter-spacing:-.01em; }
+  .lv-req { font-size:.78rem; }
+  .lv-smack { font-size:.88rem; color:var(--muted); margin-top:.15rem; }
+  .lv-cur { border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-soft), var(--shadow); }
+  .lv-cur .lv-smack { color:var(--ink); }
+  .lv-locked { opacity:.55; }
+  .lv-done .lv-check { color:var(--accent-ink); font-weight:800; }
+  .tr-card {
+    text-align:center; border:1px solid var(--line); border-radius:var(--radius);
+    padding:1rem .8rem; background:var(--surface); box-shadow:var(--shadow);
+  }
+  .tr-won { border-color:var(--accent); }
+  .tr-locked { opacity:.5; }
+  .tr-lock { font-size:2.2rem; display:block; margin-bottom:.3rem; }
+  .tr-card svg { display:block; margin:0 auto .3rem; }
+
   /* ---- New-to-role coach highlight ---- */
   .coach-new {
     background:var(--accent-soft); color:var(--accent-ink);

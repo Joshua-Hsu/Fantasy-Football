@@ -94,6 +94,7 @@
     S.ratings[loser] = rl + K * (0 - (1 - e));
     S.comps[winner]++; S.comps[loser]++; S.picks++;
     save(S);
+    checkTrophies();
   }
 
   var lastPair = [];
@@ -186,12 +187,94 @@
     var out = {}; pool.forEach(function (e, i) { out[e.key] = labels[i]; }); return out;
   }
 
+  // ---- levels / gamification ----
+  var LEADERS = (window.FF_DATA || {}).leaders || {};
+  var LEVELS = [
+    { name: "NOOB", emoji: "\ud83c\udf7c", min: 0,
+      req: "under 200 picks",
+      smack: "Everyone starts somewhere. Right now your mock drafts are mocking you." },
+    { name: "Scrub", emoji: "\ud83e\uddfd", min: 200,
+      req: "200+ picks",
+      smack: "You can tell a sleeper from a bust... barely. Keep clicking." },
+    { name: "Taco", emoji: "\ud83c\udf2e", min: 500,
+      req: "500+ picks",
+      smack: "You're the league taco - delicious, and everybody wants a bite of your matchup." },
+    { name: "Middle of League", emoji: "\ud83d\ude10", min: 1000,
+      req: "1,000+ picks",
+      smack: "Respectably mediocre. The playoff bubble is your natural habitat." },
+    { name: "Division Bully", emoji: "\ud83d\ude24", min: 2000,
+      req: "2,000+ picks",
+      smack: "You're out here stealing lunch money from your division rivals." },
+    { name: "Contender", emoji: "\ud83d\udd25", min: 3500,
+      req: "3,500+ picks",
+      smack: "The room goes quiet when you nominate. One more push." },
+    { name: "Super Bowl Player", emoji: "\u2b50", min: 5000, rank: 106,
+      req: "5,000+ picks & top 106 all-time",
+      smack: "Top 106 in the world - that's a full two-deep NFL roster of drafters, and you made the trip." },
+    { name: "League Champ", emoji: "\ud83c\udfc6", min: 5000, rank: 11,
+      req: "5,000+ picks & top 11 all-time",
+      smack: "Top 11. You ARE the starting lineup. Everyone else is drafting for second." }
+  ];
+  function myTotalPicks() {
+    var mine = LEADERS[localStorage.getItem(UID_STORE)] || 0;
+    return Math.max(S.picks || 0, mine);
+  }
+  function myRank() {
+    // 1 + committers strictly ahead of me, all-time. 0 = not on the board yet.
+    var me = localStorage.getItem(UID_STORE);
+    if (!me || LEADERS[me] == null) return 0;
+    var mine = myTotalPicks(), ahead = 0, uid;
+    for (uid in LEADERS) { if (uid !== me && LEADERS[uid] > mine) ahead++; }
+    return 1 + ahead;
+  }
+  function levelIndex() {
+    var picks = myTotalPicks(), rank = myRank(), i;
+    for (i = LEVELS.length - 1; i >= 0; i--) {
+      var lv = LEVELS[i];
+      if (picks < lv.min) continue;
+      if (lv.rank && (rank === 0 || rank > lv.rank)) continue;
+      return i;
+    }
+    return 0;
+  }
+  function checkTrophies() {
+    S.trophies = S.trophies || {};
+    var idx = levelIndex(), changed = false, i;
+    for (i = 0; i <= idx; i++) {
+      if (!S.trophies[LEVELS[i].name]) { S.trophies[LEVELS[i].name] = Date.now(); changed = true; }
+    }
+    if (changed) save(S);
+  }
+  checkTrophies();
+  function cheerleaderSvg() {
+    // Hand-drawn pom-pom cheerleader in the app palette - no licensed assets.
+    return "<svg viewBox='0 0 64 64' width='56' height='56' aria-hidden='true'>" +
+      "<g stroke='var(--accent-ink)' stroke-width='2.4' stroke-linecap='round' fill='none'>" +
+      "<line x1='32' y1='30' x2='32' y2='44'/>" +               // torso
+      "<line x1='32' y1='33' x2='18' y2='20'/>" +               // arms up
+      "<line x1='32' y1='33' x2='46' y2='20'/>" +
+      "<line x1='27' y1='55' x2='30' y2='47'/>" +               // legs
+      "<line x1='39' y1='56' x2='34' y2='47'/>" +
+      "</g>" +
+      "<circle cx='32' cy='23' r='5.5' fill='var(--accent)'/>" +           // head
+      "<path d='M24 44 L40 44 L44 52 L20 52 Z' fill='var(--accent)'/>" +   // skirt
+      "<g fill='var(--down)'>" +
+      "<circle cx='16' cy='18' r='5'/><circle cx='48' cy='18' r='5'/>" +   // pom-poms
+      "</g>" +
+      "<g stroke='var(--down)' stroke-width='1.4'>" +
+      "<line x1='12' y1='13' x2='14' y2='15'/><line x1='20' y1='13' x2='18' y2='15'/>" +
+      "<line x1='44' y1='13' x2='46' y2='15'/><line x1='52' y1='13' x2='50' y2='15'/>" +
+      "</g></svg>";
+  }
+
   // ---- views ----
   var app = document.getElementById("app");
   function esc(s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]; }); }
   function nav(extra) {
     return "<div class='nav'><a class='brand' href='#/'><span class='ball'>&#127944;</span> Tier Builder</a>" + (extra || "") +
-      "<span class='spacer'></span><span class='pill'>" + S.picks + " picks</span></div>";
+      "<span class='spacer'></span><a class='pill lv-pill' href='#/levels'>" +
+      LEVELS[levelIndex()].emoji + " " + esc(LEVELS[levelIndex()].name) +
+      " &middot; " + myTotalPicks() + "</a></div>";
   }
 
   function home() {
@@ -202,8 +285,8 @@
         "<span class='sub'>" + Math.round(picks / 2) + " picks &middot; play &raquo;</span></button>";
     }).join("");
     app.innerHTML = nav() +
-      "<h1>Tier Builder</h1><p class='lead'>Pick who you'd rather draft. Your picks " +
-      "become user ratings &rarr; tiers. Export to edit by hand, import to load it back.</p>" +
+      "<p class='lead'>Pick who you'd rather draft. Your picks &rarr; ratings &rarr; tiers. " +
+      "Export to save your picks and import on another device.</p>" +
       "<div class='pos-grid'>" + g + "</div>" +
       "<div class='actions'>" +
       "<button class='btn btn-primary' onclick='FF.commitPicks()'>&#128640; Commit to GitHub</button>" +
@@ -441,6 +524,47 @@
       "<div class='packet'>" + secs + extra + "</div>";
   }
 
+  function levelsPage() {
+    checkTrophies();
+    var idx = levelIndex(), picks = myTotalPicks(), rank = myRank();
+    var committers = Object.keys(LEADERS).length;
+    var rankLine = rank > 0
+      ? "All-time rank <b>#" + rank + "</b> of " + committers + " committers"
+      : "Not on the leaderboard yet - hit <b>Commit to GitHub</b> to get ranked" +
+        (committers ? " (" + committers + " committers so far)" : "");
+
+    var ladder = LEVELS.map(function (lv, i) {
+      var state = i < idx ? "lv-done" : (i === idx ? "lv-cur" : "lv-locked");
+      var tag = i === idx ? "<span class='badge'>YOU ARE HERE</span>" :
+                (i < idx ? "<span class='lv-check'>&#10003;</span>" : "");
+      return "<div class='lv-card " + state + "'>" +
+        "<span class='lv-emoji'>" + lv.emoji + "</span>" +
+        "<div class='lv-body'><div class='lv-name'>" + esc(lv.name) + " " + tag + "</div>" +
+        "<div class='muted lv-req'>" + esc(lv.req) + "</div>" +
+        "<div class='lv-smack'>" + esc(lv.smack) + "</div></div></div>";
+    }).join("");
+
+    var trophies = LEVELS.map(function (lv) {
+      var won = (S.trophies || {})[lv.name];
+      if (won) {
+        return "<div class='tr-card tr-won'>" + cheerleaderSvg() +
+          "<div class='lv-name'>" + lv.emoji + " " + esc(lv.name) + "</div>" +
+          "<div class='muted'>Congratulations - you reached " + esc(lv.name) + "!</div></div>";
+      }
+      return "<div class='tr-card tr-locked'><span class='tr-lock'>&#128274;</span>" +
+        "<div class='lv-name'>???</div>" +
+        "<div class='muted'>" + esc(lv.req) + "</div></div>";
+    }).join("");
+
+    app.innerHTML = nav(" &middot; <span class='muted'>levels</span>") +
+      "<h1>" + LEVELS[idx].emoji + " " + esc(LEVELS[idx].name) + "</h1>" +
+      "<p class='lead'>" + picks + " lifetime picks &middot; " + rankLine + "</p>" +
+      "<h2 class='lv-h2'>The ladder</h2>" +
+      "<div class='lv-grid'>" + ladder + "</div>" +
+      "<h2 class='lv-h2'>&#127942; Trophy case</h2>" +
+      "<div class='tr-grid'>" + trophies + "</div>";
+  }
+
   // ---- public actions ----
   window.FF = {
     setNote: function (pos, tier, text) {
@@ -614,6 +738,7 @@
     var m = h.match(/^#\/play\/(\w+)/); if (m) return play(m[1]);
     m = h.match(/^#\/rank\/(\w+)/); if (m) return rank(m[1]);
     if (h.indexOf("#/packet") === 0) return packet();
+    if (h.indexOf("#/levels") === 0) return levelsPage();
     home();
   }
   window.addEventListener("hashchange", route);
