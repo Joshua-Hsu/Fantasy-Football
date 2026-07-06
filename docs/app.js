@@ -21,6 +21,19 @@
   // Stable anonymous per-browser id so each person's rankings accumulate into a
   // single file (picks/u-<id>.csv) that re-submits overwrite - one vote each.
   var UID_STORE = "ff_user_id";
+  // Shared league passcode: entered once, kept locally, sent with every
+  // commit. The Worker rejects submissions without it, so strangers who find
+  // the public site can play but can't write to the league's repo.
+  var CODE_STORE = "ff_league_code";
+  function leagueCode(forceAsk) {
+    var code = localStorage.getItem(CODE_STORE);
+    if (!code || forceAsk) {
+      code = prompt("Enter your league code (ask the commissioner):",
+                    forceAsk && code ? code : "");
+      if (code) localStorage.setItem(CODE_STORE, code.trim());
+    }
+    return (code || "").trim();
+  }
   function userId() {
     var id = localStorage.getItem(UID_STORE);
     if (!id) {
@@ -454,13 +467,14 @@
       }
       var csv = "key,rating,comps\n" + rows.join("\n") + "\n";
       var id = userId();
+      var code = leagueCode(false);
       var btn = document.querySelector(".btn-primary");
       if (btn) { btn.disabled = true; btn.textContent = "Saving…"; }
       var done = function () { if (btn) { btn.disabled = false; btn.innerHTML = "&#128640; Commit to GitHub"; } };
       fetch(WORKER_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: id, csv: csv })
+        body: JSON.stringify({ id: id, csv: csv, code: code })
       }).then(function (r) {
         return r.json().catch(function () { return {}; }).then(function (j) {
           if (!r.ok) throw new Error(j.error || ("HTTP " + r.status));
@@ -472,7 +486,12 @@
               " players).\nRun Rebuild Master Tiers to fold everyone in.");
       }).catch(function (err) {
         done();
-        alert("Couldn't save to GitHub: " + err.message);
+        if (String(err.message).indexOf("league code") >= 0) {
+          localStorage.removeItem(CODE_STORE);
+          alert("That league code was rejected - ask the commissioner and try again.");
+        } else {
+          alert("Couldn't save to GitHub: " + err.message);
+        }
       });
     },
     exportTiers: function () {
