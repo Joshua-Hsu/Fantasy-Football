@@ -197,7 +197,7 @@
       req: "200+ picks", img: "img/trophy-scrub2.webp",
       smack: "You can tell a sleeper from a bust... barely. Keep clicking." },
     { name: "Taco", emoji: "\ud83c\udf2e", min: 500,
-      req: "500+ picks",
+      req: "500+ picks", img: "img/trophy-taco.webp",
       smack: "You're the league taco - delicious, and everybody wants a bite of your matchup." },
     { name: "Middle of League", emoji: "\ud83d\ude10", min: 1000,
       req: "1,000+ picks",
