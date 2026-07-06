@@ -1,21 +1,25 @@
 // Cloudflare Worker: serverless proxy behind the Tier Builder's "Commit to
 // GitHub" button. The app is a static site and can't hold a write token, so it
-// POSTs {id, csv, code} here and this Worker commits picks/u-<id>.csv using a
-// token stored as a Worker secret. The token never reaches the browser.
+// POSTs {id, csv, code?, ts?} here and this Worker commits picks/u-<id>.csv
+// using a token stored as a Worker secret. The token never reaches the browser.
 //
-// Abuse surface: the site is public, so anyone can find this endpoint. Three
-// gates keep the repo safe: a shared LEAGUE_CODE (only league members can
-// write), hard Origin rejection (not just CORS response headers), and payload
-// caps. Worst case with a leaked code is junk CSVs under picks/ — rotate the
-// secret to lock it out again.
+// Trust model: PUBLIC crowdsourcing. Anyone may submit picks; abuse is
+// contained by (in order): hard Origin rejection, per-IP rate limiting,
+// optional Turnstile bot check, optional league passcode, and payload caps.
+// The blend math downstream is robust too (median across users, comps
+// clamps), so junk submissions dilute instead of dominate. Worst case is
+// junk CSVs under picks/ — the Worker cannot write anywhere else.
 //
 // Config (wrangler vars + secrets):
-//   GH_TOKEN       (secret) fine-grained PAT, Contents: Read and write on the repo
-//   LEAGUE_CODE    (secret) shared passcode league members enter once in the app;
-//                  leave unset for open bootstrap mode
-//   GH_REPO        "owner/repo", e.g. "Joshua-Hsu/Fantasy-Football"
-//   GH_BRANCH      branch to commit to (default "main")
-//   ALLOWED_ORIGIN your site origin, e.g. "https://joshua-hsu.github.io" ("*" = any)
+//   GH_TOKEN         (secret) fine-grained PAT, Contents: Read and write on the repo
+//   TURNSTILE_SECRET (secret, optional) enables Cloudflare Turnstile bot checks;
+//                    pair with FF_CONFIG.turnstileSiteKey on the site
+//   LEAGUE_CODE      (secret, optional) private-league mode: submissions must
+//                    carry the passcode; leave unset for open/public mode
+//   GH_REPO          "owner/repo", e.g. "Joshua-Hsu/Fantasy-Football"
+//   GH_BRANCH        branch to commit to (default "main")
+//   ALLOWED_ORIGIN   your site origin, e.g. "https://joshua-hsu.github.io" ("*" = any)
+//   RATE_LIMITER     (binding, wrangler.toml) per-IP commit rate limit
 
 const API = "https://api.github.com";
 const MAX_BODY = 64 * 1024;   // bytes
@@ -60,10 +64,18 @@ export default {
     if (request.method !== "POST") return json({ error: "POST only" }, 405, ch);
 
     // Hard origin gate: browsers always send Origin on cross-site POSTs, so a
-    // mismatch means the request isn't coming from our site. (Requests with no
-    // Origin at all — curl and scripts — still have to know the league code.)
+    // mismatch means the request isn't coming from our site.
     if (allowed !== "*" && origin && origin !== allowed) {
       return json({ error: "origin not allowed" }, 403, ch);
+    }
+
+    // Per-IP rate limit (native Workers binding; silently skipped if absent).
+    const ip = request.headers.get("CF-Connecting-IP") || "unknown";
+    if (env.RATE_LIMITER) {
+      try {
+        const { success } = await env.RATE_LIMITER.limit({ key: ip });
+        if (!success) return json({ error: "slow down - try again in a minute" }, 429, ch);
+      } catch (e) { /* binding hiccup: fail open */ }
     }
 
     const raw = await request.text();
@@ -71,7 +83,19 @@ export default {
     let data;
     try { data = JSON.parse(raw); } catch { return json({ error: "bad JSON" }, 400, ch); }
 
-    // League gate: submissions must carry the shared passcode.
+    // Optional bot check: verify the Turnstile token when configured.
+    if (env.TURNSTILE_SECRET) {
+      const form = new FormData();
+      form.append("secret", env.TURNSTILE_SECRET);
+      form.append("response", String(data.ts || ""));
+      form.append("remoteip", ip);
+      const vr = await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify",
+                             { method: "POST", body: form });
+      const verdict = await vr.json().catch(() => ({}));
+      if (!verdict.success) return json({ error: "bot check failed - reload and retry" }, 403, ch);
+    }
+
+    // Optional private-league gate.
     if (env.LEAGUE_CODE && !safeEqual(data.code || "", env.LEAGUE_CODE)) {
       return json({ error: "bad league code" }, 401, ch);
     }

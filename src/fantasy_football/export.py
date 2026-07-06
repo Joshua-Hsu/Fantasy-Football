@@ -797,8 +797,11 @@ def write_tiers_csv(
                 continue
             if ur <= 0.5 and by_key[k].basis_value > 0.5:
                 continue  # ladder value riding along in a refresh: not a real pick
-            n = comps.get(k, 0)
-            w = n / (n + confidence) if n > 0 else 1.0
+            # Unknown comps (legacy/foreign submissions) count as a single
+            # comparison - low influence, never full override, since the
+            # public site accepts submissions from anyone.
+            n = max(comps.get(k, 0), 1)
+            w = n / (n + confidence)
             ratings[k] = round(w * ur + (1 - w) * anchors.get(k, by_key[k].basis_value), 2)
         tiers = derive_tiers_from_ratings(ratings, by_key)
     else:

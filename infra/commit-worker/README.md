@@ -58,19 +58,31 @@ curl -X POST https://ff-commit-worker.<you>.workers.dev \
 
 Then delete the test file from `picks/` if you don't want it counted.
 
-## League code (abuse protection)
+## Public mode + abuse protection
 
-The site is public, so the Worker gates writes behind a shared passcode:
+The site is open to everyone by default (crowdsourced picks). Defenses, in
+order:
 
-```bash
-npx wrangler secret put LEAGUE_CODE    # or dashboard: Settings -> Variables -> Secret
-```
+1. **Origin gate** — cross-origin browser requests not from `ALLOWED_ORIGIN`
+   are rejected outright.
+2. **Per-IP rate limit** — 20 commits/minute via the native Workers rate-limit
+   binding in `wrangler.toml` (generous for humans, hostile to bots).
+3. **Turnstile bot check (optional, recommended once traffic grows)** —
+   create a Turnstile widget in the Cloudflare dashboard, then:
+   `npx wrangler secret put TURNSTILE_SECRET` and set
+   `window.FF_CONFIG.turnstileSiteKey` in `docs/index.html`. Headless bots
+   fail the check; humans rarely see anything.
+4. **Payload caps** — 64 KB body, 400 rows, `key,number[,number]` rows only.
+5. **Robust aggregation (downstream)** — the rebuild takes the *median* rating
+   across submissions and clamps per-submission comparison counts, so junk
+   dilutes rather than dominates.
 
-Pick any phrase, share it with your league; the app asks each member for it
-once (stored in their browser) and sends it with every commit. Wrong/missing
-code -> 401, and the app re-prompts. If the code ever leaks, set a new secret
-value and tell the league — old submissions are unaffected. While the secret
-is unset the Worker is open (bootstrap mode).
+### Private-league mode (optional)
+
+Set `npx wrangler secret put LEAGUE_CODE` to gate writes behind a shared
+passcode. Nobody is prompted unless the server demands it: on a 401 the app
+asks once, remembers the answer, and re-prompts if it's ever rejected. Delete
+the secret to go public again; rotate it if it leaks.
 
 ## Security notes
 
