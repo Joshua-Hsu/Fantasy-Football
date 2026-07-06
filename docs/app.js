@@ -194,7 +194,7 @@
       req: "under 200 picks", img: "img/trophy-noob.webp",
       smack: "Everyone starts somewhere. Right now your mock drafts are mocking you." },
     { name: "Scrub", emoji: "\ud83e\uddfd", min: 200,
-      req: "200+ picks", img: "img/trophy-scrub.webp",
+      req: "200+ picks", img: "img/trophy-scrub2.webp",
       smack: "You can tell a sleeper from a bust... barely. Keep clicking." },
     { name: "Taco", emoji: "\ud83c\udf2e", min: 500,
       req: "500+ picks",
