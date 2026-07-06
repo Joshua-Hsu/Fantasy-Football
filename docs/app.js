@@ -533,6 +533,7 @@
       : "Not on the leaderboard yet - hit <b>Commit to GitHub</b> to get ranked" +
         (committers ? " (" + committers + " committers so far)" : "");
 
+    // Champ at the top: render the ladder best-first (logic stays ascending).
     var ladder = LEVELS.map(function (lv, i) {
       var state = i < idx ? "lv-done" : (i === idx ? "lv-cur" : "lv-locked");
       var tag = i === idx ? "<span class='badge'>YOU ARE HERE</span>" :
@@ -542,7 +543,7 @@
         "<div class='lv-body'><div class='lv-name'>" + esc(lv.name) + " " + tag + "</div>" +
         "<div class='muted lv-req'>" + esc(lv.req) + "</div>" +
         "<div class='lv-smack'>" + esc(lv.smack) + "</div></div></div>";
-    }).join("");
+    }).reverse().join("");
 
     var trophies = LEVELS.map(function (lv) {
       var won = (S.trophies || {})[lv.name];
@@ -554,7 +555,7 @@
       return "<div class='tr-card tr-locked'><span class='tr-lock'>&#128274;</span>" +
         "<div class='lv-name'>???</div>" +
         "<div class='muted'>" + esc(lv.req) + "</div></div>";
-    }).join("");
+    }).reverse().join("");
 
     app.innerHTML = nav(" &middot; <span class='muted'>levels</span>") +
       "<h1>" + LEVELS[idx].emoji + " " + esc(LEVELS[idx].name) + "</h1>" +
