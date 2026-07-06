@@ -21,18 +21,30 @@
   // Stable anonymous per-browser id so each person's rankings accumulate into a
   // single file (picks/u-<id>.csv) that re-submits overwrite - one vote each.
   var UID_STORE = "ff_user_id";
-  // Shared league passcode: entered once, kept locally, sent with every
-  // commit. The Worker rejects submissions without it, so strangers who find
-  // the public site can play but can't write to the league's repo.
+  // Optional private-league passcode. PUBLIC mode (no LEAGUE_CODE on the
+  // Worker) never prompts anyone; the app only asks if the server answers 401,
+  // then remembers the code locally.
   var CODE_STORE = "ff_league_code";
-  function leagueCode(forceAsk) {
-    var code = localStorage.getItem(CODE_STORE);
-    if (!code || forceAsk) {
-      code = prompt("Enter your league code (ask the commissioner):",
-                    forceAsk && code ? code : "");
-      if (code) localStorage.setItem(CODE_STORE, code.trim());
-    }
-    return (code || "").trim();
+  // Optional Cloudflare Turnstile bot check: activates when the site config
+  // carries a sitekey AND the Worker has TURNSTILE_SECRET. Invisible to most
+  // humans; blocks headless bot spam on the public endpoint.
+  var TS_KEY = (window.FF_CONFIG && window.FF_CONFIG.turnstileSiteKey) || "";
+  var tsToken = "", tsWidget = null;
+  if (TS_KEY) {
+    window.__ffTs = function () {
+      var div = document.createElement("div");
+      div.style.cssText = "position:fixed;bottom:8px;right:8px;z-index:50";
+      document.body.appendChild(div);
+      tsWidget = window.turnstile.render(div, {
+        sitekey: TS_KEY,
+        callback: function (t) { tsToken = t; },
+        "expired-callback": function () { tsToken = ""; window.turnstile.reset(tsWidget); }
+      });
+    };
+    var tss = document.createElement("script");
+    tss.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?onload=__ffTs";
+    tss.async = true;
+    document.head.appendChild(tss);
   }
   function userId() {
     var id = localStorage.getItem(UID_STORE);
@@ -467,32 +479,39 @@
       }
       var csv = "key,rating,comps\n" + rows.join("\n") + "\n";
       var id = userId();
-      var code = leagueCode(false);
       var btn = document.querySelector(".btn-primary");
       if (btn) { btn.disabled = true; btn.textContent = "Saving…"; }
       var done = function () { if (btn) { btn.disabled = false; btn.innerHTML = "&#128640; Commit to GitHub"; } };
-      fetch(WORKER_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: id, csv: csv, code: code })
-      }).then(function (r) {
-        return r.json().catch(function () { return {}; }).then(function (j) {
-          if (!r.ok) throw new Error(j.error || ("HTTP " + r.status));
-          return j;
+      var attempt = function (code, canPromptOn401) {
+        return fetch(WORKER_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: id, csv: csv, code: code, ts: tsToken })
+        }).then(function (r) {
+          return r.json().catch(function () { return {}; }).then(function (j) {
+            if (!r.ok) throw new Error(j.error || ("HTTP " + r.status));
+            return j;
+          });
+        }).then(function () {
+          if (code) localStorage.setItem(CODE_STORE, code);
+          if (tsWidget !== null) { tsToken = ""; window.turnstile.reset(tsWidget); }
+          done();
+          alert("Saved your rankings (id " + id + ", " + rows.length +
+                " players). They'll be blended into the next community tiers.");
+        }).catch(function (err) {
+          // Private-league mode: the server asks for a code - prompt once.
+          if (canPromptOn401 && String(err.message).indexOf("league code") >= 0) {
+            localStorage.removeItem(CODE_STORE);
+            var typed = prompt("This league requires a code (ask the commissioner):", "");
+            if (typed) return attempt(typed.trim(), false);
+            done();
+            return;
+          }
+          done();
+          alert("Couldn't save: " + err.message);
         });
-      }).then(function () {
-        done();
-        alert("Saved your rankings to GitHub (id " + id + ", " + rows.length +
-              " players).\nRun Rebuild Master Tiers to fold everyone in.");
-      }).catch(function (err) {
-        done();
-        if (String(err.message).indexOf("league code") >= 0) {
-          localStorage.removeItem(CODE_STORE);
-          alert("That league code was rejected - ask the commissioner and try again.");
-        } else {
-          alert("Couldn't save to GitHub: " + err.message);
-        }
-      });
+      };
+      attempt(localStorage.getItem(CODE_STORE) || "", true);
     },
     exportTiers: function () {
       // key + manual_tier first (so the CLI/Action can read it), then human

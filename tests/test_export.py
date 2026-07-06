@@ -109,6 +109,19 @@ def test_merge_ratings_averages_across_files(tmp_path):
     assert merged["prb5"] == 10.0        # nobody picked -> base carried forward
 
 
+def test_merge_ratings_median_resists_outliers(tmp_path):
+    """One troll submission barely moves the crowd's median."""
+    from fantasy_football.cli import _merge_ratings
+
+    files = []
+    for i, val in enumerate([250, 255, 260, 5000]):   # three humans + one troll
+        f = tmp_path / f"u{i}.csv"
+        f.write_text(f"key,rating\nprb0,{val}\n")
+        files.append(str(f))
+    merged = _merge_ratings(files, base={})
+    assert 250 <= merged["prb0"] <= 260       # median ignores the 5000
+
+
 def test_master_round_trip_rating_and_derived_tiers(session, tmp_path):
     _seed(session)
     from fantasy_football.cli import _read_ratings
@@ -490,24 +503,27 @@ def test_confidence_blend_scales_with_comps(session, tmp_path):
     assert 210 < rows["prb2"] < 230                    # 2 comps: ~25% of the way
     assert rows["prb1"] > rows["prb2"]
 
-    # Legacy pick file (no comps info) keeps the full-override behavior.
+    # Submissions with no comps info (legacy/foreign) count as ONE comparison:
+    # low influence, never a full override - the public site accepts anyone.
     write_tiers_csv(session, str(tmp_path / "m2.csv"),
                     ratings=base, user_ratings={"prb1": 260.0}, comps={},
                     year=2025, config=LeagueConfig(teams=1))
     rows2 = {r["key"]: float(r["rating"]) for r in _csv.DictReader((tmp_path / "m2.csv").open())}
-    assert rows2["prb1"] == 260.0
+    assert 205 < rows2["prb1"] < 215        # ~1/7 of the way from 200 to 260
 
 
 def test_read_comps_hardened(tmp_path):
     from fantasy_football.cli import _merge_comps, _read_comps
 
     p = tmp_path / "picks.csv"
-    p.write_text("key,rating,comps\nprb0,250,12\nprb1,240,\nbad key,1,5\nprb2,230,-3\n")
+    p.write_text("key,rating,comps\nprb0,250,12\nprb1,240,\nbad key,1,5\nprb2,230,-3\nprb3,220,9999\n")
     comps = _read_comps(str(p))
-    assert comps == {"prb0": 12, "prb2": 0}   # blank skipped, bad key skipped, clamped
+    # blank skipped, bad key skipped, negatives floored, absurd counts clamped
+    # to 40 per submission so nobody can buy confidence weight.
+    assert comps == {"prb0": 12, "prb2": 0, "prb3": 40}
     q = tmp_path / "picks2.csv"
     q.write_text("key,rating,comps\nprb0,260,8\n")
-    assert _merge_comps([str(p), str(q)]) == {"prb0": 20, "prb2": 0}
+    assert _merge_comps([str(p), str(q)]) == {"prb0": 20, "prb2": 0, "prb3": 40}
     r = tmp_path / "legacy.csv"
     r.write_text("key,rating\nprb0,260\n")
     assert _read_comps(str(r)) == {}

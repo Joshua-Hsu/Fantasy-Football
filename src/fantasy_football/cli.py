@@ -302,7 +302,10 @@ def _read_comps(path: str | None) -> dict[str, int]:
             if not _KEY_RE.match(key) or not value:
                 continue
             try:
-                comps[key] = max(0, min(int(float(value)), 100000))
+                # Per-submission clamp: nobody gets to claim thousands of
+                # comparisons to seize the confidence weight. Real sessions
+                # rarely exceed a few dozen per player.
+                comps[key] = max(0, min(int(float(value)), 40))
             except ValueError:
                 continue
     return comps
@@ -320,20 +323,21 @@ def _merge_comps(paths: list[str]) -> dict[str, int]:
 def _merge_ratings(paths: list[str], base: dict[str, float]) -> dict[str, float]:
     """Merge the ``rating`` columns of several pick exports into one map.
 
-    A player's new rating is the **average** of their rating across every pick
-    file that includes them (so multiple sessions / phones / people each get an
-    equal vote). Players nobody compared keep their ``base`` (previous-master)
-    rating, so refinements carry forward week to week.
+    A player's new rating is the **median** of his rating across every pick
+    file that includes him — one vote per submission, and robust for the
+    public site: a single troll submission shifts the median far less than it
+    would shift a mean. Players nobody compared keep their ``base``
+    (previous-master) rating, so refinements carry forward week to week.
     """
-    sums: dict[str, float] = {}
-    counts: dict[str, int] = {}
+    from statistics import median
+
+    votes: dict[str, list[float]] = {}
     for path in paths:
         for key, rating in _read_ratings(path).items():
-            sums[key] = sums.get(key, 0.0) + rating
-            counts[key] = counts.get(key, 0) + 1
+            votes.setdefault(key, []).append(rating)
     merged = dict(base)
-    for key, total in sums.items():
-        merged[key] = total / counts[key]
+    for key, vals in votes.items():
+        merged[key] = float(median(vals))
     return merged
 
 

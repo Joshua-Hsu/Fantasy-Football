@@ -9,5 +9,15 @@ GH_BRANCH = "main"
 # Your GitHub Pages origin (no trailing slash). Use "*" to allow any origin.
 ALLOWED_ORIGIN = "https://joshua-hsu.github.io"
 
-# GH_TOKEN is a SECRET - do not put it here. Set it with:
-#   npx wrangler secret put GH_TOKEN
+# Per-IP rate limit: 20 commits/minute is generous for humans, hostile to bots.
+[[unsafe.bindings]]
+name = "RATE_LIMITER"
+type = "ratelimit"
+namespace_id = "1001"
+simple = { limit = 20, period = 60 }
+
+# Secrets - do not put them here. Set with `npx wrangler secret put NAME`
+# (or dashboard Settings -> Variables and Secrets):
+#   GH_TOKEN          required; fine-grained PAT (Contents RW on the repo)
+#   TURNSTILE_SECRET  optional; enables the Turnstile bot check
+#   LEAGUE_CODE       optional; private-league passcode (unset = public mode)
