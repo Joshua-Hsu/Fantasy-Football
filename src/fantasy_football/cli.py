@@ -452,6 +452,7 @@ def _cmd_import_tiers(args: argparse.Namespace) -> int:
 
     files = args.file if isinstance(args.file, list) else [args.file]
     base_ratings = _read_ratings(getattr(args, "prices_from", None))
+    pinned = _read_ratings(getattr(args, "admin_file", None))  # commissioner pins
     user_ratings = _merge_ratings(files, base={})   # picked players only
     comps = _merge_comps(files)
     ratings = _merge_ratings(files, base_ratings)   # legacy detection / counts
@@ -480,11 +481,14 @@ def _cmd_import_tiers(args: argparse.Namespace) -> int:
             ratings=(base_ratings or None) if ratings else None,
             user_ratings=user_ratings or None,
             comps=comps or None,
+            pinned_ratings=pinned or None,
             confidence=getattr(args, "confidence", None) or 6,
             tiers=legacy_tiers or None,
             prices=existing_prices, notes=notes or None,
         )
     blended = sum(1 for k in user_ratings if comps.get(k))
+    if pinned:
+        print(f"Applied {len(pinned)} admin tier pin(s).")
     print(f"Merged {len(files)} pick file(s) -> {args.out}: "
           f"{len(user_ratings)} picked ({blended} confidence-blended; base carried: "
           f"{len(base_ratings)}), prices preserved: {len(existing_prices)}. "
@@ -821,6 +825,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_import.add_argument("--out", default="manual_tiers.csv", help="Output CSV path")
     p_import.add_argument("--prices-from", default=None, dest="prices_from",
                          help="Previous master: carry its ratings (un-picked players) and prices forward")
+    p_import.add_argument("--admin-file", default=None, dest="admin_file",
+                         help="Commissioner overwrite CSV (key,rating); pins applied after the blend")
     p_import.add_argument("--confidence", type=int, default=6,
                          help="Comparisons for a 50%% user-rating weight vs the anchor (default 6)")
     p_import.set_defaults(func=_cmd_import_tiers)

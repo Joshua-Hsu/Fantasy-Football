@@ -745,6 +745,7 @@ def write_tiers_csv(
     ratings: dict[str, float] | None = None,
     user_ratings: dict[str, float] | None = None,
     comps: dict[str, int] | None = None,
+    pinned_ratings: dict[str, float] | None = None,
     confidence: int = CONFIDENCE_PICKS,
     prices: dict[str, float] | None = None,
     notes: dict[tuple[str, int], str] | None = None,
@@ -773,10 +774,11 @@ def write_tiers_csv(
     values = compute_values(session, year=year, config=config, rules=rules, basis=basis)
     by_key = {r.key: r for rows in values.values() for r in rows}
 
-    if ratings is not None or user_ratings:
+    if ratings is not None or user_ratings or pinned_ratings:
         ratings = ratings or {}
         user_ratings = user_ratings or {}
         comps = comps or {}
+        pinned_ratings = pinned_ratings or {}
         # Default a rating for every selected player (value when not picked), so
         # the master seeds the whole app; then derive tiers from those ratings.
         # Repair pass: early masters carried a synthetic near-zero "ladder"
@@ -784,7 +786,7 @@ def write_tiers_csv(
         # the value scale (hundreds), so anything <= 0.5 for a player with actual
         # production is unrated — reseed it from value instead of letting the
         # ladder wreck the tier derivation (phantom gaps -> singleton tiers).
-        keys = set(ratings) | set(user_ratings) | set(tiers or {})
+        keys = set(ratings) | set(user_ratings) | set(pinned_ratings) | set(tiers or {})
         anchors = {
             k: ratings.get(k, by_key[k].basis_value)
             for k in keys if k in by_key
@@ -808,6 +810,11 @@ def write_tiers_csv(
             n = max(comps.get(k, 0), 1)
             w = n / (n + confidence)
             ratings[k] = round(w * ur + (1 - w) * anchors.get(k, by_key[k].basis_value), 2)
+        # Admin pins win outright: the commissioner's drag-and-drop overwrite
+        # is applied after the crowd blend, no confidence discount.
+        for k, pr in (pinned_ratings or {}).items():
+            if k in by_key:
+                ratings[k] = round(pr, 2)
         tiers = derive_tiers_from_ratings(ratings, by_key)
     else:
         tiers = tiers or {}

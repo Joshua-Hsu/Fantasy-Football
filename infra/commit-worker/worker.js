@@ -11,7 +11,10 @@
 // junk CSVs under picks/ — the Worker cannot write anywhere else.
 //
 // Config (wrangler vars + secrets):
-//   GH_TOKEN         (secret) fine-grained PAT, Contents: Read and write on the repo
+//   GH_TOKEN         (secret) fine-grained PAT, Contents: Read and write on the
+//                    repo (add Actions: Read and write to auto-trigger rebuilds)
+//   ADMIN_CODE       (secret) commissioner passcode for the tier-overwrite
+//                    endpoint; unset = admin endpoint disabled
 //   TURNSTILE_SECRET (secret, optional) enables Cloudflare Turnstile bot checks;
 //                    pair with FF_CONFIG.turnstileSiteKey on the site
 //   LEAGUE_CODE      (secret, optional) private-league mode: submissions must
@@ -93,6 +96,63 @@ export default {
                              { method: "POST", body: form });
       const verdict = await vr.json().catch(() => ({}));
       if (!verdict.success) return json({ error: "bot check failed - reload and retry" }, 403, ch);
+    }
+
+    // Commissioner endpoint: overwrite master tiers. Disabled unless the
+    // ADMIN_CODE secret exists; wrong code -> 401. Writes admin_tiers.csv and
+    // auto-triggers the Rebuild Master Tiers workflow (best effort).
+    if (data.kind === "admin") {
+      if (!env.ADMIN_CODE) return json({ error: "admin disabled" }, 403, ch);
+      if (!safeEqual(data.code || "", env.ADMIN_CODE)) {
+        return json({ error: "bad admin code" }, 401, ch);
+      }
+      const acsv = String(data.csv || "");
+      const arows = acsv.split(/\r?\n/).map((s) => s.trim())
+        .filter((r) => r && !/^key\s*,/i.test(r));
+      if (!arows.length) return json({ error: "no rows" }, 400, ch);
+      if (arows.length > MAX_ROWS) return json({ error: "too many rows" }, 413, ch);
+      for (const r of arows) {
+        const p = r.split(",");
+        if (p.length < 2 || isNaN(parseFloat(p[1]))) return json({ error: `bad row: ${r}` }, 400, ch);
+      }
+      const arepo = env.GH_REPO;
+      const abranch = env.GH_BRANCH || "main";
+      const apath = "admin_tiers.csv";
+      const aurl = `${API}/repos/${arepo}/contents/${apath}`;
+      const agh = {
+        "Authorization": `Bearer ${env.GH_TOKEN}`,
+        "Accept": "application/vnd.github+json",
+        "User-Agent": "ff-commit-worker",
+        "Content-Type": "application/json",
+      };
+      let asha;
+      const ahead = await fetch(`${aurl}?ref=${encodeURIComponent(abranch)}`, { headers: agh });
+      if (ahead.status === 200) asha = (await ahead.json()).sha;
+      else if (ahead.status !== 404) return json({ error: `github read ${ahead.status}` }, 502, ch);
+      const aput = await fetch(aurl, {
+        method: "PUT",
+        headers: agh,
+        body: JSON.stringify({
+          message: "commissioner: overwrite master tiers",
+          content: btoa(unescape(encodeURIComponent(acsv))),
+          branch: abranch,
+          ...(asha ? { sha: asha } : {}),
+        }),
+      });
+      if (!aput.ok) {
+        const detail = (await aput.text()).slice(0, 300);
+        return json({ error: `github write ${aput.status}`, detail }, 502, ch);
+      }
+      // Kick the rebuild so the overwrite goes live without a manual step.
+      const disp = await fetch(
+        `${API}/repos/${arepo}/actions/workflows/master-tiers.yml/dispatches`,
+        { method: "POST", headers: agh, body: JSON.stringify({ ref: abranch }) });
+      return json({
+        ok: true, path: apath, rows: arows.length,
+        rebuild: disp.status === 204
+          ? "triggered"
+          : `not triggered (${disp.status}) - run Rebuild Master Tiers manually`,
+      }, 200, ch);
     }
 
     // Optional private-league gate.

@@ -77,6 +77,21 @@ order:
    across submissions and clamps per-submission comparison counts, so junk
    dilutes rather than dominates.
 
+### Commissioner overwrite (admin endpoint)
+
+The site's `#/admin` page lets the commissioner drag players into tiers and
+**Overwrite master tiers**. The write is gated by an `ADMIN_CODE` secret:
+
+```bash
+npx wrangler secret put ADMIN_CODE    # unset = endpoint disabled
+```
+
+The Worker writes `admin_tiers.csv` and auto-triggers the Rebuild Master
+Tiers workflow (needs the PAT to also have **Actions: Read and write**; if it
+doesn't, the file is still saved and the rebuild reports "run manually").
+Pins apply after the crowd blend at full weight and are consumed by one
+rebuild.
+
 ### Private-league mode (optional)
 
 Set `npx wrangler secret put LEAGUE_CODE` to gate writes behind a shared
