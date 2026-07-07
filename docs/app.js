@@ -54,6 +54,18 @@
     }
     return id;
   }
+  // ---- haptics ----
+  // Vibration API: buzzes on Android (Chrome/Firefox); iOS Safari and desktops
+  // have no navigator.vibrate, so this is a silent no-op there.
+  var BUZZ = {
+    pick: 12,                     // light tick: a matchup decision landed
+    fade: [12, 60, 12],           // double tap: faded both players
+    saved: [25, 50, 25, 50, 90],  // rising triple: rankings committed
+    error: [90, 60, 90]           // heavy double: commit failed
+  };
+  function buzz(pattern) {
+    try { if (navigator.vibrate) navigator.vibrate(pattern); } catch (e) {}
+  }
   // Flatten + index.
   var ALL = [];
   ORDER.forEach(function (p) { (DATA[p] || []).forEach(function (e) { ALL.push(e); }); });
@@ -88,6 +100,7 @@
   // ---- elo ----
   function expected(a, b) { return 1 / (1 + Math.pow(10, (b - a) / SCALE)); }
   function pick(winner, loser) {
+    buzz(BUZZ.pick);
     var rw = S.ratings[winner], rl = S.ratings[loser];
     var e = expected(rw, rl);
     S.ratings[winner] = rw + K * (1 - e);
@@ -759,6 +772,7 @@
     noPick: function (a, b, pos) {
       // Neither interests you: drop both presented options (-10 Elo each),
       // count as a comparison for both, then show a new pair.
+      buzz(BUZZ.fade);
       S.ratings[a] -= NUDGE; S.ratings[b] -= NUDGE;
       S.comps[a]++; S.comps[b]++;
       save(S); play(pos);
@@ -801,6 +815,7 @@
           if (code) localStorage.setItem(CODE_STORE, code);
           if (tsWidget !== null) { tsToken = ""; window.turnstile.reset(tsWidget); }
           done();
+          buzz(BUZZ.saved);
           alert("Saved your rankings (id " + id + ", " + rows.length +
                 " players). They'll be blended into the next community tiers.");
         }).catch(function (err) {
@@ -813,6 +828,7 @@
             return;
           }
           done();
+          buzz(BUZZ.error);
           alert("Couldn't save: " + err.message);
         });
       };
