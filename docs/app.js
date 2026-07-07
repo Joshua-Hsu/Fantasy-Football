@@ -66,6 +66,19 @@
   function buzz(pattern) {
     try { if (navigator.vibrate) navigator.vibrate(pattern); } catch (e) {}
   }
+  // Visual counterpart, for platforms with no vibration (iOS Safari): the
+  // chosen card pops (or a faded pair sinks) for PICK_MS before the next
+  // matchup renders; duelLock swallows taps during that beat so a double-tap
+  // can't record a second pick. flashBtn pulses/shakes the commit button.
+  var PICK_MS = 160, duelLock = false;
+  function flashBtn(cls) {
+    var btn = document.querySelector(".btn-primary");
+    if (!btn) return;
+    btn.classList.remove("flash-ok", "flash-err");
+    void btn.offsetWidth;               // restart the animation if re-flashed
+    btn.classList.add(cls);
+    setTimeout(function () { btn.classList.remove(cls); }, 700);
+  }
   // Flatten + index.
   var ALL = [];
   ORDER.forEach(function (p) { (DATA[p] || []).forEach(function (e) { ALL.push(e); }); });
@@ -406,8 +419,8 @@
       nav(" &middot; <a href='#/rank/" + pos + "'>" + pos + " ranking</a>") +
       "<h1>" + pos + " &mdash; who'd you rather?</h1>" +
       "<div class='cards'>" +
-        "<button class='card' onclick=\"FF.choose('" + a.key + "','" + b.key + "','" + pos + "')\">" + statBlock(a) + "</button>" +
-        "<button class='card' onclick=\"FF.choose('" + b.key + "','" + a.key + "','" + pos + "')\">" + statBlock(b) + "</button>" +
+        "<button class='card' onclick=\"FF.choose('" + a.key + "','" + b.key + "','" + pos + "',this)\">" + statBlock(a) + "</button>" +
+        "<button class='card' onclick=\"FF.choose('" + b.key + "','" + a.key + "','" + pos + "',this)\">" + statBlock(b) + "</button>" +
       "</div><p class='vs'>" +
         "<button class='btn' onclick=\"FF.again('" + pos + "')\">&#8635; skip</button> " +
         "<button class='btn' onclick=\"FF.noPick('" + a.key + "','" + b.key + "','" + pos + "')\">" +
@@ -767,15 +780,26 @@
       if (text) S.notes[pos][tier] = text; else delete S.notes[pos][tier];
       save(S);
     },
-    choose: function (winner, loser, pos) { pick(winner, loser); play(pos); },
-    again: function (pos) { play(pos); },
+    choose: function (winner, loser, pos, el) {
+      if (duelLock) return;              // ignore taps during the feedback beat
+      duelLock = true;
+      if (el) el.classList.add("chosen");
+      pick(winner, loser);               // record immediately; only the render waits
+      setTimeout(function () { duelLock = false; play(pos); }, PICK_MS);
+    },
+    again: function (pos) { if (!duelLock) play(pos); },
     noPick: function (a, b, pos) {
       // Neither interests you: drop both presented options (-10 Elo each),
       // count as a comparison for both, then show a new pair.
+      if (duelLock) return;
+      duelLock = true;
       buzz(BUZZ.fade);
+      var cards = document.querySelectorAll(".card"), i;
+      for (i = 0; i < cards.length; i++) cards[i].classList.add("dropped");
       S.ratings[a] -= NUDGE; S.ratings[b] -= NUDGE;
       S.comps[a]++; S.comps[b]++;
-      save(S); play(pos);
+      save(S);
+      setTimeout(function () { duelLock = false; play(pos); }, PICK_MS);
     },
     commitPicks: function () {
       // Push just the players you moved (rating != seed) to the repo through the
@@ -818,6 +842,7 @@
           buzz(BUZZ.saved);
           alert("Saved your rankings (id " + id + ", " + rows.length +
                 " players). They'll be blended into the next community tiers.");
+          flashBtn("flash-ok");         // alert() blocks paint, so flash after dismiss
         }).catch(function (err) {
           // Private-league mode: the server asks for a code - prompt once.
           if (canPromptOn401 && String(err.message).indexOf("league code") >= 0) {
@@ -830,6 +855,7 @@
           done();
           buzz(BUZZ.error);
           alert("Couldn't save: " + err.message);
+          flashBtn("flash-err");
         });
       };
       attempt(localStorage.getItem(CODE_STORE) || "", true);
