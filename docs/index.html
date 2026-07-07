@@ -112,6 +112,31 @@
   }
   .card:hover { border-color:var(--accent); }
   .card:active { border-color:var(--accent); transform:scale(.99); box-shadow:var(--shadow-press); }
+  /* Visual pick feedback (works everywhere, incl. iOS where the Vibration API
+     doesn't): chosen card pops, a faded pair sinks, then the next matchup
+     renders. flash-ok/flash-err confirm the GitHub commit on its button. */
+  @keyframes cardPop {
+    0% { transform:scale(1); }
+    55% { transform:scale(1.035); }
+    100% { transform:scale(1.015); }
+  }
+  .card.chosen { animation:cardPop .16s ease-out forwards; border-color:var(--accent); box-shadow:var(--shadow-press); }
+  .card.dropped { opacity:.35; transform:scale(.97); transition:opacity .16s, transform .16s; }
+  @keyframes btnFlashOk {
+    0% { box-shadow:0 0 0 0 color-mix(in srgb, var(--accent) 60%, transparent); }
+    100% { box-shadow:0 0 0 16px transparent; }
+  }
+  .btn.flash-ok { animation:btnFlashOk .6s ease-out; border-color:var(--accent); }
+  @keyframes btnShake {
+    0%, 100% { transform:translateX(0); }
+    20%, 60% { transform:translateX(-5px); }
+    40%, 80% { transform:translateX(5px); }
+  }
+  .btn.flash-err { animation:btnShake .4s ease-in-out; border-color:var(--down); }
+  @media (prefers-reduced-motion: reduce) {
+    .card.chosen, .btn.flash-ok, .btn.flash-err { animation:none; }
+    .card.dropped { transition:none; }
+  }
   .card .name { font-size:1.22rem; font-weight:800; letter-spacing:-.01em; display:flex; align-items:center; gap:.4rem; margin-bottom:.1rem; }
   .row {
     display:flex; justify-content:space-between; gap:1rem;
@@ -314,6 +339,6 @@
   window.FF_CONFIG = { workerUrl: "https://ff-commit-worker.joshuahsu2.workers.dev" };
 </script>
 <script src="data.js?v=20260706"></script>
-<script src="app.js?v=20260707"></script>
+<script src="app.js?v=20260707b"></script>
 </body>
 </html>
