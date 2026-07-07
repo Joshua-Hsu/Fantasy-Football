@@ -190,28 +190,28 @@
   // ---- levels / gamification ----
   var LEADERS = (window.FF_DATA || {}).leaders || {};
   var LEVELS = [
-    { name: "NOOB", emoji: "\ud83c\udf7c", min: 0,
+    { name: "NOOB", won: "First snap taken - the training wheels are officially game-worn.", emoji: "\ud83c\udf7c", min: 0,
       req: "under 200 picks", img: "img/trophy-noob.webp",
       smack: "Everyone starts somewhere. Right now your mock drafts are mocking you." },
-    { name: "Scrub", emoji: "\ud83e\uddfd", min: 200,
+    { name: "Scrub", won: "Promoted from waterboy. You now carry the clipboard with authority.", emoji: "\ud83e\uddfd", min: 200,
       req: "200+ picks", img: "img/trophy-scrub2.webp",
       smack: "You can tell a sleeper from a bust... barely. Keep clicking." },
-    { name: "Taco", emoji: "\ud83c\udf2e", min: 500,
+    { name: "Taco", won: "Taco unlocked - crunchy on the outside, pure upside on the inside.", emoji: "\ud83c\udf2e", min: 500,
       req: "500+ picks", img: "img/trophy-taco.webp",
       smack: "You're the league taco - delicious, and everybody wants a bite of your matchup." },
-    { name: "Middle of League", emoji: "\ud83d\ude10", min: 1000,
+    { name: "Middle of League", won: "Gloriously average! The playoff bubble has a seat with your name on it.", emoji: "\ud83d\ude10", min: 1000,
       req: "1,000+ picks", img: "img/trophy-mol.webp",
       smack: "Respectably mediocre. The playoff bubble is your natural habitat." },
-    { name: "Division Bully", emoji: "\ud83d\ude24", min: 2000,
+    { name: "Division Bully", won: "The division group chat just went quiet. They know.", emoji: "\ud83d\ude24", min: 2000,
       req: "2,000+ picks", img: "img/trophy-bully.webp",
       smack: "You're out here stealing lunch money from your division rivals." },
-    { name: "Contender", emoji: "\ud83d\udd25", min: 3500,
+    { name: "Contender", won: "Vegas moved your odds. The whole room watches your nominations now.", emoji: "\ud83d\udd25", min: 3500,
       req: "3,500+ picks", img: "img/trophy-contender.webp",
       smack: "The room goes quiet when you nominate. One more push." },
-    { name: "Super Bowl Player", emoji: "\u2b50", min: 5000, rank: 106,
+    { name: "Super Bowl Player", won: "Confetti in your hair - two full rosters of drafters look up at you.", emoji: "\u2b50", min: 5000, rank: 106,
       req: "5,000+ picks & top 106 all-time", img: "img/trophy-sbp.webp",
       smack: "Top 106 in the world - that's a full two-deep NFL roster of drafters, and you made the trip." },
-    { name: "League Champ", emoji: "\ud83c\udfc6", min: 5000, rank: 11,
+    { name: "League Champ", won: "Ring sized. Banner hung. Trash talk immortalized. Bow to the Champ.", emoji: "\ud83c\udfc6", min: 5000, rank: 11,
       req: "5,000+ picks & top 11 all-time", img: "img/trophy-champ.webp",
       smack: "Top 11. You ARE the starting lineup. Everyone else is drafting for second." }
   ];
@@ -438,7 +438,7 @@
         return (tiers[a.key] - tiers[b.key]) || (S.ratings[b.key] - S.ratings[a.key]);
       });
       var hasBkp = pos !== "DST";
-      var shareCols = { RB: ["Tgt%", "Rush%"], WR: ["Tgt%", "Rush%"], TE: ["Tgt%"] }[pos] || [];
+      var shareCols = { RB: ["Tgt%", "Rush%"], WR: ["Tgt%", "Rush%"], TE: ["Tgt%", "Rush%"] }[pos] || [];
       var cols = 6 + shareCols.length + (hasBkp ? 3 : 0);
       var head = "<tr><th class='note-col'>Tier</th><th>Tm</th><th>PPG</th><th>Starter</th>" +
         shareCols.map(function (h) { return "<th>" + h + "</th>"; }).join("") +
@@ -500,16 +500,23 @@
         "<th>QB</th><th>RB1</th><th>RB2</th><th>WR1</th><th>WR2</th><th>WR3</th><th>TE</th></tr></thead>" +
         "<tbody>" + trs + "</tbody></table></div></section>";
     }
-    if (D.top200 && D.top200.length) {
-      var hs = (D.top200_headers || []).map(function (h) { return "<th>" + esc(h) + "</th>"; }).join("");
-      var rs = D.top200.map(function (row, i) {
+    var statsTable = function (title, headers, rows) {
+      var hs = (headers || []).map(function (h) { return "<th>" + esc(h) + "</th>"; }).join("");
+      var rs = (rows || []).map(function (row, i) {
         return "<tr><td>" + (i + 1) + "</td>" + row.map(function (v, j) {
           return "<td" + (j === 0 ? " class='pk-name'" : "") + ">" + esc(v) + "</td>";
         }).join("") + "</tr>";
       }).join("");
-      extra += "<section class='pk-sec'><h2>Top 200</h2><div class='table-wrap'>" +
+      return "<section class='pk-sec'><h2>" + esc(title) + "</h2><div class='table-wrap'>" +
         "<table class='pk'><thead><tr><th>#</th>" + hs + "</tr></thead><tbody>" + rs +
         "</tbody></table></div></section>";
+    };
+    var yr = D.year ? D.year + " " : "";
+    if (D.top200 && D.top200.length) {
+      extra += statsTable(yr + "Top 200 Stats", D.top200_headers, D.top200);
+    }
+    if (D.qbstats && D.qbstats.length) {
+      extra += statsTable(yr + "QB Stats", D.qb_headers, D.qbstats);
     }
     if (!extra) {
       extra = "<p class='muted'>Team Stats / Top 200 need a regenerated data.js " +
@@ -552,7 +559,7 @@
           : cheerleaderSvg();
         return "<div class='tr-card tr-won'>" + art +
           "<div class='lv-name'>" + lv.emoji + " " + esc(lv.name) + "</div>" +
-          "<div class='muted'>Congratulations - you reached " + esc(lv.name) + "!</div></div>";
+          "<div class='muted'>" + esc(lv.won || ("Congratulations - you reached " + lv.name + "!")) + "</div></div>";
       }
       return "<div class='tr-card tr-locked'><span class='tr-lock'>&#128274;</span>" +
         "<div class='lv-name'>???</div>" +
