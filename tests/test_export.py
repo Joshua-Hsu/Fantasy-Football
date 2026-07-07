@@ -157,13 +157,14 @@ def test_packet_position_sheet_layout_and_tabs(session, tmp_path):
     from openpyxl import load_workbook
 
     wb = load_workbook(out)
-    for tab in ("Draft Board", "RB", "Team Stats", "Top 200"):
+    for tab in ("Draft Board", "RB", "Team Stats",
+                "2025 Top 200 Stats", "2025 QB Stats"):
         assert tab in wb.sheetnames
 
     ws = wb["RB"]
-    assert [c.value for c in ws[1][:11]] == [
+    assert [c.value for c in ws[1][:13]] == [
         "Tier", "Team", "PPG", "Starter", "Tgt%", "Rush%", "Rec$", "Bid",
-        "Bkp PPG", "Backup", "Bkp Bid"]
+        "Bkp PPG", "Backup", "Bkp Tgt%", "Bkp Rush%", "Bkp Bid"]
     # Row 2 = best RB: hand-written tier note + depth-chart backup.
     assert ws["A2"].value == "Bell cows - pay up"
     assert ws["D2"].value == "RB0"
@@ -185,11 +186,16 @@ def test_packet_position_sheet_layout_and_tabs(session, tmp_path):
     assert ts.cell(row=gb_row, column=6).value == 10            # PA from game score
     assert ts.cell(row=gb_row, column=qb_col).value == "Some QB"  # depth-chart starter
 
-    t2 = wb["Top 200"]
+    # RB0's depth-chart backup (rb5) gets his usage shares in the Bkp columns.
+    assert float(ws.cell(row=2, column=12).value) > 0   # Bkp Rush%
+
+    t2 = wb["2025 Top 200 Stats"]
     assert [c.value for c in t2[1][:7]] == ["Rk", "Player", "Tm", "Pos", "G", "FPTS", "PPG"]
     assert t2["B2"].value == "RB0"        # top scorer first
     names = [t2.cell(row=r, column=2).value for r in range(2, t2.max_row + 1)]
     assert "K0" not in names              # kickers excluded
+    qbt = wb["2025 QB Stats"]
+    assert [c.value for c in qbt[1][:6]] == ["Rk", "Player", "Tm", "G", "FPTS", "PPG"]
 
     db = wb["Draft Board"]
     dh = [c.value for c in db[1]]
@@ -433,6 +439,8 @@ def test_webapp_payload_carries_packet_data(session, tmp_path):
 
     assert payload["top200"][0][0] == "RB0"      # best scorer first
     assert len(payload["top200_headers"]) == len(payload["top200"][0])
+    assert payload["qbstats"] == []               # no QBs in the seed
+    assert payload["year"] == 2025
 
 
 def test_load_coaching_new_role_flags(session, tmp_path, monkeypatch):
