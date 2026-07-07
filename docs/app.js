@@ -294,9 +294,8 @@
       "<button class='btn' onclick='FF.exportTiers()'>&#11015; Export tiers CSV</button>" +
       "<label class='btn' style='cursor:pointer'>&#11014; Import tiers CSV" +
       "<input type='file' accept='.csv' style='display:none' onchange='FF.importTiers(this)'></label>" +
-      "</div><p class='muted'>Commit sends your rankings to the shared " +
-      "<code>picks/</code> database; run the Rebuild Master action to fold " +
-      "everyone in. Export is just your personal copy.</p>";
+      "</div><p class='muted'>Commit sends your rankings to the shared database. " +
+      "You can also download a draft packet of your tiers.</p>";
   }
 
   function coachName(name, isNew) {
