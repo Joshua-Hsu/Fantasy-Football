@@ -989,11 +989,16 @@
       // popup, no download, no token in the browser. Each browser has a stable
       // id, so re-submitting overwrites your one file (one vote each). Run
       // "Rebuild Master Tiers" afterward to fold every user's file in.
+      // Base stamp: which master these picks were played against. The rebuild
+      // only blends files stamped with the master it is rebuilding, so picks
+      // made on an older tier base never shift the new one.
+      var base = String((window.FF_DATA || {}).base || "")
+        .replace(/[^0-9a-f]/gi, "").slice(0, 16).toLowerCase();
       var rows = [];
       ALL.forEach(function (e) {
         if (Math.abs((S.ratings[e.key] || 0) - e.seed) > 0.001) {
           rows.push(e.key + "," + (Math.round(S.ratings[e.key] * 100) / 100) +
-                    "," + (S.comps[e.key] || 0));
+                    "," + (S.comps[e.key] || 0) + (base ? "," + base : ""));
         }
       });
       if (!rows.length) { alert("No picks to save yet - play a few matchups first."); return; }
@@ -1002,7 +1007,7 @@
               "See infra/commit-worker/README.md to deploy the proxy and set it.");
         return;
       }
-      var csv = "key,rating,comps\n" + rows.join("\n") + "\n";
+      var csv = "key,rating,comps" + (base ? ",base" : "") + "\n" + rows.join("\n") + "\n";
       var id = userId();
       var btn = document.querySelector(".btn-primary");
       if (btn) { btn.disabled = true; btn.textContent = "Saving…"; }

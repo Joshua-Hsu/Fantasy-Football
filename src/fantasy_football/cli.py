@@ -264,6 +264,44 @@ def _read_tier_pins(
     return pins, released
 
 
+def _master_base(path: str | None) -> str:
+    """Short content hash identifying a master tiers file.
+
+    Embedded in data.js (``FF_DATA.base``) and echoed by the app in every
+    commit, so a rebuild can tell which master a pick file was played
+    against. ANY change to the master (crowd blend, admin pin, price edit)
+    yields a new base — picks made on a previous master never shift the
+    next rebuild (their signal already lives in the master's ratings).
+    """
+    import hashlib
+    import os
+
+    if not path or not os.path.exists(path):
+        return ""
+    with open(path, "rb") as fh:
+        return hashlib.sha256(fh.read()).hexdigest()[:10]
+
+
+def _read_base(path: str | None) -> str:
+    """The ``base`` stamp a pick file was made against ('' if unstamped)."""
+    import csv
+    import os
+
+    if not path or not os.path.exists(path):
+        return ""
+    with open(path, newline="") as fh:
+        reader = csv.DictReader(fh)
+        if "base" not in (reader.fieldnames or []):
+            return ""
+        for i, row in enumerate(reader):
+            if i >= _MAX_TIERS_ROWS:
+                break
+            value = (row.get("base") or "").strip().lower()
+            if re.fullmatch(r"[0-9a-f]{4,16}", value):
+                return value
+    return ""
+
+
 def _league_config(args: argparse.Namespace):
     """Build the LeagueConfig from CLI args, including --price-cap overrides.
 
@@ -495,16 +533,26 @@ def _cmd_import_tiers(args: argparse.Namespace) -> int:
     files = args.file if isinstance(args.file, list) else [args.file]
     base_ratings = _read_ratings(getattr(args, "prices_from", None))
     pinned = _read_ratings(getattr(args, "admin_file", None))  # commissioner pins
-    # Commissioner TIER pins: carried forward from the previous master's
-    # tier_pin column, updated by an admin overwrite (tier column), and
-    # dropped for keys the admin explicitly released (empty rows).
+    # Commissioner TIER pins: a fresh admin overwrite (tier column) is
+    # literal; pins carried from the previous master's tier_pin column act
+    # as bands the fresh crowd can move players across; released keys drop.
     prev_pins, _ = _read_tier_pins(getattr(args, "prices_from", None))
     admin_pins, admin_released = _read_tier_pins(
         getattr(args, "admin_file", None), column="tier")
-    pin_tiers = {k: t for k, t in prev_pins.items() if k not in admin_released}
-    pin_tiers.update(admin_pins)
-    user_ratings = _merge_ratings(files, base={})   # picked players only
-    comps = _merge_comps(files)
+    carried_pins = {k: t for k, t in prev_pins.items()
+                    if k not in admin_released and k not in admin_pins}
+    # Freshness gate: only pick files stamped with THIS master's base shift
+    # the blend. Picks made on a previous master are already baked into the
+    # carried ratings — replaying them would double-count stale opinions
+    # (and could drag players across admin tiers the picker never saw).
+    cur_base = _master_base(getattr(args, "prices_from", None))
+    if cur_base:
+        blend_files = [f for f in files if _read_base(f) == cur_base]
+        stale = len(files) - len(blend_files)
+    else:
+        blend_files, stale = files, 0
+    user_ratings = _merge_ratings(blend_files, base={})   # picked players only
+    comps = _merge_comps(blend_files)
     ratings = _merge_ratings(files, base_ratings)   # legacy detection / counts
     # Legacy fallback: if no file carried a rating column, use the integer tiers.
     legacy_tiers: dict[str, int] = {}
@@ -532,17 +580,22 @@ def _cmd_import_tiers(args: argparse.Namespace) -> int:
             user_ratings=user_ratings or None,
             comps=comps or None,
             pinned_ratings=pinned or None,
-            pinned_tiers=pin_tiers or None,
+            pinned_tiers=admin_pins or None,
+            carried_tiers=carried_pins or None,
             confidence=getattr(args, "confidence", None) or 6,
             tiers=legacy_tiers or None,
             prices=existing_prices, notes=notes or None,
         )
     blended = sum(1 for k in user_ratings if comps.get(k))
+    if stale:
+        print(f"Skipped {stale} pick file(s) made on a previous master "
+              f"(base != {cur_base}); their signal is already carried.")
     if pinned:
         print(f"Applied {len(pinned)} admin rating pin(s).")
-    if pin_tiers:
-        print(f"Pinned tiers for {len(pin_tiers)} player(s) "
-              f"({len(admin_pins)} new/updated, {len(admin_released)} released).")
+    if admin_pins or carried_pins:
+        print(f"Tier pins: {len(admin_pins)} literal (fresh overwrite), "
+              f"{len(carried_pins)} carried as crowd-movable bands"
+              + (f", {len(admin_released)} released." if admin_released else "."))
     elif admin_released:
         print(f"Released {len(admin_released)} player(s) back to derived tiers.")
     print(f"Merged {len(files)} pick file(s) -> {args.out}: "
@@ -774,6 +827,7 @@ def _cmd_build_webapp(args: argparse.Namespace) -> int:
             prices=prices,
             backups=backups, starters=starters, backup_overrides=overrides,
             leaders=leaders,
+            base=_master_base(getattr(args, "tiers_file", None)),
         )
     print(f"Wrote pick-game data to {path}")
     return 0

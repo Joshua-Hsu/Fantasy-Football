@@ -224,12 +224,20 @@ back to a file's integer `manual_tier` only for legacy exports with no `rating`.
 **Commissioner tier pins**: the `#/admin` editor holds *literal* tiers (explicit
 per-player assignments; pointer-drag via grip handle + tap-tap, split/merge
 controls — no live re-derivation, so any player can go in any tier). Overwrite
-ships the whole edited position as `key,rating,tier`; the rebuild applies tier
-pins AFTER the gap derivation (full manual override) and writes them to the
-master's `tier_pin` column, which every later rebuild re-reads — pins persist
-until the admin "Release to crowd" button sends empty `key,,` rows for the
-position. `build-webapp` embeds each entity's final tier (pins applied) so the
-admin board reopens exactly as the master stands.
+ships the whole edited position as `key,rating,tier`; the rebuild applies a
+FRESH overwrite literally (after the gap derivation), redistributes ratings to
+fit (tight in-tier, big boundary gaps), and writes pins to the master's
+`tier_pin` column. On LATER rebuilds those carried pins act as **bands** on the
+previous geometry: every player re-slots by where his blended rating falls
+between the anchor boundaries, so the crowd CAN move players across admin
+tiers — but only with fresh picks, because of the **base gate**: `build-webapp`
+stamps data.js with `FF_DATA.base` (a content hash of the master via
+`_master_base`), commits echo it as a `base` column, and `import-tiers` blends
+ONLY pick files whose base matches the master being rebuilt. Stale/unstamped
+files are skipped (their signal already lives in the carried ratings). Pins
+persist until the admin "Release to crowd" button sends empty `key,,` rows for
+the position. `build-webapp` embeds each entity's final tier (pins applied) so
+the admin board reopens exactly as the master stands.
 
 **Schema-change note:** `init-db` uses `create_all`, which does **not** alter
 existing tables. When you add columns (as the scoring work did to

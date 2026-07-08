@@ -93,7 +93,10 @@ still saved and the rebuild reports "run manually"). Rating pins apply after
 the crowd blend at full weight and are consumed by one rebuild; **tier pins
 persist** — they ride the master's `tier_pin` column through every later
 rebuild until the admin page's "Release to crowd" button sends empty
-(`key,,`) rows for that position.
+(`key,,`) rows for that position. Carried pins are *bands*, not handcuffs:
+crowd picks made against the current master (commits carry a `base` stamp;
+the rebuild ignores picks stamped with an older master) can accumulate
+enough weight to move a player across an admin boundary.
 
 ### Private-league mode (optional)
 

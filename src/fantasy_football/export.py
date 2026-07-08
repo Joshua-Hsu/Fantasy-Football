@@ -386,6 +386,7 @@ def write_webapp_data(
     starters: dict[tuple[str, str], list[str]] | None = None,
     backup_overrides: dict[str, str] | None = None,
     leaders: dict[str, int] | None = None,
+    base: str | None = None,
 ) -> str:
     """Write the pick-game data as ``docs/data.js`` (``window.FF_DATA = {...}``).
 
@@ -478,6 +479,9 @@ def write_webapp_data(
         "leaders": top_leaders,
         "teams": teams_payload,
         "year": last_year,
+        # Which master this build came from: commits echo it, and the rebuild
+        # only blends pick files made against the master it is rebuilding.
+        "base": base or "",
         "top200_headers": ["Player", "Tm", "Pos", "G", "FPTS", "PPG",
                            "RuAtt", "RuYds", "RuTD",
                            "Tgt", "Rec", "ReYds", "ReTD"],
@@ -768,6 +772,7 @@ def write_tiers_csv(
     comps: dict[str, int] | None = None,
     pinned_ratings: dict[str, float] | None = None,
     pinned_tiers: dict[str, int] | None = None,
+    carried_tiers: dict[str, int] | None = None,
     confidence: int = CONFIDENCE_PICKS,
     prices: dict[str, float] | None = None,
     notes: dict[tuple[str, int], str] | None = None,
@@ -789,10 +794,15 @@ def write_tiers_csv(
     hand-written tier description per (position, tier) — it's repeated on each
     row of that tier so the CSV round-trips it (and you can edit it in place).
 
-    ``pinned_tiers`` is the commissioner's explicit tier per key (the #/admin
-    board). Pins are applied AFTER the gap derivation — full manual override —
-    and are written to the ``tier_pin`` column so the next rebuild carries them
-    forward until an explicit release clears them.
+    ``pinned_tiers`` is the commissioner's explicit tier per key from a FRESH
+    #/admin overwrite — literal law, applied after the gap derivation.
+    ``carried_tiers`` are pins carried forward from the previous master's
+    ``tier_pin`` column: they act as rating BANDS anchored on the previous
+    geometry, so crowd picks that move a blended rating across a band
+    boundary promote/demote the player to the neighbouring tier. (The CLI
+    feeds the blend only pick files made against this same master, so only
+    same-base picks can cross admin boundaries.) Both kinds are written back
+    to ``tier_pin`` — pinned positions stay pinned until released.
     """
     import csv
 
@@ -845,13 +855,33 @@ def write_tiers_csv(
                 ratings[k] = round(pr, 2)
         tiers = derive_tiers_from_ratings(ratings, by_key)
         # Commissioner tier pins: full manual override of the derived tiers.
-        # Positions containing a pin are renumbered contiguous 1..K in
+        # A fresh admin overwrite (pinned_tiers) is literal. Carried pins
+        # (carried_tiers) act as bands on the previous master's geometry:
+        # every player in the position is re-assigned by where his BLENDED
+        # rating falls between the anchor boundaries, so fresh crowd picks
+        # with enough weight move him across an admin boundary. Positions
+        # containing a pin are then renumbered contiguous 1..K in
         # (tier, rating) order, so pins can't leave gaps or inverted labels.
         pinned_tiers = {k: t for k, t in (pinned_tiers or {}).items() if k in tiers}
-        if pinned_tiers:
+        carried_tiers = {k: t for k, t in (carried_tiers or {}).items() if k in tiers}
+        admin_pos = {by_key[k].position for k in pinned_tiers}
+        band_pos = {by_key[k].position for k in carried_tiers} - admin_pos
+        if pinned_tiers or carried_tiers:
+            for pos in band_pos:
+                carried_in = [k for k in carried_tiers if by_key[k].position == pos]
+                carried_in.sort(key=lambda k: (carried_tiers[k], -anchors.get(k, 0.0)))
+                bounds = [
+                    (anchors.get(carried_in[i], 0.0)
+                     + anchors.get(carried_in[i + 1], 0.0)) / 2
+                    for i in range(len(carried_in) - 1)
+                    if carried_tiers[carried_in[i]] != carried_tiers[carried_in[i + 1]]
+                ]
+                for k in [k2 for k2 in tiers if by_key[k2].position == pos]:
+                    r = ratings.get(k, 0.0)
+                    tiers[k] = 1 + sum(1 for b in bounds if r < b)
             for k, t in pinned_tiers.items():
                 tiers[k] = t
-            pinned_pos = {by_key[k].position for k in pinned_tiers}
+            pinned_pos = admin_pos | band_pos
             for pos in pinned_pos:
                 keys_in = [k for k in tiers if by_key[k].position == pos]
                 keys_in.sort(key=lambda k: (tiers[k], -ratings.get(k, 0.0)))
@@ -882,9 +912,11 @@ def write_tiers_csv(
                         cur -= gap if tiers[k] != prev_t else step
                     prev_t = tiers[k]
                     ratings[k] = round(cur, 2)
-            # Record the FINAL labels so the carried-forward pins match what
-            # this master actually says.
-            pinned_tiers = {k: tiers[k] for k in pinned_tiers}
+            # Record the FINAL labels for EVERY player in a pinned position
+            # (new arrivals join the structure) so the carried-forward pins
+            # match what this master actually says.
+            pinned_tiers = {k: tiers[k] for k in tiers
+                            if by_key[k].position in pinned_pos}
     else:
         tiers = tiers or {}
         ratings = {}
