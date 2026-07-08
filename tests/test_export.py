@@ -698,8 +698,10 @@ def test_tier_pins_override_derivation(session, tmp_path):
                     year=2025, config=LeagueConfig(teams=1))
     pinned = {r["key"]: r for r in _csv.DictReader((tmp_path / "pinned.csv").open())}
     assert pinned["prb1"]["manual_tier"] == pinned["prb0"]["manual_tier"] == "1"
+    # The WHOLE position is recorded as pinned (it stays governed as a unit).
     assert pinned["prb1"]["tier_pin"] == "1"
-    assert pinned["prb0"]["tier_pin"] == ""
+    assert all(r["tier_pin"] == r["manual_tier"]
+               for r in pinned.values() if r["pos"] == "RB")
     tiers = sorted({int(r["manual_tier"]) for r in pinned.values() if r["pos"] == "RB"})
     assert tiers == list(range(1, len(tiers) + 1))
 
@@ -715,7 +717,8 @@ def test_read_tier_pins_master_and_admin_release(session, tmp_path):
     write_tiers_csv(session, str(master), ratings=base, pinned_tiers={"prb1": 1},
                     year=2025, config=LeagueConfig(teams=1))
     pins, released = _read_tier_pins(str(master))
-    assert pins == {"prb1": 1} and released == set()
+    assert pins["prb1"] == 1 and released == set()
+    assert len(pins) >= 3          # position-wide: every RB carries his pin
 
     # Admin overwrite file: position takeover rows carry key,rating,tier.
     admin = tmp_path / "admin_tiers.csv"
@@ -782,3 +785,80 @@ def test_pinned_ratings_redistribute_to_fit_tiers(session, tmp_path):
     rederived = {r["key"]: r["manual_tier"] for r in _csv.DictReader(m2.open())
                  if r["pos"] == "RB"}
     assert rederived == tier_of
+
+
+def test_carried_pins_are_bands_fresh_crowd_can_cross(session, tmp_path):
+    """Carried pins re-slot players by blended rating between the anchor
+    boundaries: heavy fresh evidence crosses a tier line, light doesn't."""
+    import csv as _csv
+
+    from fantasy_football.export import write_tiers_csv
+
+    _seed(session)
+    # Previous master's redistributed geometry: tier 1 = {300, 298},
+    # tier 2 = {280, 278}, tier 3 = {250, 248}. Boundary 1|2 sits at 289.
+    anchors = {"prb0": 300.0, "prb1": 298.0, "prb2": 280.0,
+               "prb3": 278.0, "prb4": 250.0, "prb5": 248.0}
+    carried = {"prb0": 1, "prb1": 1, "prb2": 2, "prb3": 2, "prb4": 3, "prb5": 3}
+
+    def rebuild(out, user_ratings, comps):
+        write_tiers_csv(session, str(tmp_path / out), ratings=anchors,
+                        user_ratings=user_ratings, comps=comps,
+                        carried_tiers=carried,
+                        year=2025, config=LeagueConfig(teams=1))
+        return {r["key"]: r for r in _csv.DictReader((tmp_path / out).open())}
+
+    # The crowd LOVES prb3 (anchor 278, tier 2): rated 320 with 60 comps
+    # -> blend ~= 278 + 0.909 * 42 = 316 > 289 -> he joins tier 1.
+    heavy = rebuild("heavy.csv", {"prb3": 320.0}, {"prb3": 60})
+    assert heavy["prb3"]["manual_tier"] == heavy["prb0"]["manual_tier"] == "1"
+    assert heavy["prb2"]["manual_tier"] == "2"          # neighbour stays put
+    assert heavy["prb3"]["tier_pin"] == "1"             # pins track the move
+
+    # Same opinion with only 2 comps -> blend ~= 288.5 < 289 -> stays tier 2.
+    light = rebuild("light.csv", {"prb3": 320.0}, {"prb3": 2})
+    assert light["prb3"]["manual_tier"] == "2"
+
+    # No crowd at all: the carried structure reproduces exactly.
+    still = rebuild("still.csv", None, None)
+    assert {k: still[k]["manual_tier"] for k in carried} == \
+           {k: str(t) for k, t in carried.items()}
+
+
+def test_master_base_stamp_and_gating(session, tmp_path):
+    """Commits echo FF_DATA.base; only same-base pick files pass the gate."""
+    import json
+
+    from fantasy_football.cli import _master_base, _read_base
+    from fantasy_football.export import write_tiers_csv, write_webapp_data
+
+    _seed(session)
+    master = tmp_path / "master.csv"
+    write_tiers_csv(session, str(master), ratings={"prb0": 300.0, "prb1": 200.0},
+                    year=2025, config=LeagueConfig(teams=1))
+    base = _master_base(str(master))
+    assert base and len(base) == 10
+
+    # data.js carries the stamp the app will echo.
+    out = tmp_path / "data.js"
+    write_webapp_data(session, str(out), year=2025, config=LeagueConfig(teams=1),
+                      base=base)
+    payload = json.loads(out.read_text().split("window.FF_DATA = ", 1)[1].rstrip(";\n"))
+    assert payload["base"] == base
+
+    # A commit made against this master matches; older/unstamped ones don't.
+    fresh = tmp_path / "u-fresh.csv"
+    fresh.write_text(f"key,rating,comps,base\nprb0,310,4,{base}\n")
+    stale = tmp_path / "u-stale.csv"
+    stale.write_text("key,rating,comps,base\nprb0,310,4,0123456789\n")
+    legacy = tmp_path / "u-legacy.csv"
+    legacy.write_text("key,rating,comps\nprb0,310,4\n")
+    assert _read_base(str(fresh)) == base
+    assert [f for f in map(str, (fresh, stale, legacy)) if _read_base(f) == base] \
+           == [str(fresh)]
+
+    # Any change to the master (here: a price) is a new base.
+    master2 = tmp_path / "master2.csv"
+    write_tiers_csv(session, str(master2), ratings={"prb0": 300.0, "prb1": 200.0},
+                    prices={"prb0": 42.0}, year=2025, config=LeagueConfig(teams=1))
+    assert _master_base(str(master2)) != base

@@ -172,7 +172,8 @@ export default {
     if (!/^[a-z0-9]{4,40}$/i.test(id)) return json({ error: "bad id" }, 400, ch);
     if (!csv.trim()) return json({ error: "empty csv" }, 400, ch);
 
-    // Sanity: every non-empty, non-header row must be key,number[,number].
+    // Sanity: every non-empty, non-header row must be key,number[,number[,base]]
+    // (base = short hex stamp of the master the picks were played against).
     const rows = csv.split(/\r?\n/).map((s) => s.trim())
       .filter((r) => r && !/^key\s*,/i.test(r));
     if (!rows.length) return json({ error: "no pick rows" }, 400, ch);
@@ -180,6 +181,7 @@ export default {
     for (const r of rows) {
       const p = r.split(",");
       if (p.length < 2 || isNaN(parseFloat(p[1]))) return json({ error: `bad row: ${r}` }, 400, ch);
+      if (p[3] !== undefined && !/^[0-9a-f]{0,16}$/i.test(p[3])) return json({ error: `bad row: ${r}` }, 400, ch);
     }
 
     const repo = env.GH_REPO;
