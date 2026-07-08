@@ -133,7 +133,7 @@ def test_master_round_trip_rating_and_derived_tiers(session, tmp_path):
     write_tiers_csv(session, str(out), ratings=ratings, prices={"prb0": 42.0}, year=2025,
                     config=LeagueConfig(teams=1))
     text = out.read_text()
-    assert text.splitlines()[0].startswith("key,manual_tier,rating,tier_note,name")
+    assert text.splitlines()[0].startswith("key,manual_tier,rating,tier_pin,tier_note,name")
     back = _read_ratings(str(out))
     assert back["prb0"] == 500.0
     # Boosted prb0 lands in the top tier.
@@ -672,3 +672,78 @@ def test_admin_pins_win_over_crowd_blend(session, tmp_path):
                     year=2025, config=LeagueConfig(teams=1))
     rows2 = {r["key"]: float(r["rating"]) for r in _csv.DictReader((tmp_path / "m2.csv").open())}
     assert rows2["prb0"] == 150.0 and rows2["prb1"] == 200.0
+
+
+def test_tier_pins_override_derivation(session, tmp_path):
+    """Pinned tiers beat the gap derivation outright (full manual override)."""
+    import csv as _csv
+
+    from fantasy_football.export import write_tiers_csv
+
+    _seed(session)
+    base = {"prb0": 300.0, "prb1": 200.0, "prb2": 150.0,
+            "prb3": 100.0, "prb4": 50.0, "prb5": 10.0}
+
+    # Sanity: the 100-point gap splits prb0 and prb1 into different tiers.
+    write_tiers_csv(session, str(tmp_path / "plain.csv"), ratings=base,
+                    year=2025, config=LeagueConfig(teams=1))
+    plain = {r["key"]: r for r in _csv.DictReader((tmp_path / "plain.csv").open())}
+    assert plain["prb0"]["manual_tier"] != plain["prb1"]["manual_tier"]
+    assert all(r["tier_pin"] == "" for r in plain.values())
+
+    # Pin prb1 into tier 1: he joins prb0 despite the gap, pin is recorded,
+    # and the position's tiers stay contiguous 1..K.
+    write_tiers_csv(session, str(tmp_path / "pinned.csv"), ratings=base,
+                    pinned_tiers={"prb1": 1},
+                    year=2025, config=LeagueConfig(teams=1))
+    pinned = {r["key"]: r for r in _csv.DictReader((tmp_path / "pinned.csv").open())}
+    assert pinned["prb1"]["manual_tier"] == pinned["prb0"]["manual_tier"] == "1"
+    assert pinned["prb1"]["tier_pin"] == "1"
+    assert pinned["prb0"]["tier_pin"] == ""
+    tiers = sorted({int(r["manual_tier"]) for r in pinned.values() if r["pos"] == "RB"})
+    assert tiers == list(range(1, len(tiers) + 1))
+
+
+def test_read_tier_pins_master_and_admin_release(session, tmp_path):
+    """Pins round-trip via the master's tier_pin column; releases clear them."""
+    from fantasy_football.cli import _read_tier_pins
+    from fantasy_football.export import write_tiers_csv
+
+    _seed(session)
+    base = {"prb0": 300.0, "prb1": 200.0, "prb2": 150.0}
+    master = tmp_path / "master.csv"
+    write_tiers_csv(session, str(master), ratings=base, pinned_tiers={"prb1": 1},
+                    year=2025, config=LeagueConfig(teams=1))
+    pins, released = _read_tier_pins(str(master))
+    assert pins == {"prb1": 1} and released == set()
+
+    # Admin overwrite file: position takeover rows carry key,rating,tier.
+    admin = tmp_path / "admin_tiers.csv"
+    admin.write_text("key,rating,tier\nprb0,300,1\nprb1,200,2\nprb2,150,2\n")
+    pins, released = _read_tier_pins(str(admin), column="tier")
+    assert pins == {"prb0": 1, "prb1": 2, "prb2": 2} and released == set()
+
+    # Release rows (empty rating AND tier) mark keys for un-pinning.
+    release = tmp_path / "release.csv"
+    release.write_text("key,rating,tier\nprb0,,\nprb1,,\nprb2,,\n")
+    pins, released = _read_tier_pins(str(release), column="tier")
+    assert pins == {} and released == {"prb0", "prb1", "prb2"}
+
+
+def test_webapp_payload_carries_tiers_with_pins(session, tmp_path):
+    """Every entity ships its master tier; pins override the derived number."""
+    import json
+
+    from fantasy_football.export import write_webapp_data
+
+    _seed(session)
+    seeds = {"prb0": 300.0, "prb1": 200.0, "prb2": 150.0,
+             "prb3": 100.0, "prb4": 50.0, "prb5": 10.0}
+    out = tmp_path / "data.js"
+    write_webapp_data(session, str(out), year=2025, config=LeagueConfig(teams=1),
+                      seed_overrides=seeds, pinned_tiers={"prb1": 1})
+    payload = json.loads(out.read_text().split("window.FF_DATA = ", 1)[1].rstrip(";\n"))
+    rbs = {e["key"]: e for e in payload["positions"]["RB"]}
+    assert all("tier" in e for e in rbs.values())
+    assert rbs["prb1"]["tier"] == 1
+    assert rbs["prb0"]["tier"] == 1  # derived top tier unchanged

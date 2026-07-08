@@ -221,6 +221,15 @@ tripwire. The rebuild quarantines flagged files into `picks/quarantine/`
 opens/comments a `picks-audit` issue, so junk pages the maintainer instead of
 waiting to be noticed. `import-tiers` falls
 back to a file's integer `manual_tier` only for legacy exports with no `rating`.
+**Commissioner tier pins**: the `#/admin` editor holds *literal* tiers (explicit
+per-player assignments; pointer-drag via grip handle + tap-tap, split/merge
+controls — no live re-derivation, so any player can go in any tier). Overwrite
+ships the whole edited position as `key,rating,tier`; the rebuild applies tier
+pins AFTER the gap derivation (full manual override) and writes them to the
+master's `tier_pin` column, which every later rebuild re-reads — pins persist
+until the admin "Release to crowd" button sends empty `key,,` rows for the
+position. `build-webapp` embeds each entity's final tier (pins applied) so the
+admin board reopens exactly as the master stands.
 
 **Schema-change note:** `init-db` uses `create_all`, which does **not** alter
 existing tables. When you add columns (as the scoring work did to

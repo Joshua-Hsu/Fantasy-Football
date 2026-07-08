@@ -86,11 +86,14 @@ The site's `#/admin` page lets the commissioner drag players into tiers and
 npx wrangler secret put ADMIN_CODE    # unset = endpoint disabled
 ```
 
-The Worker writes `admin_tiers.csv` and auto-triggers the Rebuild Master
-Tiers workflow (needs the PAT to also have **Actions: Read and write**; if it
-doesn't, the file is still saved and the rebuild reports "run manually").
-Pins apply after the crowd blend at full weight and are consumed by one
-rebuild.
+The Worker writes `admin_tiers.csv` (`key,rating,tier` rows — the whole
+edited position) and auto-triggers the Rebuild Master Tiers workflow (needs
+the PAT to also have **Actions: Read and write**; if it doesn't, the file is
+still saved and the rebuild reports "run manually"). Rating pins apply after
+the crowd blend at full weight and are consumed by one rebuild; **tier pins
+persist** — they ride the master's `tier_pin` column through every later
+rebuild until the admin page's "Release to crowd" button sends empty
+(`key,,`) rows for that position.
 
 ### Private-league mode (optional)
 

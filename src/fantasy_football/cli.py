@@ -222,6 +222,48 @@ def _read_ratings(path: str | None) -> dict[str, float]:
     return ratings
 
 
+def _read_tier_pins(
+    path: str | None, column: str = "tier_pin"
+) -> tuple[dict[str, int], set[str]]:
+    """Read commissioner tier pins from a CSV column.
+
+    Returns ``(pins, released)``: ``pins`` maps key -> pinned integer tier;
+    ``released`` is the set of keys whose row is an explicit un-pin (empty
+    rating AND empty tier — the app's "release to crowd" rows). The master
+    carries pins in ``tier_pin``; an admin overwrite file carries them in
+    ``tier``. Same hardening as the other readers.
+    """
+    import csv
+    import os
+
+    if not path or not os.path.exists(path):
+        return {}, set()
+    pins: dict[str, int] = {}
+    released: set[str] = set()
+    with open(path, newline="") as fh:
+        reader = csv.DictReader(fh)
+        if column not in (reader.fieldnames or []):
+            return {}, set()
+        for i, row in enumerate(reader):
+            if i >= _MAX_TIERS_ROWS:
+                break
+            key = (row.get("key") or "").strip()
+            if not _KEY_RE.match(key):
+                continue
+            value = (row.get(column) or "").strip()
+            if not value:
+                if not (row.get("rating") or "").strip():
+                    released.add(key)
+                continue
+            try:
+                tier = int(float(value))
+            except ValueError:
+                continue
+            if 1 <= tier <= 40:
+                pins[key] = tier
+    return pins, released
+
+
 def _league_config(args: argparse.Namespace):
     """Build the LeagueConfig from CLI args, including --price-cap overrides.
 
@@ -453,6 +495,14 @@ def _cmd_import_tiers(args: argparse.Namespace) -> int:
     files = args.file if isinstance(args.file, list) else [args.file]
     base_ratings = _read_ratings(getattr(args, "prices_from", None))
     pinned = _read_ratings(getattr(args, "admin_file", None))  # commissioner pins
+    # Commissioner TIER pins: carried forward from the previous master's
+    # tier_pin column, updated by an admin overwrite (tier column), and
+    # dropped for keys the admin explicitly released (empty rows).
+    prev_pins, _ = _read_tier_pins(getattr(args, "prices_from", None))
+    admin_pins, admin_released = _read_tier_pins(
+        getattr(args, "admin_file", None), column="tier")
+    pin_tiers = {k: t for k, t in prev_pins.items() if k not in admin_released}
+    pin_tiers.update(admin_pins)
     user_ratings = _merge_ratings(files, base={})   # picked players only
     comps = _merge_comps(files)
     ratings = _merge_ratings(files, base_ratings)   # legacy detection / counts
@@ -482,13 +532,19 @@ def _cmd_import_tiers(args: argparse.Namespace) -> int:
             user_ratings=user_ratings or None,
             comps=comps or None,
             pinned_ratings=pinned or None,
+            pinned_tiers=pin_tiers or None,
             confidence=getattr(args, "confidence", None) or 6,
             tiers=legacy_tiers or None,
             prices=existing_prices, notes=notes or None,
         )
     blended = sum(1 for k in user_ratings if comps.get(k))
     if pinned:
-        print(f"Applied {len(pinned)} admin tier pin(s).")
+        print(f"Applied {len(pinned)} admin rating pin(s).")
+    if pin_tiers:
+        print(f"Pinned tiers for {len(pin_tiers)} player(s) "
+              f"({len(admin_pins)} new/updated, {len(admin_released)} released).")
+    elif admin_released:
+        print(f"Released {len(admin_released)} player(s) back to derived tiers.")
     print(f"Merged {len(files)} pick file(s) -> {args.out}: "
           f"{len(user_ratings)} picked ({blended} confidence-blended; base carried: "
           f"{len(base_ratings)}), prices preserved: {len(existing_prices)}. "
@@ -688,6 +744,7 @@ def _cmd_build_webapp(args: argparse.Namespace) -> int:
     config = _league_config(args)
     manual = _read_manual_tiers(getattr(args, "tiers_file", None))
     seeds = _read_ratings(getattr(args, "tiers_file", None))  # seed app from master rating
+    pins, _ = _read_tier_pins(getattr(args, "tiers_file", None))  # commissioner law
     prices = _read_fixed_prices(getattr(args, "tiers_file", None))
     overrides = _read_depth_overrides(getattr(args, "depth_overrides", None))
 
@@ -713,7 +770,8 @@ def _cmd_build_webapp(args: argparse.Namespace) -> int:
         path = write_webapp_data(
             session, args.out, year=args.year, config=config,
             rules=PRESETS[args.scoring], basis=args.basis, depth=args.depth,
-            manual_tiers=manual, seed_overrides=seeds, prices=prices,
+            manual_tiers=manual, seed_overrides=seeds, pinned_tiers=pins or None,
+            prices=prices,
             backups=backups, starters=starters, backup_overrides=overrides,
             leaders=leaders,
         )

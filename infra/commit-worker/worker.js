@@ -112,8 +112,15 @@ export default {
       if (!arows.length) return json({ error: "no rows" }, 400, ch);
       if (arows.length > MAX_ROWS) return json({ error: "too many rows" }, 413, ch);
       for (const r of arows) {
+        // key,rating[,tier] — or "key,," which releases a pinned player back
+        // to the crowd (both fields empty).
         const p = r.split(",");
-        if (p.length < 2 || isNaN(parseFloat(p[1]))) return json({ error: `bad row: ${r}` }, 400, ch);
+        if (p.length < 2) return json({ error: `bad row: ${r}` }, 400, ch);
+        const rating = (p[1] || "").trim();
+        const tier = (p[2] || "").trim();
+        const release = rating === "" && tier === "";
+        if (!release && isNaN(parseFloat(rating))) return json({ error: `bad row: ${r}` }, 400, ch);
+        if (tier !== "" && !/^\d{1,2}$/.test(tier)) return json({ error: `bad row: ${r}` }, 400, ch);
       }
       const arepo = env.GH_REPO;
       const abranch = env.GH_BRANCH || "main";

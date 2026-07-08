@@ -168,6 +168,7 @@ def build_webapp_data(
     rookie_max_round: int = 3,
     manual_tiers: dict[str, int] | None = None,
     seed_overrides: dict[str, float] | None = None,
+    pinned_tiers: dict[str, int] | None = None,
     prices: dict[str, float] | None = None,
     backups: dict[str, tuple[str | None, str]] | None = None,
     backup_overrides: dict[str, str] | None = None,
@@ -210,6 +211,11 @@ def build_webapp_data(
         _eff, tier_map = effective_pool_ratings(
             session, seed_overrides, year=year, config=config, rules=rules, basis=basis
         )
+    # Commissioner pins (the master's tier_pin column) override the derived
+    # numbering — the admin board is law until released.
+    if pinned_tiers:
+        tier_map = dict(tier_map)
+        tier_map.update(pinned_tiers)
     values = compute_values(
         session, year=year, config=config, rules=rules, basis=basis, manual_tiers=tier_map
     )
@@ -282,8 +288,10 @@ def build_webapp_data(
             "cols": _stat_columns(r.key, r.position, r.team, pstats, toff, dstats,
                                   ages, byes, tshares, rshares),
         }
-        # Manual tiers only seed the starting `seed` (above) — the app's Elo
-        # refines from there, so we deliberately don't lock a tier here.
+        # The master's tier for this player (pins already applied): seeds the
+        # commissioner's #/admin board. The pick game itself stays rating-based.
+        if tier_map.get(r.key):
+            row["tier"] = tier_map[r.key]
         if hc_new:
             row["hcN"] = 1
         if oc_new:
@@ -372,6 +380,7 @@ def write_webapp_data(
     depth: int | dict[str, int] | None = None,
     manual_tiers: dict[str, int] | None = None,
     seed_overrides: dict[str, float] | None = None,
+    pinned_tiers: dict[str, int] | None = None,
     prices: dict[str, float] | None = None,
     backups: dict[str, tuple[str | None, str]] | None = None,
     starters: dict[tuple[str, str], list[str]] | None = None,
@@ -392,6 +401,7 @@ def write_webapp_data(
     data = build_webapp_data(
         session, year=year, config=config, rules=rules, basis=basis, depth=depth,
         manual_tiers=manual_tiers, seed_overrides=seed_overrides,
+        pinned_tiers=pinned_tiers,
         prices=prices, backups=backups, backup_overrides=backup_overrides,
     )
     starters = starters or {}
@@ -757,6 +767,7 @@ def write_tiers_csv(
     user_ratings: dict[str, float] | None = None,
     comps: dict[str, int] | None = None,
     pinned_ratings: dict[str, float] | None = None,
+    pinned_tiers: dict[str, int] | None = None,
     confidence: int = CONFIDENCE_PICKS,
     prices: dict[str, float] | None = None,
     notes: dict[tuple[str, int], str] | None = None,
@@ -777,6 +788,11 @@ def write_tiers_csv(
     ``tiers`` directly for the legacy integer-only path. ``notes`` is the
     hand-written tier description per (position, tier) — it's repeated on each
     row of that tier so the CSV round-trips it (and you can edit it in place).
+
+    ``pinned_tiers`` is the commissioner's explicit tier per key (the #/admin
+    board). Pins are applied AFTER the gap derivation — full manual override —
+    and are written to the ``tier_pin`` column so the next rebuild carries them
+    forward until an explicit release clears them.
     """
     import csv
 
@@ -797,7 +813,8 @@ def write_tiers_csv(
         # the value scale (hundreds), so anything <= 0.5 for a player with actual
         # production is unrated — reseed it from value instead of letting the
         # ladder wreck the tier derivation (phantom gaps -> singleton tiers).
-        keys = set(ratings) | set(user_ratings) | set(pinned_ratings) | set(tiers or {})
+        keys = (set(ratings) | set(user_ratings) | set(pinned_ratings)
+                | set(pinned_tiers or {}) | set(tiers or {}))
         anchors = {
             k: ratings.get(k, by_key[k].basis_value)
             for k in keys if k in by_key
@@ -827,9 +844,29 @@ def write_tiers_csv(
             if k in by_key:
                 ratings[k] = round(pr, 2)
         tiers = derive_tiers_from_ratings(ratings, by_key)
+        # Commissioner tier pins: full manual override of the derived tiers.
+        # Positions containing a pin are renumbered contiguous 1..K in
+        # (tier, rating) order, so pins can't leave gaps or inverted labels.
+        pinned_tiers = {k: t for k, t in (pinned_tiers or {}).items() if k in tiers}
+        if pinned_tiers:
+            for k, t in pinned_tiers.items():
+                tiers[k] = t
+            pinned_pos = {by_key[k].position for k in pinned_tiers}
+            for pos in pinned_pos:
+                keys_in = [k for k in tiers if by_key[k].position == pos]
+                keys_in.sort(key=lambda k: (tiers[k], -ratings.get(k, 0.0)))
+                next_label, last_seen = 0, None
+                for k in keys_in:
+                    if tiers[k] != last_seen:
+                        next_label, last_seen = next_label + 1, tiers[k]
+                    tiers[k] = next_label
+            # Record the FINAL labels so the carried-forward pins match what
+            # this master actually says.
+            pinned_tiers = {k: tiers[k] for k in pinned_tiers}
     else:
         tiers = tiers or {}
         ratings = {}
+        pinned_tiers = {}
     pstats = _player_last_year(session, last_year) if last_year else {}
     toff = _team_offense(session, last_year) if last_year else {}
     dstats = _dst_last_year(session, last_year) if last_year else {}
@@ -841,8 +878,8 @@ def write_tiers_csv(
     notes = notes or {}
     with open(path, "w", newline="") as fh:
         writer = csv.writer(fh)
-        writer.writerow(["key", "manual_tier", "rating", "tier_note", "name", "pos", "team",
-                         "total", "ppg"] + CSV_STAT_HEADERS + ["price"])
+        writer.writerow(["key", "manual_tier", "rating", "tier_pin", "tier_note", "name",
+                         "pos", "team", "total", "ppg"] + CSV_STAT_HEADERS + ["price"])
         # Order by tier then rating so the file reads top-to-bottom.
         ordered = sorted(tiers, key=lambda k: (tiers[k], -ratings.get(k, 0.0)))
         for key in ordered:
@@ -854,6 +891,7 @@ def write_tiers_csv(
             rating = ratings.get(key)
             writer.writerow(
                 [_safe_cell(key), tier, round(rating, 2) if rating is not None else "",
+                 pinned_tiers.get(key, ""),
                  _safe_cell(notes.get((pos, tier), "")),
                  _safe_cell(r.name if r else key), _safe_cell(pos),
                  _safe_cell(r.team if r else ""), r.total if r else "", r.ppg if r else ""]

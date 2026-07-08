@@ -601,39 +601,62 @@
       "<div class='tr-grid'>" + trophies + "</div>";
   }
 
-  // ---- commissioner: drag-and-drop master tier editor (#/admin) ----
+  // ---- commissioner: master tier editor (#/admin) ----
   // The page is reachable by anyone (static site), but Overwrite only works
-  // with the ADMIN_CODE secret held by the Worker. Edits move players on the
-  // MASTER rating scale (e.seed), not your personal ratings, and tiers
-  // re-derive live with the exact same algorithm the rebuild uses.
+  // with the ADMIN_CODE secret held by the Worker. Tiers here are LITERAL:
+  // every player carries an explicit tier assignment (no live re-derivation),
+  // so any player can be put in any tier. Overwrite pushes the whole edited
+  // position (order + tiers) and the rebuild pins it until released.
   var AD_STORE = "ff_admin_state";
-  var AD = null, adSel = null, adDragKey = null;
+  var AD = null, adSel = null;
   function adInit() {
     if (AD) return;
     try { AD = JSON.parse(localStorage.getItem(AD_STORE)); } catch (e) {}
     AD = AD || {};
     AD.ratings = AD.ratings || {};
+    AD.tierOf = AD.tierOf || {};
     AD.changed = AD.changed || {};
     ALL.forEach(function (e) {
       if (AD.ratings[e.key] == null) AD.ratings[e.key] = e.seed;
+    });
+    ORDER.forEach(function (p) {
+      var pool = DATA[p] || [];
+      if (!pool.length || !pool.some(function (e) { return AD.tierOf[e.key] == null; })) return;
+      // Seed the position's tiers: the master's own tier when data.js carries
+      // it, else the same derivation the rebuild uses. One-time per position.
+      if (pool.every(function (e) { return e.tier; })) {
+        pool.forEach(function (e) { AD.tierOf[e.key] = e.tier; });
+      } else {
+        var sorted = pool.slice().sort(function (a, b) { return AD.ratings[b.key] - AD.ratings[a.key]; });
+        var labels = sizedTiers(sorted.map(function (e) { return AD.ratings[e.key]; }), TIER_K[p] || 6, 7);
+        sorted.forEach(function (e, i) { AD.tierOf[e.key] = labels[i]; });
+      }
+      adNorm(p);
     });
   }
   function adSave() { localStorage.setItem(AD_STORE, JSON.stringify(AD)); }
   function adPool(pos) {
     return (DATA[pos] || []).slice().sort(function (a, b) {
-      return AD.ratings[b.key] - AD.ratings[a.key];
+      return (AD.tierOf[a.key] - AD.tierOf[b.key]) ||
+             (AD.ratings[b.key] - AD.ratings[a.key]) ||
+             (a.name < b.name ? -1 : 1);
     });
   }
-  function adTiers(pos) {
-    var pool = adPool(pos);
-    var labels = sizedTiers(pool.map(function (e) { return AD.ratings[e.key]; }),
-                            TIER_K[pos] || 6, 7);
-    var out = {}; pool.forEach(function (e, i) { out[e.key] = labels[i]; });
-    return out;
+  function adNorm(pos) {
+    // Renumber the position's tiers contiguous 1..K in board order, so merges,
+    // splits and emptied tiers never leave gaps or fractional labels.
+    var pool = adPool(pos), next = 0, lastLabel = null;
+    pool.forEach(function (e) {
+      var t = AD.tierOf[e.key];
+      if (t !== lastLabel) { next++; lastLabel = t; }
+      AD.tierOf[e.key] = next;
+    });
   }
-  function adPlace(pos, key, rating) {
+  function adPlace(pos, key, rating, tier) {
     AD.ratings[key] = rating;
+    AD.tierOf[key] = tier;
     AD.changed[key] = 1;
+    adNorm(pos);
     adSave();
     adminPage(pos);
   }
@@ -645,66 +668,159 @@
     if (idx < 0) return;
     var below = AD.ratings[targetKey];
     var above = idx > 0 ? AD.ratings[list[idx - 1].key] : null;
-    adPlace(pos, key, above === null ? below + 12 : (above + below) / 2);
+    adPlace(pos, key, above === null ? below + 12 : (above + below) / 2,
+            AD.tierOf[targetKey]);
   }
   function adMoveTierEnd(pos, key, tier) {
-    var tiers = adTiers(pos);
     var list = adPool(pos).filter(function (e) { return e.key !== key; });
     var last = -1;
-    list.forEach(function (e, i) { if (tiers[e.key] <= tier) last = i; });
+    list.forEach(function (e, i) { if (AD.tierOf[e.key] <= tier) last = i; });
     if (last < 0) return;                      // empty target: nothing to anchor on
     var above = AD.ratings[list[last].key];
     var below = last + 1 < list.length ? AD.ratings[list[last + 1].key] : null;
-    adPlace(pos, key, below === null ? above - 12 : (above + below) / 2);
+    adPlace(pos, key, below === null ? above - 12 : (above + below) / 2, tier);
+  }
+  function adNewBottomTier(pos, key) {
+    var maxTier = 0, minRating = Infinity;
+    adPool(pos).forEach(function (e) {
+      if (e.key === key) return;
+      if (AD.tierOf[e.key] > maxTier) maxTier = AD.tierOf[e.key];
+      if (AD.ratings[e.key] < minRating) minRating = AD.ratings[e.key];
+    });
+    adPlace(pos, key, (minRating === Infinity ? 100 : minRating) - 12, maxTier + 1);
+  }
+  function adSplitAt(pos, key) {
+    // The selected player starts a brand-new tier: he and everyone below him
+    // in his current tier drop into it together.
+    var pool = adPool(pos), from = -1, tier = AD.tierOf[key];
+    pool.forEach(function (e, i) { if (e.key === key) from = i; });
+    if (from <= 0 || AD.tierOf[pool[from - 1].key] !== tier) return; // already a tier top
+    for (var i = from; i < pool.length && AD.tierOf[pool[i].key] === tier; i++) {
+      AD.tierOf[pool[i].key] = tier + 0.5;     // fractional; adNorm renumbers
+      AD.changed[pool[i].key] = 1;
+    }
+    adNorm(pos);
+    adSave();
+    adminPage(pos);
+  }
+  function adMergeUp(pos, tier) {
+    if (tier <= 1) return;
+    adPool(pos).forEach(function (e) {
+      if (AD.tierOf[e.key] === tier) { AD.tierOf[e.key] = tier - 1; AD.changed[e.key] = 1; }
+    });
+    adNorm(pos);
+    adSave();
+    adminPage(pos);
+  }
+  function adDirtyPositions() {
+    var dirty = {};
+    Object.keys(AD.changed).forEach(function (k) {
+      var e = BYKEY[k];
+      if (e) dirty[e.pos] = 1;
+    });
+    return Object.keys(dirty);
+  }
+  function adSend(code, csv, onOk) {
+    fetch(WORKER_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ kind: "admin", code: code, csv: csv, ts: tsToken })
+    }).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (j) {
+        if (!r.ok) throw new Error(j.error || ("HTTP " + r.status));
+        return j;
+      });
+    }).then(function (j) {
+      localStorage.setItem("ff_admin_code", code);
+      onOk(j);
+    }).catch(function (err) {
+      if (String(err.message).indexOf("admin code") >= 0) {
+        localStorage.removeItem("ff_admin_code");
+        alert("Admin code rejected.");
+      } else {
+        alert("Overwrite failed: " + err.message);
+      }
+    });
+  }
+
+  // Pointer-based drag (grip handle): works with mouse AND touch, unlike
+  // HTML5 drag-and-drop which never fires on phones. The grip captures the
+  // pointer, a ghost chip follows it, and elementFromPoint picks the target.
+  var adDrag = null, adSwallowClick = false;
+  function adDropTarget(x, y) {
+    var el = document.elementFromPoint(x, y);
+    return el && el.closest ? el.closest(".ad-row,.ad-tier-head,.ad-newtier") : null;
+  }
+  function adClearOver() {
+    var cur = document.querySelectorAll(".ad-over"), i;
+    for (i = 0; i < cur.length; i++) cur[i].classList.remove("ad-over");
   }
 
   function adminPage(pos) {
     adInit();
     pos = pos || "RB";
-    var tiers = adTiers(pos);
     var pool = adPool(pos);
-    var changed = Object.keys(AD.changed).length;
+    var dirty = adDirtyPositions();
 
     var tabs = ORDER.filter(function (p) { return (DATA[p] || []).length; })
       .map(function (p) {
+        var mark = dirty.indexOf(p) >= 0 ? "*" : "";
         return p === pos
-          ? "<span class='tier'>" + p + "</span>"
-          : "<a href='#/admin/" + p + "'>" + p + "</a>";
+          ? "<span class='tier'>" + p + mark + "</span>"
+          : "<a href='#/admin/" + p + "'>" + p + mark + "</a>";
       }).join(" &middot; ");
 
+    var counts = {};
+    pool.forEach(function (e) { var t = AD.tierOf[e.key]; counts[t] = (counts[t] || 0) + 1; });
+
     var body = "", lastTier = null;
-    pool.forEach(function (e) {
-      var t = tiers[e.key];
+    pool.forEach(function (e, i) {
+      var t = AD.tierOf[e.key];
       if (t !== lastTier) {
         lastTier = t;
-        body += "<div class='ad-tier-head' ondragover='event.preventDefault()' " +
-          "ondrop=\"FF.adDropTier(event,'" + pos + "'," + t + ")\" " +
+        body += "<div class='ad-tier-head' data-tier='" + t + "' " +
           "onclick=\"FF.adClickTier('" + pos + "'," + t + ")\">" +
-          "Tier " + t + " <span class='muted'>(drop or tap here = bottom of tier)</span></div>";
+          "Tier " + t + " <span class='muted'>&middot; " + counts[t] +
+          " &middot; tap = send here</span>" +
+          (t > 1 ? "<button class='ad-mini' onclick=\"event.stopPropagation();" +
+                   "FF.adMergeUp('" + pos + "'," + t + ")\">&#8963; merge up</button>" : "") +
+          "</div>";
       }
-      var cls = "ad-row" + (AD.changed[e.key] ? " ad-chg" : "") +
-                (adSel === e.key ? " ad-sel" : "");
-      body += "<div class='" + cls + "' draggable='true' data-key='" + e.key + "' " +
-        "ondragstart=\"FF.adDragStart('" + e.key + "')\" " +
-        "ondragover='event.preventDefault()' " +
-        "ondrop=\"FF.adDropRow(event,'" + pos + "','" + e.key + "')\" " +
+      var sel = adSel === e.key;
+      var canSplit = i > 0 && AD.tierOf[pool[i - 1].key] === t;
+      var cls = "ad-row" + (AD.changed[e.key] ? " ad-chg" : "") + (sel ? " ad-sel" : "");
+      body += "<div class='" + cls + "' data-key='" + e.key + "' " +
         "onclick=\"FF.adClickRow('" + pos + "','" + e.key + "')\">" +
+        "<span class='ad-grip' " +
+        "onpointerdown=\"FF.adGrip(event,'" + pos + "','" + e.key + "')\" " +
+        "onpointermove='FF.adGripMove(event)' " +
+        "onpointerup=\"FF.adGripUp(event,'" + pos + "')\" " +
+        "onpointercancel='FF.adGripCancel()'>&#x2630;</span>" +
         "<b>" + esc(e.name) + "</b><span class='muted'> " + esc(e.team || "") +
         " &middot; " + Math.round(AD.ratings[e.key]) + "</span>" +
-        (AD.changed[e.key] ? "<span class='ad-dot'>&#9679;</span>" : "") +
+        (sel ? "<span class='ad-actions'>" +
+          (canSplit ? "<button class='ad-mini' onclick=\"event.stopPropagation();" +
+                      "FF.adSplit('" + pos + "','" + e.key + "')\">&#9986; tier starts here</button>" : "") +
+          "<button class='ad-mini' onclick='event.stopPropagation();FF.adDeselect()'>&#10005;</button>" +
+          "</span>"
+         : (AD.changed[e.key] ? "<span class='ad-dot'>&#9679;</span>" : "")) +
         "</div>";
     });
+    body += "<div class='ad-newtier' data-newtier='1' " +
+      "onclick=\"FF.adClickNew('" + pos + "')\">&#10133; drop or tap here = new bottom tier</div>";
 
     app.innerHTML = nav(" &middot; <span class='muted'>admin</span>") +
       "<h1>Commissioner tiers</h1>" +
-      "<p class='lead'>Drag a player (or tap him, then tap a destination) to force " +
-      "him into a tier. Tiers re-derive live exactly as the rebuild computes them. " +
-      "Overwrite pushes only the <b>" + changed + " changed</b> player" +
-      (changed === 1 ? "" : "s") + " and triggers a master rebuild.</p>" +
+      "<p class='lead'>Drag the &#x2630; handle (works on touch), or tap a player then " +
+      "tap where he goes. Tiers here are literal &mdash; exactly what you see is what " +
+      "Overwrite pushes. Overwrite makes your board the master for the edited " +
+      "position(s)" + (dirty.length ? " (<b>" + dirty.join(", ") + "</b>)" : "") +
+      " and pins them until you release them back to the crowd.</p>" +
       "<p>" + tabs + "</p>" +
       "<div class='actions'>" +
       "<button class='btn btn-primary' onclick=\"FF.adOverwrite('" + pos + "')\">" +
-      "&#9888; Overwrite master tiers (" + changed + ")</button>" +
+      "&#9888; Overwrite master tiers</button>" +
+      "<button class='btn' onclick=\"FF.adRelease('" + pos + "')\">Release " + pos + " to crowd</button>" +
       "<button class='btn' onclick='FF.adReset()'>Reset edits</button>" +
       "</div>" +
       "<div class='ad-list'>" + body + "</div>";
@@ -713,22 +829,72 @@
   // ---- public actions ----
 
   window.FF = {
-    adDragStart: function (key) { adDragKey = key; },
-    adDropRow: function (ev, pos, targetKey) {
-      ev.preventDefault(); ev.stopPropagation();
-      if (adDragKey) { adMoveAbove(pos, adDragKey, targetKey); adDragKey = null; }
-    },
-    adDropTier: function (ev, pos, tier) {
+    adGrip: function (ev, pos, key) {
       ev.preventDefault();
-      if (adDragKey) { adMoveTierEnd(pos, adDragKey, tier); adDragKey = null; }
+      var g = document.createElement("div");
+      g.className = "ad-ghost";
+      g.textContent = (BYKEY[key] || {}).name || key;
+      document.body.appendChild(g);
+      g.style.left = (ev.clientX + 10) + "px";
+      g.style.top = (ev.clientY - 14) + "px";
+      adDrag = { key: key, pos: pos, ghost: g };
+      if (ev.target.setPointerCapture) {
+        try { ev.target.setPointerCapture(ev.pointerId); } catch (e) {}
+      }
+    },
+    adGripMove: function (ev) {
+      if (!adDrag) return;
+      ev.preventDefault();
+      adDrag.ghost.style.left = (ev.clientX + 10) + "px";
+      adDrag.ghost.style.top = (ev.clientY - 14) + "px";
+      // Auto-scroll when dragging near the viewport edges (long lists).
+      if (ev.clientY < 90) window.scrollBy(0, -14);
+      else if (ev.clientY > window.innerHeight - 70) window.scrollBy(0, 14);
+      adClearOver();
+      var t = adDropTarget(ev.clientX, ev.clientY);
+      if (t && t.getAttribute("data-key") !== adDrag.key) t.classList.add("ad-over");
+    },
+    adGripUp: function (ev, pos) {
+      if (!adDrag) return;
+      var t = adDropTarget(ev.clientX, ev.clientY);
+      var key = adDrag.key;
+      FF.adGripCancel();
+      adSel = null;
+      // The browser may fire a click right after pointerup; don't let it
+      // select/move a second time on the re-rendered list.
+      adSwallowClick = true;
+      setTimeout(function () { adSwallowClick = false; }, 0);
+      if (!t) return;
+      if (t.getAttribute("data-key")) {
+        if (t.getAttribute("data-key") !== key) adMoveAbove(pos, key, t.getAttribute("data-key"));
+      } else if (t.getAttribute("data-tier")) {
+        adMoveTierEnd(pos, key, parseInt(t.getAttribute("data-tier"), 10));
+      } else if (t.getAttribute("data-newtier")) {
+        adNewBottomTier(pos, key);
+      }
+    },
+    adGripCancel: function () {
+      if (!adDrag) return;
+      adClearOver();
+      if (adDrag.ghost.parentNode) adDrag.ghost.parentNode.removeChild(adDrag.ghost);
+      adDrag = null;
     },
     adClickRow: function (pos, key) {
+      if (adSwallowClick) return;
       if (adSel && adSel !== key) { var k = adSel; adSel = null; adMoveAbove(pos, k, key); }
       else { adSel = adSel === key ? null : key; adminPage(pos); }
     },
     adClickTier: function (pos, tier) {
+      if (adSwallowClick) return;
       if (adSel) { var k = adSel; adSel = null; adMoveTierEnd(pos, k, tier); }
     },
+    adClickNew: function (pos) {
+      if (adSwallowClick) return;
+      if (adSel) { var k = adSel; adSel = null; adNewBottomTier(pos, k); }
+    },
+    adSplit: function (pos, key) { adSel = null; adSplitAt(pos, key); },
+    adMergeUp: function (pos, tier) { adSel = null; adMergeUp(pos, tier); },
+    adDeselect: function () { adSel = null; route(); },
     adReset: function () {
       if (!confirm("Discard all local tier edits?")) return;
       localStorage.removeItem(AD_STORE);
@@ -737,41 +903,56 @@
     },
     adOverwrite: function (pos) {
       adInit();
-      var keys = Object.keys(AD.changed);
-      if (!keys.length) { alert("No changes to push - drag someone first."); return; }
+      var dirty = adDirtyPositions();
+      if (!dirty.length) { alert("No changes to push - move someone first."); return; }
       if (!WORKER_URL) { alert("No Worker URL configured."); return; }
       var code = localStorage.getItem("ff_admin_code") ||
                  prompt("Admin code (commissioner only):", "");
       if (!code) return;
       code = code.trim();
-      var csv = "key,rating\n" + keys.map(function (k) {
-        return k + "," + Math.round(AD.ratings[k] * 100) / 100;
-      }).join("\n") + "\n";
-      if (!confirm("Overwrite master tiers for " + keys.length +
-                   " player(s)? This pins them over the crowd blend.")) return;
-      fetch(WORKER_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ kind: "admin", code: code, csv: csv, ts: tsToken })
-      }).then(function (r) {
-        return r.json().catch(function () { return {}; }).then(function (j) {
-          if (!r.ok) throw new Error(j.error || ("HTTP " + r.status));
-          return j;
+      // Position takeover: the whole edited position ships (order + literal
+      // tier per player), so the master's tiers become exactly this board.
+      var rows = [];
+      dirty.forEach(function (p) {
+        adPool(p).forEach(function (e) {
+          rows.push(e.key + "," + Math.round(AD.ratings[e.key] * 100) / 100 +
+                    "," + AD.tierOf[e.key]);
         });
-      }).then(function (j) {
-        localStorage.setItem("ff_admin_code", code);
+      });
+      var csv = "key,rating,tier\n" + rows.join("\n") + "\n";
+      if (!confirm("Overwrite master tiers for " + dirty.join(", ") + " (" +
+                   rows.length + " players)? Your board becomes the master for " +
+                   "those positions and stays PINNED over the crowd blend until " +
+                   "you release them.")) return;
+      adSend(code, csv, function (j) {
         AD.changed = {};
         adSave();
         alert("Master overwrite saved (" + j.rows + " players). Rebuild: " +
               j.rebuild + ".\nThe live tiers refresh when the rebuild finishes (~2 min).");
         adminPage(pos);
-      }).catch(function (err) {
-        if (String(err.message).indexOf("admin code") >= 0) {
-          localStorage.removeItem("ff_admin_code");
-          alert("Admin code rejected.");
-        } else {
-          alert("Overwrite failed: " + err.message);
-        }
+      });
+    },
+    adRelease: function (pos) {
+      adInit();
+      if (!WORKER_URL) { alert("No Worker URL configured."); return; }
+      var code = localStorage.getItem("ff_admin_code") ||
+                 prompt("Admin code (commissioner only):", "");
+      if (!code) return;
+      code = code.trim();
+      if (!confirm("Release " + pos + " back to the crowd? Its pinned tiers are " +
+                   "dropped and the next rebuild derives them from ratings again.")) return;
+      // Empty rating+tier rows = "unpin these players" to the rebuild.
+      var csv = "key,rating,tier\n" + (DATA[pos] || []).map(function (e) {
+        return e.key + ",,";
+      }).join("\n") + "\n";
+      adSend(code, csv, function (j) {
+        Object.keys(AD.changed).forEach(function (k) {
+          var e = BYKEY[k];
+          if (e && e.pos === pos) delete AD.changed[k];
+        });
+        adSave();
+        alert("Released " + pos + " to the crowd. Rebuild: " + j.rebuild + ".");
+        adminPage(pos);
       });
     },
     setNote: function (pos, tier, text) {
