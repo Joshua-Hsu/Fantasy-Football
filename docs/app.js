@@ -188,6 +188,7 @@
     // Floor: a break needs >= 5% of the position's spread, so a 2-3% dip
     // between near-equals never splits a tier (mirrors assign_sized_tiers).
     if (n > 1) thr = Math.max(thr, 0.05 * (values[0] - values[n - 1]));
+    thr -= 1e-6;  // float-jitter tolerance for by-construction-equal gaps
     var tier = 1, count = 0, i = 0;
     while (i < n) {
       labels[i] = tier; count++;

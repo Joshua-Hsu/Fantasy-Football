@@ -222,6 +222,10 @@ def assign_sized_tiers(ranked_keys: list[str], values: list[float], k: int,
     spread = values[0] - values[-1] if n > 1 else 0.0
     thr = positive[int(0.75 * (len(positive) - 1))] if positive else float("inf")
     thr = max(thr, 0.05 * spread)
+    # Tolerance: gaps that are equal by construction (ratings redistributed to
+    # fit pinned tiers) jitter by ~1e-13 in float math; without it the quartile
+    # threshold would split some of those boundaries but not others.
+    thr -= 1e-6
 
     tier = 1
     count = 0
