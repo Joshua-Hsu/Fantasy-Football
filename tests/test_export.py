@@ -747,3 +747,38 @@ def test_webapp_payload_carries_tiers_with_pins(session, tmp_path):
     assert all("tier" in e for e in rbs.values())
     assert rbs["prb1"]["tier"] == 1
     assert rbs["prb0"]["tier"] == 1  # derived top tier unchanged
+
+
+def test_pinned_ratings_redistribute_to_fit_tiers(session, tmp_path):
+    """Pinning tiers re-spaces ratings: tight within a tier, a clear gap at
+    each boundary — so seeds/blends/release all match the admin's structure."""
+    import csv as _csv
+
+    from fantasy_football.cli import _read_ratings
+    from fantasy_football.export import write_tiers_csv
+
+    _seed(session)
+    base = {"prb0": 300.0, "prb1": 200.0, "prb2": 150.0,
+            "prb3": 100.0, "prb4": 50.0, "prb5": 10.0}
+    m1 = tmp_path / "m1.csv"
+    # Commissioner yanks the worst RB (rating 10) into tier 1.
+    write_tiers_csv(session, str(m1), ratings=base, pinned_tiers={"prb5": 1},
+                    year=2025, config=LeagueConfig(teams=1))
+    rows = [r for r in _csv.DictReader(m1.open()) if r["pos"] == "RB"]
+    assert [r["key"] for r in rows][:2] == ["prb0", "prb5"]  # board order kept
+    vals = [float(r["rating"]) for r in rows]
+    assert vals == sorted(vals, reverse=True)                # strictly ordered
+    assert vals[0] - vals[1] <= 2.0                          # same tier: tight
+    tier_of = {r["key"]: r["manual_tier"] for r in rows}
+    gaps_at_bounds = [vals[i] - vals[i + 1] for i in range(len(rows) - 1)
+                      if tier_of[rows[i]["key"]] != tier_of[rows[i + 1]["key"]]]
+    assert gaps_at_bounds and min(gaps_at_bounds) >= 8.0     # boundary: clear gap
+
+    # Release round-trip: rebuilding from the redistributed ratings WITHOUT the
+    # pin re-derives exactly the tiers the admin drew.
+    m2 = tmp_path / "m2.csv"
+    write_tiers_csv(session, str(m2), ratings=_read_ratings(str(m1)),
+                    year=2025, config=LeagueConfig(teams=1))
+    rederived = {r["key"]: r["manual_tier"] for r in _csv.DictReader(m2.open())
+                 if r["pos"] == "RB"}
+    assert rederived == tier_of

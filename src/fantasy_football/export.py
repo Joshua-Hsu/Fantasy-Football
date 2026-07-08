@@ -860,6 +860,28 @@ def write_tiers_csv(
                     if tiers[k] != last_seen:
                         next_label, last_seen = next_label + 1, tiers[k]
                     tiers[k] = next_label
+                # Redistribute the continuous ratings to FIT the pinned tiers:
+                # tight spacing within a tier, a clear gap at every boundary.
+                # Board order is preserved and the position keeps its top
+                # rating, so pick-game seeds, the next crowd blend, and a
+                # later "release" all see the structure the admin drew (the
+                # gap comfortably clears the 5%-of-spread derivation floor).
+                vals = [ratings.get(k, 0.0) for k in keys_in]
+                top = max(vals) if vals else 0.0
+                span = top - min(vals) if vals else 0.0
+                step, gap = 2.0, max(8.0, 0.06 * span)
+                bounds = (tiers[keys_in[-1]] - 1) if keys_in else 0
+                within = max(len(keys_in) - 1 - bounds, 0)
+                need = within * step + bounds * gap
+                if need > 0 and top > 1 and need > top - 1:
+                    scale = (top - 1) / need  # never redistribute below ~1
+                    step, gap = step * scale, gap * scale
+                cur, prev_t = top, None
+                for k in keys_in:
+                    if prev_t is not None:
+                        cur -= gap if tiers[k] != prev_t else step
+                    prev_t = tiers[k]
+                    ratings[k] = round(cur, 2)
             # Record the FINAL labels so the carried-forward pins match what
             # this master actually says.
             pinned_tiers = {k: tiers[k] for k in pinned_tiers}
