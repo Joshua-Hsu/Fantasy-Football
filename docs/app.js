@@ -104,6 +104,18 @@
         healed = true;
       }
     });
+    // Master refresh: when a rebuild ships a new master (the base stamp
+    // changes), players the user never compared re-seed from the fresh
+    // master - their old value was pure seed anyway. Players the user HAS
+    // compared keep their personal Elo (your picks stay yours).
+    var dataBase = String((window.FF_DATA || {}).base || "");
+    if (s.base !== dataBase) {
+      ALL.forEach(function (e) {
+        if (!s.comps[e.key]) s.ratings[e.key] = e.seed;
+      });
+      s.base = dataBase;
+      healed = true;
+    }
     if (healed) localStorage.setItem(STORE, JSON.stringify(s));
     return s;
   }
@@ -438,19 +450,21 @@
       if (t !== lastTier) {
         lastTier = t;
         var note = (S.notes[pos] || {})[t] || "";
-        rows += "<tr class='tier-head'><td colspan='6'><span class='tier'>" + t + "</span> " +
+        rows += "<tr class='tier-head'><td colspan='7'><span class='tier'>" + t + "</span> " +
           "<input class='note-input' placeholder='Describe this tier (shows on your packet)…' " +
           "value=\"" + esc(note) + "\" " +
           "oninput=\"FF.setNote('" + pos + "'," + t + ",this.value)\"></td></tr>";
       }
       rows += "<tr><td>" + (i + 1) + "</td><td>" + esc(e.name) + (e.rookie ? " <span class='badge'>R</span>" : "") +
         "</td><td>" + esc(e.team) + "</td><td>" + Math.round(S.ratings[e.key]) +
-        "</td><td><span class='tier'>" + t + "</span></td><td>" + S.comps[e.key] + "</td></tr>";
+        "</td><td><span class='tier'>" + t + "</span></td><td>" +
+        (e.tier || "&ndash;") + "</td><td>" + S.comps[e.key] + "</td></tr>";
     });
     app.innerHTML = nav(" &middot; <a href='#/play/" + pos + "'>play " + pos + "</a>") +
       "<h1>" + pos + " ranking</h1><p class='lead'>Ordered by your user rating; tiers via k-means " +
-      "on ratings. Name each tier &mdash; the notes become section labels on your draft packet.</p>" +
-      "<div class='table-wrap'><table><thead><tr><th>#</th><th>Player</th><th>Tm</th><th>Rating</th><th>Tier</th><th>Picks</th></tr></thead>" +
+      "on ratings. <b>Mstr</b> is the community master's tier (admin pins applied). " +
+      "Name each tier &mdash; the notes become section labels on your draft packet.</p>" +
+      "<div class='table-wrap'><table><thead><tr><th>#</th><th>Player</th><th>Tm</th><th>Rating</th><th>Tier</th><th>Mstr</th><th>Picks</th></tr></thead>" +
       "<tbody>" + rows + "</tbody></table></div>";
   }
 
@@ -617,6 +631,13 @@
     AD.ratings = AD.ratings || {};
     AD.tierOf = AD.tierOf || {};
     AD.changed = AD.changed || {};
+    // After a rebuild (new base) with no unsaved edits, reload the board so
+    // it reopens exactly as the new master stands. Unsaved edits are kept -
+    // adminPage shows a stale note until they're pushed or reset.
+    var dataBase = String((window.FF_DATA || {}).base || "");
+    if (AD.base !== dataBase && !Object.keys(AD.changed).length) {
+      AD = { ratings: {}, tierOf: {}, changed: {}, base: dataBase };
+    }
     ALL.forEach(function (e) {
       if (AD.ratings[e.key] == null) AD.ratings[e.key] = e.seed;
     });
@@ -810,8 +831,12 @@
     body += "<div class='ad-newtier' data-newtier='1' " +
       "onclick=\"FF.adClickNew('" + pos + "')\">&#10133; drop or tap here = new bottom tier</div>";
 
+    var stale = AD.base !== String((window.FF_DATA || {}).base || "");
     app.innerHTML = nav(" &middot; <span class='muted'>admin</span>") +
       "<h1>Commissioner tiers</h1>" +
+      (stale ? "<p class='lead'>&#9888; These unsaved edits were started on an " +
+       "OLDER master. Overwrite to push them anyway, or Reset edits to load " +
+       "the latest master.</p>" : "") +
       "<p class='lead'>Drag the &#x2630; handle (works on touch), or tap a player then " +
       "tap where he goes. Tiers here are literal &mdash; exactly what you see is what " +
       "Overwrite pushes. Overwrite makes your board the master for the edited " +
