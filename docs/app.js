@@ -450,21 +450,19 @@
       if (t !== lastTier) {
         lastTier = t;
         var note = (S.notes[pos] || {})[t] || "";
-        rows += "<tr class='tier-head'><td colspan='7'><span class='tier'>" + t + "</span> " +
+        rows += "<tr class='tier-head'><td colspan='6'><span class='tier'>" + t + "</span> " +
           "<input class='note-input' placeholder='Describe this tier (shows on your packet)…' " +
           "value=\"" + esc(note) + "\" " +
           "oninput=\"FF.setNote('" + pos + "'," + t + ",this.value)\"></td></tr>";
       }
       rows += "<tr><td>" + (i + 1) + "</td><td>" + esc(e.name) + (e.rookie ? " <span class='badge'>R</span>" : "") +
         "</td><td>" + esc(e.team) + "</td><td>" + Math.round(S.ratings[e.key]) +
-        "</td><td><span class='tier'>" + t + "</span></td><td>" +
-        (e.tier || "&ndash;") + "</td><td>" + S.comps[e.key] + "</td></tr>";
+        "</td><td><span class='tier'>" + t + "</span></td><td>" + S.comps[e.key] + "</td></tr>";
     });
     app.innerHTML = nav(" &middot; <a href='#/play/" + pos + "'>play " + pos + "</a>") +
       "<h1>" + pos + " ranking</h1><p class='lead'>Ordered by your user rating; tiers via k-means " +
-      "on ratings. <b>Mstr</b> is the community master's tier (admin pins applied). " +
-      "Name each tier &mdash; the notes become section labels on your draft packet.</p>" +
-      "<div class='table-wrap'><table><thead><tr><th>#</th><th>Player</th><th>Tm</th><th>Rating</th><th>Tier</th><th>Mstr</th><th>Picks</th></tr></thead>" +
+      "on ratings. Name each tier &mdash; the notes become section labels on your draft packet.</p>" +
+      "<div class='table-wrap'><table><thead><tr><th>#</th><th>Player</th><th>Tm</th><th>Rating</th><th>Tier</th><th>Picks</th></tr></thead>" +
       "<tbody>" + rows + "</tbody></table></div>";
   }
 
