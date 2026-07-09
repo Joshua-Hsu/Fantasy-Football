@@ -105,14 +105,13 @@
       }
     });
     // Master refresh: when a rebuild ships a new master (the base stamp
-    // changes), players the user never compared re-seed from the fresh
-    // master - their old value was pure seed anyway. Players the user HAS
-    // compared keep their personal Elo (your picks stay yours).
+    // changes), the WHOLE board re-seeds from it. Committed picks are
+    // already blended into that master - the new consensus (crowd + admin
+    // tiers) is the board everyone refines next. Pick counts, trophies and
+    // tier notes survive; only the ratings snap to the new master.
     var dataBase = String((window.FF_DATA || {}).base || "");
     if (s.base !== dataBase) {
-      ALL.forEach(function (e) {
-        if (!s.comps[e.key]) s.ratings[e.key] = e.seed;
-      });
+      ALL.forEach(function (e) { s.ratings[e.key] = e.seed; });
       s.base = dataBase;
       healed = true;
     }
