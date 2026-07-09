@@ -109,7 +109,10 @@
     // already blended into that master - the new consensus (crowd + admin
     // tiers) is the board everyone refines next. Pick counts, trophies and
     // tier notes survive; only the ratings snap to the new master.
-    var dataBase = String((window.FF_DATA || {}).base || "");
+    // The "r2:" prefix versions the re-seed LOGIC itself: browsers that
+    // stored a bare base under the old partial-re-seed code migrate through
+    // one full re-seed even though the master hasn't changed since.
+    var dataBase = "r2:" + String((window.FF_DATA || {}).base || "");
     if (s.base !== dataBase) {
       ALL.forEach(function (e) { s.ratings[e.key] = e.seed; });
       s.base = dataBase;
