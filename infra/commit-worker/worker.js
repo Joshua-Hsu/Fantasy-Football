@@ -133,15 +133,32 @@ export default {
         "Content-Type": "application/json",
       };
       let asha;
+      let existing = "";
       const ahead = await fetch(`${aurl}?ref=${encodeURIComponent(abranch)}`, { headers: agh });
-      if (ahead.status === 200) asha = (await ahead.json()).sha;
+      if (ahead.status === 200) {
+        const meta = await ahead.json();
+        asha = meta.sha;
+        try { existing = decodeURIComponent(escape(atob((meta.content || "").replace(/\n/g, "")))); }
+        catch (e) { existing = ""; }
+      }
       else if (ahead.status !== 404) return json({ error: `github read ${ahead.status}` }, 502, ch);
+      // MERGE with any pending overwrite instead of replacing it: the admin
+      // saves one position at a time, and all of them must survive until the
+      // next rebuild consumes the file. New rows win per key (an overwrite
+      // ships whole positions, so key-merge == position-merge).
+      const merged = new Map();
+      for (const r of existing.split(/\r?\n/).map((s) => s.trim())
+        .filter((r) => r && !/^key\s*,/i.test(r))) {
+        merged.set(r.split(",")[0], r);
+      }
+      for (const r of arows) merged.set(r.split(",")[0], r);
+      const mergedCsv = "key,rating,tier\n" + [...merged.values()].join("\n") + "\n";
       const aput = await fetch(aurl, {
         method: "PUT",
         headers: agh,
         body: JSON.stringify({
           message: "commissioner: overwrite master tiers",
-          content: btoa(unescape(encodeURIComponent(acsv))),
+          content: btoa(unescape(encodeURIComponent(mergedCsv))),
           branch: abranch,
           ...(asha ? { sha: asha } : {}),
         }),
