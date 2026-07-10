@@ -27,11 +27,15 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install package
-        run: pip install -e .
+      - name: Install package + headless browser
+        # Yahoo builds the value table client-side, so the pull renders the
+        # page with Playwright Chromium instead of fetching static HTML.
+        run: |
+          pip install -e . playwright
+          python -m playwright install --with-deps chromium
 
       - name: Pull Yahoo salary-cap values
-        run: python -m fantasy_football.cli pull-yahoo --out-dir yahoo
+        run: python -m fantasy_football.cli pull-yahoo --out-dir yahoo --browser
 
       - name: Commit snapshot
         run: |

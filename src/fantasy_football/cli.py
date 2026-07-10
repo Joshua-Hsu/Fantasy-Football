@@ -798,13 +798,19 @@ def _cmd_pull_yahoo(args: argparse.Namespace) -> int:
     import datetime as _dt
     import os
 
-    from .yahoo import fetch_salcap_pages, parse_salcap_html
+    from .yahoo import (fetch_salcap_pages, fetch_salcap_pages_browser,
+                        parse_salcap_html)
 
     today = _dt.date.today().isoformat()
     raw_dir = os.path.join(args.out_dir, "raw", today)
     os.makedirs(raw_dir, exist_ok=True)
 
-    pages = fetch_salcap_pages()
+    # Yahoo renders the table client-side, so the real pull needs a browser
+    # (--browser, used by the Action). The static path stays as a fallback.
+    if getattr(args, "browser", False):
+        pages = fetch_salcap_pages_browser()
+    else:
+        pages = fetch_salcap_pages()
     rows: list[dict] = []
     seen: set[str] = set()
     for offset, html in pages:
@@ -1068,6 +1074,9 @@ def build_parser() -> argparse.ArgumentParser:
         help="Snapshot Yahoo's salary-cap draft values (projected + current avg)")
     p_yahoo.add_argument("--out-dir", default="yahoo", dest="out_dir",
                          help="Directory for values.<date>.csv + raw/ snapshots")
+    p_yahoo.add_argument("--browser", action="store_true",
+                         help="Render with headless Chromium (needs playwright); "
+                              "required for real pulls - Yahoo's table is JS-built")
     p_yahoo.set_defaults(func=_cmd_pull_yahoo)
 
     return parser

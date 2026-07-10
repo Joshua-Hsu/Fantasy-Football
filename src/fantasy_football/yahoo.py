@@ -59,6 +59,45 @@ def parse_salcap_html(html: str) -> list[dict]:
     return out
 
 
+def fetch_salcap_pages_browser(*, url: str = SALCAP_URL,
+                               offsets=(0, 50, 100, 150, 200, 250),
+                               timeout: int = 45) -> list[tuple[int, str]]:
+    """Fetch the salcap pages with a rendered (headless Chromium) browser.
+
+    Yahoo ships the page as a JS shell — the value table only exists after
+    scripts run — so the static fetch sees no rows. This renders each page,
+    waits for a player link to appear, and returns the RENDERED html, which
+    the same ``parse_salcap_html`` handles. Needs the ``playwright`` package
+    plus its Chromium (installed by the GitHub Action); a page that never
+    shows a player link is still returned, so the raw snapshot captures
+    whatever Yahoo served (login wall, block page) for diagnosis.
+    """
+    import os
+
+    from playwright.sync_api import sync_playwright
+
+    pages = []
+    with sync_playwright() as pw:
+        exe = os.environ.get("YAHOO_PW_CHROMIUM")  # override for odd sandboxes
+        browser = pw.chromium.launch(executable_path=exe or None)
+        page = browser.new_page()
+        for offset in offsets:
+            target = f"{url}&count={offset}" if offset else url
+            try:
+                page.goto(target, wait_until="domcontentloaded",
+                          timeout=timeout * 1000)
+                try:
+                    page.wait_for_selector("a[href*='/nfl/players/']",
+                                           timeout=timeout * 1000)
+                except Exception:  # noqa: BLE001 - snapshot whatever rendered
+                    print(f"warning: no player rows rendered at offset={offset}")
+                pages.append((offset, page.content()))
+            except Exception as exc:  # noqa: BLE001 - keep pulling other pages
+                print(f"warning: salcap page offset={offset} failed: {exc}")
+        browser.close()
+    return pages
+
+
 def fetch_salcap_pages(*, url: str = SALCAP_URL, offsets=(0, 50, 100, 150, 200, 250),
                        timeout: int = 30) -> list[tuple[int, str]]:
     """Fetch the salcap page at several row offsets (Yahoo paginates by count=).
