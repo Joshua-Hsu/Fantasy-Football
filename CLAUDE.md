@@ -255,3 +255,14 @@ All from nflverse's GitHub-published files (no scraping): teams from
 `nflfastR-data`, schedules/results from `nfldata`, weekly stats from the
 `stats_player` release, rosters from the `rosters` release. See the URL
 constants in `ingest/nflverse.py`.
+
+**Yahoo market values** (`yahoo.py` + `pull-yahoo` CLI + `yahoo-values.yml`
+weekly Action): snapshots Yahoo's public salary-cap draft-analysis page
+(projected auction value + current average cost) into `yahoo/values.<date>.csv`
+for trend analysis, ALWAYS saving the raw HTML under `yahoo/raw/<date>/` so a
+Yahoo markup change never loses a week (re-parse later). Runs only in Actions —
+the web sandbox's network policy blocks yahoo.com (`pull-yahoo` degrades to a
+clean error there). Rows join to master keys by player name. All auction
+dollars in the toolkit are **whole dollars** (bids can't include cents):
+`compute_values` rounds at the end, and every surface (master `price` column,
+data.js `price`, packet, board) shows integers.

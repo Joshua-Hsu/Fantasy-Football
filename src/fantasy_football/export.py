@@ -300,7 +300,8 @@ def build_webapp_data(
             row["draft"] = f"R{rnd} P{pick}"
         # Master market pin when present, else the computed (tier-monotonic)
         # auction value — so the personal packet always shows a Rec$.
-        row["price"] = prices.get(r.key, r.dollars)
+        # Whole dollars: auction bids can't include cents.
+        row["price"] = max(1, round(prices.get(r.key, r.dollars)))
         if r.position != "DST":
             bk_name, bk_ppg = backup_for(r, pool)
             if bk_name:
@@ -950,7 +951,7 @@ def write_tiers_csv(
                  _safe_cell(r.name if r else key), _safe_cell(pos),
                  _safe_cell(r.team if r else ""), r.total if r else "", r.ppg if r else ""]
                 + [cols[h] for h in CSV_STAT_HEADERS]
-                + [prices.get(key, "")]
+                + [max(1, round(prices[key])) if key in prices else ""]
             )
     return path
 

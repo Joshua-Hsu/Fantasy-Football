@@ -1,0 +1,42 @@
+# Weekly snapshot of Yahoo's salary-cap draft values (projected + current
+# average cost). Accumulates yahoo/values.<date>.csv for trend analysis and
+# always keeps the raw HTML, so history survives Yahoo markup changes.
+# Runs here (not in the web sandbox) because Actions runners have normal
+# internet egress; the sandbox's network policy blocks yahoo.com.
+name: Yahoo Values Snapshot
+
+on:
+  schedule:
+    - cron: "0 13 * * 3"   # Wednesdays 13:00 UTC
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: yahoo-values
+  cancel-in-progress: false
+
+jobs:
+  pull:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install package
+        run: pip install -e .
+
+      - name: Pull Yahoo salary-cap values
+        run: python -m fantasy_football.cli pull-yahoo --out-dir yahoo
+
+      - name: Commit snapshot
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add yahoo
+          git commit -m "Yahoo salcap values snapshot $(date -u +%F)" || echo "no changes"
+          git push
