@@ -551,7 +551,8 @@ def compute_values(
                 key=e["key"], name=e["name"], position=e["position"], team=e.get("team", ""),
                 games=e["games"], total=round(e["total"], 1), ppg=round(e["ppg"], 2),
                 w3yr=round(e["w3yr"], 1), basis_value=round(e["basis_value"], 1), tier=e["tier"],
-                kmeans_tier=e["kmeans_tier"], vor=round(e["vor"], 1), dollars=e["dollars"],
+                kmeans_tier=e["kmeans_tier"], vor=round(e["vor"], 1),
+                dollars=max(1, round(e["dollars"])),  # bids are whole dollars
                 pos_rank=e["pos_rank"], overall_rank=e["overall_rank"], is_rookie=e["is_rookie"],
             )
             for e in by_position.get(pos, [])

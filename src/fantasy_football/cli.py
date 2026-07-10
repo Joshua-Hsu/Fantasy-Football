@@ -787,6 +787,53 @@ def _cmd_cheatsheet(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_pull_yahoo(args: argparse.Namespace) -> int:
+    """Snapshot Yahoo's salary-cap values into a dated CSV (+ raw HTML).
+
+    Designed for the weekly GitHub Action: raw pages are ALWAYS saved (so a
+    markup change never loses a week of history — it can be re-parsed), and
+    the run only fails when nothing at all came back.
+    """
+    import csv
+    import datetime as _dt
+    import os
+
+    from .yahoo import fetch_salcap_pages, parse_salcap_html
+
+    today = _dt.date.today().isoformat()
+    raw_dir = os.path.join(args.out_dir, "raw", today)
+    os.makedirs(raw_dir, exist_ok=True)
+
+    pages = fetch_salcap_pages()
+    rows: list[dict] = []
+    seen: set[str] = set()
+    for offset, html in pages:
+        with open(os.path.join(raw_dir, f"salcap-{offset}.html"), "w") as fh:
+            fh.write(html)
+        for row in parse_salcap_html(html):
+            if row["name"] not in seen:
+                seen.add(row["name"])
+                rows.append(row)
+
+    if not pages:
+        print("error: no salcap pages fetched (Yahoo unreachable or blocking)")
+        return 1
+
+    out = os.path.join(args.out_dir, f"values.{today}.csv")
+    with open(out, "w", newline="") as fh:
+        writer = csv.DictWriter(fh, fieldnames=[
+            "date", "name", "team_pos", "proj_value", "avg_cost",
+            "pct_drafted", "all_dollars"])
+        writer.writeheader()
+        for row in rows:
+            writer.writerow({"date": today, **row})
+    print(f"Saved {len(rows)} players -> {out} "
+          f"({len(pages)} raw pages under {raw_dir})")
+    if not rows:
+        print("warning: 0 rows parsed - raw pages saved for a parser fix/re-parse")
+    return 0
+
+
 def _cmd_build_webapp(args: argparse.Namespace) -> int:
     import datetime as _dt
 
@@ -1015,6 +1062,13 @@ def build_parser() -> argparse.ArgumentParser:
     p_webapp.add_argument("--no-depth", action="store_true", dest="no_depth",
                          help="Skip fetching depth charts (backups fall back to the heuristic)")
     p_webapp.set_defaults(func=_cmd_build_webapp)
+
+    p_yahoo = sub.add_parser(
+        "pull-yahoo",
+        help="Snapshot Yahoo's salary-cap draft values (projected + current avg)")
+    p_yahoo.add_argument("--out-dir", default="yahoo", dest="out_dir",
+                         help="Directory for values.<date>.csv + raw/ snapshots")
+    p_yahoo.set_defaults(func=_cmd_pull_yahoo)
 
     return parser
 

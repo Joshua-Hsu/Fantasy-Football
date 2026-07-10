@@ -140,7 +140,7 @@ def test_master_round_trip_rating_and_derived_tiers(session, tmp_path):
     import csv as _csv
     rows = {r["key"]: r for r in _csv.DictReader(out.open())}
     assert int(rows["prb0"]["manual_tier"]) == 1
-    assert rows["prb0"]["price"] == "42.0"
+    assert rows["prb0"]["price"] == "42"    # whole dollars, no cents
 
 
 def test_packet_position_sheet_layout_and_tabs(session, tmp_path):
@@ -429,7 +429,7 @@ def test_webapp_payload_carries_packet_data(session, tmp_path):
     payload = json.loads(out.read_text().split("window.FF_DATA = ", 1)[1].rstrip(";\n"))
 
     rbs = {e["name"]: e for e in payload["positions"]["RB"]}
-    assert rbs["RB0"]["price"] == 57.0
+    assert rbs["RB0"]["price"] == 57         # whole dollars, no cents
     assert rbs["RB0"]["bkp"] == "RB5"            # depth chart
     assert rbs["RB1"]["bkp"] == "Hand Picked"    # manual override wins
     assert rbs["RB2"]["bkp"] == "RB3"            # heuristic: next same-team RB
@@ -862,3 +862,52 @@ def test_master_base_stamp_and_gating(session, tmp_path):
     write_tiers_csv(session, str(master2), ratings={"prb0": 300.0, "prb1": 200.0},
                     prices={"prb0": 42.0}, year=2025, config=LeagueConfig(teams=1))
     assert _master_base(str(master2)) != base
+
+
+def test_prices_are_whole_dollars(session, tmp_path):
+    """Auction bids are integer dollars: no cents anywhere prices surface."""
+    import json
+
+    from fantasy_football.export import write_webapp_data
+    from fantasy_football.valuation import compute_values
+
+    _seed(session)
+    values = compute_values(session, year=2025, config=LeagueConfig(teams=1))
+    for rows in values.values():
+        for r in rows:
+            assert r.dollars == int(r.dollars) and r.dollars >= 1
+
+    out = tmp_path / "data.js"
+    write_webapp_data(session, str(out), year=2025, config=LeagueConfig(teams=1),
+                      prices={"prb0": 42.6})
+    payload = json.loads(out.read_text().split("window.FF_DATA = ", 1)[1].rstrip(";\n"))
+    for rows in payload["positions"].values():
+        for e in rows:
+            assert e["price"] == int(e["price"]) and e["price"] >= 1
+    rb0 = next(e for e in payload["positions"]["RB"] if e["key"] == "prb0")
+    assert rb0["price"] == 43   # master pin 42.6 rounds to a biddable dollar
+
+
+def test_yahoo_salcap_parser():
+    """Offline parse of a Yahoo-shaped salcap table (no network, ever)."""
+    from fantasy_football.yahoo import parse_salcap_html
+
+    html = """
+    <table><thead><tr><th>Player</th><th>Proj</th><th>Avg</th></tr></thead>
+    <tbody>
+    <tr><td><a href="https://sports.yahoo.com/nfl/players/40900">Bo Nix</a>
+      <span>Den - QB</span></td><td>$21</td><td>$18.5</td><td>93%</td></tr>
+    <tr><td><a href="https://sports.yahoo.com/nfl/players/33955">Jahmyr Gibbs</a>
+      <span>Det - RB</span></td><td>$61</td><td>$63.2</td><td>100%</td></tr>
+    <tr><td><a href="https://sports.yahoo.com/nfl/teams/lar">Los Angeles Rams</a>
+      <span>LAR - DEF</span></td><td>$2</td><td>$1</td><td>44%</td></tr>
+    <tr><td>No link here</td><td>$9</td></tr>
+    <tr><td><a href="https://sports.yahoo.com/nfl/players/1">No Dollars</a></td><td>-</td></tr>
+    </tbody></table>
+    """
+    rows = parse_salcap_html(html)
+    assert [r["name"] for r in rows] == ["Bo Nix", "Jahmyr Gibbs", "Los Angeles Rams"]
+    nix = rows[0]
+    assert nix["proj_value"] == 21 and nix["avg_cost"] == 18.5
+    assert nix["team_pos"].upper().startswith("DEN") and nix["pct_drafted"] == 93
+    assert rows[2]["team_pos"].upper().endswith("DEF")
