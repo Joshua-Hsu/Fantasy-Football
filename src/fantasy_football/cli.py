@@ -757,6 +757,7 @@ def _cmd_cheatsheet(args: argparse.Namespace) -> int:
 
     config = _league_config(args)
     manual = _read_manual_tiers(getattr(args, "tiers_file", None))
+    pins, _ = _read_tier_pins(getattr(args, "tiers_file", None))
     prices = _read_fixed_prices(getattr(args, "tiers_file", None))
     notes = _read_tier_notes(getattr(args, "tiers_file", None))
     overrides = _read_depth_overrides(getattr(args, "depth_overrides", None))
@@ -782,6 +783,7 @@ def _cmd_cheatsheet(args: argparse.Namespace) -> int:
             manual_tiers=manual, fixed_prices=prices, tier_notes=notes,
             backups=backups, starters=starters, backup_overrides=overrides,
             ratings=_read_ratings(getattr(args, "tiers_file", None)),
+            pinned_tiers=pins or None,
         )
     print(f"Wrote draft packet to {path}")
     return 0

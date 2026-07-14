@@ -911,3 +911,30 @@ def test_yahoo_salcap_parser():
     assert nix["proj_value"] == 21 and nix["avg_cost"] == 18.5
     assert nix["team_pos"].upper().startswith("DEN") and nix["pct_drafted"] == 93
     assert rows[2]["team_pos"].upper().endswith("DEF")
+
+
+def test_pool_extras_band_into_pinned_tiers(session, tmp_path):
+    """Players outside the pinned master (deep depth, fullbacks) slot into the
+    admin's structure by rating — they can never wedge a phantom tier between
+    or above the admin's bottom tiers (the 'tier 7 block' bug)."""
+    import json
+
+    from fantasy_football.export import write_webapp_data
+
+    _seed(session)
+    # Master = admin pinned RB structure over the top 3 only; prb3-5 are the
+    # deep pool the master never saw.
+    seeds = {"prb0": 300.0, "prb1": 298.0, "prb2": 280.0}
+    pins = {"prb0": 1, "prb1": 1, "prb2": 2}
+    out = tmp_path / "data.js"
+    write_webapp_data(session, str(out), year=2025, config=LeagueConfig(teams=1),
+                      seed_overrides=seeds, pinned_tiers=pins)
+    payload = json.loads(out.read_text().split("window.FF_DATA = ", 1)[1].rstrip(";\n"))
+    rbs = {e["key"]: e for e in payload["positions"]["RB"]}
+    assert rbs["prb0"]["tier"] == 1 and rbs["prb1"]["tier"] == 1
+    assert rbs["prb2"]["tier"] == 2
+    # The unpinned tail rates far below the tier 1|2 boundary (289): all of it
+    # lands IN the bottom pinned tier - no tier 3+ labels exist to wedge in.
+    for k in ("prb3", "prb4", "prb5"):
+        assert rbs[k]["tier"] == 2, (k, rbs[k]["tier"])
+    assert max(e["tier"] for e in rbs.values()) == 2
