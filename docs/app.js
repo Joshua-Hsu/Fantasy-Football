@@ -336,7 +336,11 @@
       "<label class='btn' style='cursor:pointer'>&#11014; Import tiers CSV" +
       "<input type='file' accept='.csv' style='display:none' onchange='FF.importTiers(this)'></label>" +
       "</div><p class='muted'>Commit sends your rankings to the shared database. " +
-      "You can also download a draft packet of your tiers.</p>";
+      "You can also download a draft packet of your tiers." +
+      // Build stamp: which master this browser is actually looking at -
+      // instantly settles "is my view stale or is the data wrong".
+      "<br>Tiers build: <code>" +
+      esc(String((window.FF_DATA || {}).base || "unstamped")) + "</code></p>";
   }
 
   function coachName(name, isNew) {
