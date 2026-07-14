@@ -847,6 +847,9 @@
         "onpointerup=\"FF.adGripUp(event,'" + pos + "')\" " +
         "onpointercancel='FF.adGripCancel()'>&#x2630;</span>" +
         "<b>" + esc(e.name) + "</b><span class='muted'> " + esc(e.team || "") +
+        // Positional rank = board order; re-renders keep it live as you move
+        // players, same as the rating.
+        " &middot; " + pos + (i + 1) +
         " &middot; " + Math.round(AD.ratings[e.key]) + "</span>" +
         (sel ? "<span class='ad-actions'>" +
           (canSplit ? "<button class='ad-mini' onclick=\"event.stopPropagation();" +
