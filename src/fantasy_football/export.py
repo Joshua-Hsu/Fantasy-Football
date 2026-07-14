@@ -59,6 +59,7 @@ def effective_pool_ratings(
     config: LeagueConfig = DEFAULT_LEAGUE,
     rules: ScoringRules = DEFAULT_RULES,
     basis: str = "w3yr",
+    pinned_tiers: dict[str, int] | None = None,
 ) -> tuple[dict[str, float], dict[str, int]]:
     """One rating + ONE tier numbering for the whole draftable pool.
 
@@ -67,6 +68,13 @@ def effective_pool_ratings(
     then tiers derived from those ratings across the full pool. This is the fix
     for mixing two independently-numbered tier schemes (master vs value k-means),
     which let a backup missing from the master out-tier his own starter.
+
+    ``pinned_tiers`` (the master's commissioner pins) makes the pinned
+    structure authoritative for its position: pinned players keep their pinned
+    tier, and every OTHER pool player of that position is banded in by where
+    his effective rating falls between the pinned tiers' rating boundaries.
+    Without this, deep pool players outside the master keep the pool-derived
+    tail numbering and can wedge a "tier 7" block above the admin's tier 8.
     """
     pre = compute_values(session, year=year, config=config, rules=rules, basis=basis)
     by_key = {r.key: r for rows in pre.values() for r in rows}
@@ -78,7 +86,29 @@ def effective_pool_ratings(
             eff[key] = o
         else:
             eff[key] = r.basis_value
-    return eff, derive_tiers_from_ratings(eff, by_key)
+    tiers = derive_tiers_from_ratings(eff, by_key)
+    pinned_tiers = {k: t for k, t in (pinned_tiers or {}).items() if k in by_key}
+    for pos in {by_key[k].position for k in pinned_tiers}:
+        pin_in = sorted(
+            (k for k in pinned_tiers if by_key[k].position == pos),
+            key=lambda k: (pinned_tiers[k], -eff.get(k, 0.0)),
+        )
+        bounds = [
+            (eff.get(pin_in[i], 0.0) + eff.get(pin_in[i + 1], 0.0)) / 2
+            for i in range(len(pin_in) - 1)
+            if pinned_tiers[pin_in[i]] != pinned_tiers[pin_in[i + 1]]
+        ]
+        if not bounds:
+            # Degenerate pin set (a single tier): just overlay the pins.
+            for k in pin_in:
+                tiers[k] = pinned_tiers[k]
+            continue
+        for k in [k2 for k2 in by_key if by_key[k2].position == pos]:
+            if k in pinned_tiers:
+                tiers[k] = pinned_tiers[k]
+            else:
+                tiers[k] = 1 + sum(1 for b in bounds if eff.get(k, 0.0) < b)
+    return eff, tiers
 
 
 def build_board(
@@ -91,6 +121,7 @@ def build_board(
     manual_tiers: dict[str, int] | None = None,
     fixed_prices: dict[str, float] | None = None,
     rating_overrides: dict[str, float] | None = None,
+    pinned_tiers: dict[str, int] | None = None,
 ) -> dict[str, list[BoardRow]]:
     """Per-position rows grouped by tier, with within-tier and overall ranks.
 
@@ -104,7 +135,8 @@ def build_board(
     """
     if rating_overrides:
         ratings, tiers = effective_pool_ratings(
-            session, rating_overrides, year=year, config=config, rules=rules, basis=basis
+            session, rating_overrides, year=year, config=config, rules=rules,
+            basis=basis, pinned_tiers=pinned_tiers,
         )
     else:
         seed_ratings(session, year=year, config=config, rules=rules, basis=basis)
@@ -208,14 +240,15 @@ def build_webapp_data(
     # retention below, which must not balloon to every player.
     tier_map = manual_tiers
     if seed_overrides:
+        # Commissioner pins ride along: pinned positions keep the admin's
+        # numbering and every non-master pool player is banded into it by
+        # rating, so nobody can wedge between the admin's bottom tiers.
         _eff, tier_map = effective_pool_ratings(
-            session, seed_overrides, year=year, config=config, rules=rules, basis=basis
+            session, seed_overrides, year=year, config=config, rules=rules,
+            basis=basis, pinned_tiers=pinned_tiers,
         )
-    # Commissioner pins (the master's tier_pin column) override the derived
-    # numbering — the admin board is law until released.
-    if pinned_tiers:
-        tier_map = dict(tier_map)
-        tier_map.update(pinned_tiers)
+    elif pinned_tiers:
+        tier_map = {**tier_map, **pinned_tiers}
     values = compute_values(
         session, year=year, config=config, rules=rules, basis=basis, manual_tiers=tier_map
     )
@@ -1146,6 +1179,7 @@ def write_cheatsheet(
     starters: dict[tuple[str, str], list[str]] | None = None,
     backup_overrides: dict[str, str] | None = None,
     ratings: dict[str, float] | None = None,
+    pinned_tiers: dict[str, int] | None = None,
 ) -> str:
     """Write the draft packet to an .xlsx file. Returns the path.
 
@@ -1169,7 +1203,7 @@ def write_cheatsheet(
     board = build_board(
         session, year=year, config=config, rules=rules, basis=basis,
         manual_tiers=manual_tiers, fixed_prices=fixed_prices,
-        rating_overrides=ratings,
+        rating_overrides=ratings, pinned_tiers=pinned_tiers,
     )
     tier_notes = tier_notes or {}
     backups = backups or {}
