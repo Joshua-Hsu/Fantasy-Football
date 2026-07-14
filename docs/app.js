@@ -224,8 +224,32 @@
   }
   function tiersFor(pos) {
     var pool = (DATA[pos] || []).slice().sort(function (a, b) { return S.ratings[b.key] - S.ratings[a.key]; });
+    // Master-anchored bands when data.js carries the master's tiers: the
+    // boundaries come from the master's (tier, seed) geometry and each player
+    // slots by YOUR rating - fresh state shows exactly the master's tiers
+    // (admin pins included, all of them, not capped at k), and your picks
+    // move players across boundaries as your ratings drift.
+    if (pool.length && pool.every(function (e) { return e.tier; })) {
+      var mast = pool.slice().sort(function (a, b) {
+        return (a.tier - b.tier) || (b.seed - a.seed);
+      });
+      var bounds = [];
+      for (var i = 0; i < mast.length - 1; i++) {
+        if (mast[i].tier !== mast[i + 1].tier) {
+          bounds.push((mast[i].seed + mast[i + 1].seed) / 2);
+        }
+      }
+      var out = {};
+      pool.forEach(function (e) {
+        var r = S.ratings[e.key], t = 1;
+        for (var j = 0; j < bounds.length; j++) { if (r < bounds[j]) t++; }
+        out[e.key] = t;
+      });
+      return out;
+    }
+    // Old data.js without per-entity tiers: derive from rating gaps.
     var labels = sizedTiers(pool.map(function (e) { return S.ratings[e.key]; }), TIER_K[pos] || 6, 7);
-    var out = {}; pool.forEach(function (e, i) { out[e.key] = labels[i]; }); return out;
+    var out2 = {}; pool.forEach(function (e, i) { out2[e.key] = labels[i]; }); return out2;
   }
 
   // ---- levels / gamification ----
