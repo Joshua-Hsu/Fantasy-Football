@@ -938,3 +938,51 @@ def test_pool_extras_band_into_pinned_tiers(session, tmp_path):
     for k in ("prb3", "prb4", "prb5"):
         assert rbs[k]["tier"] == 2, (k, rbs[k]["tier"])
     assert max(e["tier"] for e in rbs.values()) == 2
+
+
+def test_yahoo_api_parser():
+    """Offline parse of the Fantasy API's nested players;draft_analysis JSON."""
+    import json
+
+    from fantasy_football.yahoo import parse_players_api_json
+
+    payload = {
+        "fantasy_content": {
+            "game": [
+                {"game_key": "470", "code": "nfl"},
+                {"players": {
+                    "0": {"player": [
+                        [{"player_key": "470.p.40059"},
+                         {"name": {"full": "Jahmyr Gibbs", "first": "Jahmyr"}},
+                         {"editorial_team_abbr": "Det"},
+                         {"display_position": "RB"}],
+                        {"draft_analysis": [
+                            {"average_pick": "3.1"},
+                            {"average_cost": "63.2"},
+                            {"percent_drafted": "1.00"},
+                            {"preseason_average_cost": "61.0"},
+                        ]},
+                    ]},
+                    "1": {"player": [
+                        [{"player_key": "470.p.40900"},
+                         {"name": {"full": "Bo Nix"}},
+                         {"editorial_team_abbr": "Den"},
+                         {"display_position": "QB"}],
+                        {"draft_analysis": [
+                            {"average_cost": "-1"},        # no live drafts yet
+                            {"percent_drafted": "0.93"},
+                            {"preseason_average_cost": "21"},
+                        ]},
+                    ]},
+                    "count": 2,
+                }},
+            ],
+        },
+    }
+    rows = parse_players_api_json(json.dumps(payload))
+    assert [r["name"] for r in rows] == ["Jahmyr Gibbs", "Bo Nix"]
+    gibbs, nix = rows
+    assert gibbs["proj_value"] == 61.0 and gibbs["avg_cost"] == 63.2
+    assert gibbs["team_pos"] == "DET - RB" and gibbs["pct_drafted"] == 100
+    assert nix["proj_value"] == 21 and nix["avg_cost"] == ""  # -1 = no data
+    assert parse_players_api_json("not json") == []

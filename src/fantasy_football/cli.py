@@ -800,28 +800,43 @@ def _cmd_pull_yahoo(args: argparse.Namespace) -> int:
     import datetime as _dt
     import os
 
-    from .yahoo import (fetch_salcap_pages, fetch_salcap_pages_browser,
+    from .yahoo import (fetch_salcap_api, fetch_salcap_pages,
+                        fetch_salcap_pages_browser, parse_players_api_json,
                         parse_salcap_html)
 
     today = _dt.date.today().isoformat()
     raw_dir = os.path.join(args.out_dir, "raw", today)
     os.makedirs(raw_dir, exist_ok=True)
 
-    # Yahoo renders the table client-side, so the real pull needs a browser
-    # (--browser, used by the Action). The static path stays as a fallback.
-    if getattr(args, "browser", False):
-        pages = fetch_salcap_pages_browser()
-    else:
-        pages = fetch_salcap_pages()
+    # Preferred source: the Fantasy Sports API (OAuth secrets in the env) —
+    # the web page locks the salcap value columns behind Fantasy Plus, but
+    # the API serves them to any authenticated account. Fallbacks: rendered
+    # browser (--browser), then static fetch.
+    creds = tuple(os.environ.get(k, "") for k in
+                  ("YAHOO_CLIENT_ID", "YAHOO_CLIENT_SECRET", "YAHOO_REFRESH_TOKEN"))
     rows: list[dict] = []
     seen: set[str] = set()
-    for offset, html in pages:
-        with open(os.path.join(raw_dir, f"salcap-{offset}.html"), "w") as fh:
-            fh.write(html)
-        for row in parse_salcap_html(html):
-            if row["name"] not in seen:
-                seen.add(row["name"])
-                rows.append(row)
+    if all(creds):
+        pages = fetch_salcap_api(*creds)
+        for start, text in pages:
+            with open(os.path.join(raw_dir, f"api-{start}.json"), "w") as fh:
+                fh.write(text)
+            for row in parse_players_api_json(text):
+                if row["name"] not in seen:
+                    seen.add(row["name"])
+                    rows.append(row)
+    else:
+        if getattr(args, "browser", False):
+            pages = fetch_salcap_pages_browser()
+        else:
+            pages = fetch_salcap_pages()
+        for offset, html in pages:
+            with open(os.path.join(raw_dir, f"salcap-{offset}.html"), "w") as fh:
+                fh.write(html)
+            for row in parse_salcap_html(html):
+                if row["name"] not in seen:
+                    seen.add(row["name"])
+                    rows.append(row)
 
     if not pages:
         print("error: no salcap pages fetched (Yahoo unreachable or blocking)")

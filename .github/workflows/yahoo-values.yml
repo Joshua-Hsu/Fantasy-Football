@@ -28,13 +28,17 @@ jobs:
           python-version: "3.12"
 
       - name: Install package + headless browser
-        # Yahoo builds the value table client-side, so the pull renders the
-        # page with Playwright Chromium instead of fetching static HTML.
+        # Browser kept as a fallback; the primary source is the Fantasy
+        # Sports API (the web page locks salcap values behind Fantasy Plus).
         run: |
           pip install -e . playwright
           python -m playwright install --with-deps chromium
 
       - name: Pull Yahoo salary-cap values
+        env:
+          YAHOO_CLIENT_ID: ${{ secrets.YAHOO_CLIENT_ID }}
+          YAHOO_CLIENT_SECRET: ${{ secrets.YAHOO_CLIENT_SECRET }}
+          YAHOO_REFRESH_TOKEN: ${{ secrets.YAHOO_REFRESH_TOKEN }}
         run: python -m fantasy_football.cli pull-yahoo --out-dir yahoo --browser
 
       - name: Commit snapshot
