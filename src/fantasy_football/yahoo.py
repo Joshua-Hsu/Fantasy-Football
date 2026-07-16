@@ -98,6 +98,8 @@ def fetch_salcap_api(client_id: str, client_secret: str, refresh_token: str,
 
     token = _api_access_token(client_id, client_secret, refresh_token,
                               timeout=timeout)
+    from urllib.error import HTTPError
+
     pages = []
     for start in range(0, players, 25):
         req = Request(API_PLAYERS_URL.format(start=start),
@@ -105,6 +107,15 @@ def fetch_salcap_api(client_id: str, client_secret: str, refresh_token: str,
         try:
             with urlopen(req, timeout=timeout) as resp:
                 pages.append((start, resp.read().decode("utf-8", "replace")))
+        except HTTPError as exc:
+            # Yahoo puts the useful part (e.g. scope problems) in the body.
+            detail = exc.read().decode("utf-8", "replace")[:300]
+            print(f"warning: api page start={start} failed: {exc} :: {detail}")
+            if exc.code == 401 and start == 0:
+                print("hint: a 401 with a valid token usually means the token "
+                      "has no Fantasy Sports scope - re-authorize with "
+                      "&scope=fspt-r and refresh YAHOO_REFRESH_TOKEN.")
+                break  # every page will fail the same way
         except Exception as exc:  # noqa: BLE001 - keep pulling the other pages
             print(f"warning: api page start={start} failed: {exc}")
     return pages
