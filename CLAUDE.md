@@ -257,12 +257,16 @@ All from nflverse's GitHub-published files (no scraping): teams from
 constants in `ingest/nflverse.py`.
 
 **Yahoo market values** (`yahoo.py` + `pull-yahoo` CLI + `yahoo-values.yml`
-weekly Action): snapshots Yahoo's public salary-cap draft-analysis page
-(projected auction value + current average cost) into `yahoo/values.<date>.csv`
-for trend analysis, ALWAYS saving the raw HTML under `yahoo/raw/<date>/` so a
-Yahoo markup change never loses a week (re-parse later). Runs only in Actions —
-the web sandbox's network policy blocks yahoo.com (`pull-yahoo` degrades to a
-clean error there). Rows join to master keys by player name. All auction
+weekly Action): snapshots Yahoo's salary-cap draft values (projected auction
+value + current average cost) into `yahoo/values.<date>.csv` for trend
+analysis, ALWAYS saving raw payloads under `yahoo/raw/<date>/` so a schema
+change never loses a week (re-parse later). Primary source is the **Fantasy
+Sports API** (OAuth; repo secrets `YAHOO_CLIENT_ID`/`_SECRET`/`_REFRESH_TOKEN`;
+the public web page locks the value columns behind Fantasy Plus — verified via
+lock-icon upsells in the 2026-07-14 snapshots). Fallback: headless-Chromium
+render of the public page (free columns only). Runs only in Actions — the web
+sandbox's network policy blocks yahoo.com (`pull-yahoo` degrades to a clean
+error there). Rows join to master keys by player name. All auction
 dollars in the toolkit are **whole dollars** (bids can't include cents):
 `compute_values` rounds at the end, and every surface (master `price` column,
 data.js `price`, packet, board) shows integers.
