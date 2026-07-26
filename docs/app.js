@@ -442,20 +442,31 @@
     if (!e) return "<div class='muted'>no data</div>";
     var rookie = e.rookie ? "<span class='badge'>R</span>" : "";
     var stat = function (v) { return e.rookie ? "&mdash;" : v.toFixed(1); };
-    var draftLine = e.rookie
-      ? "<div class='muted'>Rookie" + (e.draft ? " &middot; " + esc(e.draft) : "") + "</div>"
-      : "";
+    // Rookies have no stats to judge - give their DRAFT CAPITAL the stat
+    // slots instead of a row of dashes, so the card still argues for them.
+    var vals;
+    var dm = e.rookie && e.draft ? String(e.draft).match(/R(\d+)\s*P(\d+)/) : null;
+    if (dm) {
+      vals = "<div class='vals'>" +
+        "<span class='seg'><b>R" + dm[1] + "</b><i>draft round</i></span>" +
+        "<span class='seg'><b>#" + dm[2] + "</b><i>overall pick</i></span>" +
+        "<span class='seg'><b>&mdash;</b><i>no stats yet</i></span>" +
+        "</div>";
+    } else {
+      vals = "<div class='vals'>" +
+        "<span class='seg'><b>" + stat(e.total) + "</b><i>last yr</i></span>" +
+        "<span class='seg'><b>" + stat(e.ppg) + "</b><i>ppg</i></span>" +
+        "<span class='seg'><b>" + stat(e.w3yr) + "</b><i>3-yr wtd</i></span>" +
+        "</div>";
+    }
+    var draftLine = e.rookie && !dm ? "<div class='muted'>Rookie</div>" : "";
     return "<div class='name'>" + esc(e.name) + rookie + "</div>" +
       "<div class='muted'>" + esc(e.pos) + " &middot; " + esc(e.team || "TBD") +
       " &middot; Pos #" + posRank(e) + " &middot; Ovr #" + overallRank(e) + "</div>" +
       "<div class='muted'>HC " + coachName(e.hc, e.hcN) + " &middot; OC " + coachName(e.oc, e.ocN) +
       "</div>" +
       teamRankLine(e) + draftLine +
-      "<div class='vals'>" +
-      "<span class='seg'><b>" + stat(e.total) + "</b><i>last yr</i></span>" +
-      "<span class='seg'><b>" + stat(e.ppg) + "</b><i>ppg</i></span>" +
-      "<span class='seg'><b>" + stat(e.w3yr) + "</b><i>3-yr wtd</i></span>" +
-      "</div>" +
+      vals +
       statLine(e);
   }
 
