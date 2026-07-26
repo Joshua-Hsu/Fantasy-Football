@@ -92,6 +92,7 @@
     s.comps = s.comps || {};
     s.picks = s.picks || 0;
     s.notes = s.notes || {};   // {pos: {tier: "hand-written tier description"}}
+    s.fades = s.fades || {};   // {key: fade-both count this master}
     var healed = false;
     ALL.forEach(function (e) {              // seed any missing
       if (s.ratings[e.key] == null) s.ratings[e.key] = e.seed;
@@ -115,6 +116,7 @@
     var dataBase = "r2:" + String((window.FF_DATA || {}).base || "");
     if (s.base !== dataBase) {
       ALL.forEach(function (e) { s.ratings[e.key] = e.seed; });
+      s.fades = {};            // benched players return with the new master
       s.base = dataBase;
       healed = true;
     }
@@ -138,12 +140,16 @@
   }
 
   var lastPair = [];
+  var FADE_BENCH = 5;  // fade a player this many times: benched until next master
   function matchup(pos, avoid) {
     avoid = avoid || [];
     var pool = (DATA[pos] || []).slice();
     if (pool.length < 2) return null;
-    var elig = pool.filter(function (e) { return avoid.indexOf(e.key) < 0; });
-    if (elig.length < 2) elig = pool;  // tiny pool: can't avoid
+    // Benched = faded FADE_BENCH+ times since the current master shipped.
+    var fresh = pool.filter(function (e) { return (S.fades[e.key] || 0) < FADE_BENCH; });
+    if (fresh.length < 2) fresh = pool;  // nearly-all-benched pool: relax
+    var elig = fresh.filter(function (e) { return avoid.indexOf(e.key) < 0; });
+    if (elig.length < 2) elig = fresh;  // tiny pool: can't avoid
     var fewest = Math.min.apply(null, elig.map(function (e) { return S.comps[e.key]; }));
     var cands = elig.filter(function (e) { return S.comps[e.key] <= fewest + 1; });
     var a = cands[Math.floor(Math.random() * cands.length)];
@@ -1036,6 +1042,8 @@
       for (i = 0; i < cards.length; i++) cards[i].classList.add("dropped");
       S.ratings[a] -= NUDGE; S.ratings[b] -= NUDGE;
       S.comps[a]++; S.comps[b]++;
+      S.fades[a] = (S.fades[a] || 0) + 1;   // 5 fades = benched from matchups
+      S.fades[b] = (S.fades[b] || 0) + 1;   // until the next master rebuild
       save(S);
       setTimeout(function () { duelLock = false; play(pos); }, PICK_MS);
     },
