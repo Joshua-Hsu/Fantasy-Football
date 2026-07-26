@@ -264,6 +264,32 @@ def _read_tier_pins(
     return pins, released
 
 
+def _read_pool_overrides(path: str | None) -> set[str]:
+    """Read manual pool includes: CSV with ``player[,treat]`` columns.
+
+    Names (lowercased) of players forced into the app pool and seeded like
+    rookies by draft capital — for injury returnees with no recent production
+    (the reason the pool's stat-based selection misses them).
+    """
+    import csv
+    import os
+
+    if not path or not os.path.exists(path):
+        return set()
+    names: set[str] = set()
+    with open(path, newline="") as fh:
+        reader = csv.DictReader(fh)
+        if "player" not in (reader.fieldnames or []):
+            return set()
+        for i, row in enumerate(reader):
+            if i >= _MAX_TIERS_ROWS:
+                break
+            player = (row.get("player") or "").strip()
+            if player:
+                names.add(player.lower()[:64])
+    return names
+
+
 def _master_base(path: str | None) -> str:
     """Short content hash identifying a master tiers file.
 
@@ -898,6 +924,7 @@ def _cmd_build_webapp(args: argparse.Namespace) -> int:
             backups=backups, starters=starters, backup_overrides=overrides,
             leaders=leaders,
             base=_master_base(getattr(args, "tiers_file", None)),
+            extra_rookies=_read_pool_overrides(getattr(args, "pool_overrides", None)),
         )
     print(f"Wrote pick-game data to {path}")
     return 0
@@ -1084,6 +1111,10 @@ def build_parser() -> argparse.ArgumentParser:
                          help="CSV of manual backup fixes (player,backup); wins over depth charts")
     p_webapp.add_argument("--no-depth", action="store_true", dest="no_depth",
                          help="Skip fetching depth charts (backups fall back to the heuristic)")
+    p_webapp.add_argument("--pool-overrides", default="pool_overrides.csv",
+                         dest="pool_overrides",
+                         help="CSV of players (player[,treat]) forced into the pool "
+                              "and seeded like rookies (injury returnees)")
     p_webapp.set_defaults(func=_cmd_build_webapp)
 
     p_yahoo = sub.add_parser(

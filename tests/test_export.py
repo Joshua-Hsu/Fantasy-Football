@@ -986,3 +986,45 @@ def test_yahoo_api_parser():
     assert gibbs["team_pos"] == "DET - RB" and gibbs["pct_drafted"] == 100
     assert nix["proj_value"] == 21 and nix["avg_cost"] == ""  # -1 = no data
     assert parse_players_api_json("not json") == []
+
+
+def test_pool_overrides_include_injury_returnee_as_rookie(session, tmp_path):
+    """A player outside the stat-based pool selection joins via override,
+    seeded by draft capital like a rookie."""
+    import json
+
+    from fantasy_football.export import write_webapp_data
+    from fantasy_football.models import Player
+
+    _seed(session)
+    # TEs use the plain global depth cap (no per-team union), so a tight cap
+    # cleanly excludes the tail. TE3: barely played, but a 2nd-round pick.
+    game = session.query(Game).first()
+    gb = session.query(Team).filter_by(abbreviation="GB").one()
+    last = 19
+    for i in range(last + 1):
+        yds = 10 if i == last else 900 - 44 * i   # returnee barely played
+        p = Player(full_name=f"TE{i}", position="TE", slug=f"te{i}",
+                   draft_round=2 if i == last else None,
+                   draft_pick=46 if i == last else None)
+        session.add(p)
+        session.flush()
+        session.add(PlayerGameStats(player_id=p.id, game_id=game.id, team_id=gb.id,
+                                    receiving_yards=yds, receptions=yds // 12,
+                                    targets=yds // 9))
+    session.commit()
+
+    out = tmp_path / "data.js"
+    write_webapp_data(session, str(out), year=2025, config=LeagueConfig(teams=1),
+                      depth={"TE": 2})
+    payload = json.loads(out.read_text().split("window.FF_DATA = ", 1)[1].rstrip(";\n"))
+    assert "TE19" not in {e["name"] for e in payload["positions"]["TE"]}
+
+    write_webapp_data(session, str(out), year=2025, config=LeagueConfig(teams=1),
+                      depth={"TE": 2}, extra_rookies={"te19"})
+    payload = json.loads(out.read_text().split("window.FF_DATA = ", 1)[1].rstrip(";\n"))
+    tes = {e["name"]: e for e in payload["positions"]["TE"]}
+    assert "TE19" in tes
+    # Seeded like a rookie: 2nd-round draft capital slots him near TE18-level
+    # value on the seed scale, far above his own production (10 yards).
+    assert tes["TE19"]["seed"] > 3 * tes["TE19"]["w3yr"]

@@ -204,6 +204,7 @@ def build_webapp_data(
     prices: dict[str, float] | None = None,
     backups: dict[str, tuple[str | None, str]] | None = None,
     backup_overrides: dict[str, str] | None = None,
+    extra_rookies: set[str] | None = None,
 ) -> dict[str, list[dict]]:
     """Per-position player data for the static pick game (browser app).
 
@@ -229,6 +230,8 @@ def build_webapp_data(
     prices = prices or {}
     backups = backups or {}
     backup_overrides = backup_overrides or {}
+    extra_rookies = {n.lower() for n in (extra_rookies or set())}
+    matched_extras: set[str] = set()
     if isinstance(depth, int):
         caps = {pos: depth for pos in ALL_POSITIONS}
     else:
@@ -398,8 +401,21 @@ def build_webapp_data(
                 chosen.append((r, seed_for(r, r.basis_value)))
                 have.add(r.key)
 
+        # Manual pool includes (pool_overrides.csv): players with no recent
+        # production who should be drafted anyway (injury returnees like a
+        # torn-ACL 2nd-rounder), treated like rookies — in the pool, seeded
+        # by their draft capital rather than their (empty) stat line.
+        for r in rows:
+            if r.name.lower() in extra_rookies and r.key not in have:
+                chosen.append((r, seed_for(r, rookie_seed(r, vet_seeds))))
+                have.add(r.key)
+                matched_extras.add(r.name.lower())
+
         chosen.sort(key=lambda x: x[1], reverse=True)
         out[pos] = [emit(r, s, rows) for r, s in chosen]
+    for name in sorted(extra_rookies - matched_extras):
+        print(f"warning: pool override '{name}' matched no player "
+              f"(check spelling against roster names)")
     return out
 
 
@@ -421,6 +437,7 @@ def write_webapp_data(
     backup_overrides: dict[str, str] | None = None,
     leaders: dict[str, int] | None = None,
     base: str | None = None,
+    extra_rookies: set[str] | None = None,
 ) -> str:
     """Write the pick-game data as ``docs/data.js`` (``window.FF_DATA = {...}``).
 
@@ -438,6 +455,7 @@ def write_webapp_data(
         manual_tiers=manual_tiers, seed_overrides=seed_overrides,
         pinned_tiers=pinned_tiers,
         prices=prices, backups=backups, backup_overrides=backup_overrides,
+        extra_rookies=extra_rookies,
     )
     starters = starters or {}
     last_year = year or _latest_season(session)
