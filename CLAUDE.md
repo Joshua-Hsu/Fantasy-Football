@@ -172,6 +172,10 @@ drives the inflation math automatically. Backups come from nflverse's ESPN **dep
 (`depth_backups`/`depth_starters` in the ingest module; slot-aware, so LWR2
 backs up LWR1), overridable via a committed `depth_overrides.csv`
 (player,backup), with a same-team next-in-board heuristic as final fallback.
+A committed `pool_overrides.csv` (player[,treat]) forces named players into
+the app pool seeded like rookies by draft capital — for injury returnees
+(e.g. Jonathan Brooks) whose missing production would otherwise exclude them;
+unmatched names print a warning at build time.
 Depth release files are blocked from the web sandbox (fetch fails → heuristic);
 they work in GitHub Actions.
 
