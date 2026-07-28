@@ -1050,30 +1050,29 @@ def test_elite_receiving_rbs_highlighted(session, tmp_path):
     from openpyxl import load_workbook
 
     wb = load_workbook(out)
-    CYAN = "D0E0E3"
-
     def color(cell):
         rgb = cell.fill.fgColor.rgb if cell.fill.patternType else ""
         return str(rgb)[-6:]
 
     t2 = wb["2025 Top 200 Stats"]
-    fills = {}
+    marks = {}
     for r in range(2, t2.max_row + 1):
-        name = t2.cell(row=r, column=2).value
-        fills[name] = color(t2.cell(row=r, column=11))   # Tgt
-    assert fills["RB0"] == CYAN
-    assert fills["RB1"] != CYAN
-    assert t2.cell(row=1, column=16).value.startswith("RB with WR-caliber")
+        cell = t2.cell(row=r, column=11)   # Tgt
+        marks[t2.cell(row=r, column=2).value] = (cell.font.b, bool(cell.font.underline))
+    # Font mark (bold+underline), NOT a fill - heat colors stay visible.
+    assert marks["RB0"] == (True, True)
+    assert marks["RB1"] != (True, True)
 
     rb = wb["RB"]
     tgt_col = [c.value for c in rb[1]].index("Tgt%") + 1
-    rb_fills = {}
+    rb_marks = {}
     for r in range(2, rb.max_row + 1):
         name = rb.cell(row=r, column=4).value
         if name:
-            rb_fills[name] = color(rb.cell(row=r, column=tgt_col))
-    assert rb_fills["RB0"] == CYAN
-    assert rb_fills["RB1"] != CYAN
+            cell = rb.cell(row=r, column=tgt_col)
+            rb_marks[name] = (cell.font.b, bool(cell.font.underline))
+    assert rb_marks["RB0"] == (True, True)
+    assert rb_marks["RB1"] != (True, True)
 
     outjs = tmp_path / "data.js"
     write_webapp_data(session, str(outjs), year=2025, config=LeagueConfig(teams=1))
@@ -1129,9 +1128,11 @@ def test_stats_tabs_five_band_heat_map(session, tmp_path):
     # INT (col 9) INVERTED: fewest picks green, most red.
     assert color(qb.cell(row=qrows["QB0"], column=9)) == GRN
     assert color(qb.cell(row=qrows["QB4"], column=9)) == RED
-    # Legend swatches present on both tabs.
-    assert color(t2.cell(row=1, column=18)) == GRN
-    assert color(qb.cell(row=1, column=14)) == GRN
+    # Stats tabs carry NO legend; the one color key lives on the Draft Board.
+    assert t2.cell(row=1, column=18).value is None
+    board = wb["Draft Board"]
+    assert board.cell(row=9, column=19).value == "Color key"
+    assert color(board.cell(row=10, column=19)) == GRN
 
 
 
