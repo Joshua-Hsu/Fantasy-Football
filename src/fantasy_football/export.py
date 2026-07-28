@@ -279,6 +279,9 @@ def build_webapp_data(
     totals = _fantasy_totals(session, last_year, rules) if last_year else []
     fppg = {t[0]: t[6] for t in totals}
     fname_ppg = {t[1].lower(): t[6] for t in totals}
+    # WR-caliber receiving RBs get a badge on their pick-game cards.
+    rcv_elite = _elite_receiving_rbs(
+        [r.key for r in values.get("RB", [])], pstats)
 
     def backup_for(r, pool) -> tuple[str, object]:
         """(most-likely backup name, his fantasy PPG or "") — same resolution
@@ -334,6 +337,8 @@ def build_webapp_data(
             row["ocN"] = 1
         if r.is_rookie and rnd:
             row["draft"] = f"R{rnd} P{pick}"
+        if r.key in rcv_elite:
+            row["rcv"] = 1
         # Master market pin when present, else the computed (tier-monotonic)
         # auction value — so the personal packet always shows a Rec$.
         # Whole dollars: auction bids can't include cents.
@@ -1007,6 +1012,21 @@ def write_tiers_csv(
     return path
 
 
+def _elite_receiving_rbs(rb_keys, player_stats) -> set:
+    """RBs with WR-caliber receiving usage — the half-PPR outliers.
+
+    Top ~15% of RB target volume, with a 40-target floor so tiny samples
+    can't qualify. Highlighted cyan in the packet and badged in the app.
+    """
+    tgts = sorted((player_stats.get(k, {}).get("targets", 0) or 0 for k in rb_keys),
+                  reverse=True)
+    if not tgts:
+        return set()
+    thr = max(tgts[max(int(len(tgts) * 0.15) - 1, 0)], 40)
+    return {k for k in rb_keys
+            if (player_stats.get(k, {}).get("targets", 0) or 0) >= thr}
+
+
 def _fantasy_totals(session: Session, year: int, rules: ScoringRules):
     """All players' fantasy production for a season, best first.
 
@@ -1246,6 +1266,11 @@ def write_cheatsheet(
     def _tier_fill(tier: int) -> PatternFill:
         return PatternFill("solid", fgColor=_TIER_FILLS[(tier - 1) % len(_TIER_FILLS)])
 
+    # Cyan marks the half-PPR gold: RBs with WR-caliber receiving usage.
+    rcv_fill = PatternFill("solid", fgColor="D0E0E3")
+    elite_rcv = _elite_receiving_rbs(
+        [t[0] for t in totals if t[2] == "RB"], player_stats)
+
     def _backup_for(r: BoardRow, pool: list[BoardRow]):
         """(backup name, fantasy PPG or "", entity key or None) for a row."""
         override = backup_overrides.get(r.name.lower())
@@ -1319,6 +1344,8 @@ def write_cheatsheet(
             row_i = ws.max_row
             for c in range(1, len(headers) + 1):
                 ws.cell(row=row_i, column=c).fill = _tier_fill(r.tier)
+            if pos == "RB" and r.key in elite_rcv and "Tgt%" in headers:
+                ws.cell(row=row_i, column=headers.index("Tgt%") + 1).fill = rcv_fill
             ws.cell(row=row_i, column=1).alignment = wrap
             ws.cell(row=row_i, column=recd_col).number_format = '"$"0'
             bid_cells[r.key] = (ws.title, f"{get_column_letter(bid_col)}{row_i}")
@@ -1404,6 +1431,9 @@ def write_cheatsheet(
     for c in range(1, len(t2_headers) + 1):
         ws.cell(row=1, column=c).font = header_font
         ws.cell(row=1, column=c).alignment = center
+    # Legend for the cyan receiving-outlier mark.
+    ws.cell(row=1, column=16).value = "RB with WR-caliber receiving usage"
+    ws.cell(row=1, column=15).fill = PatternFill("solid", fgColor="D0E0E3")
     skill = [t for t in totals if t[2] not in ("K", "QB")]
     for i, (key, name, pos, team, g, fpts, ppg) in enumerate(skill[:200], 1):
         s = player_stats.get(key, {})
@@ -1413,6 +1443,9 @@ def write_cheatsheet(
             s.get("targets", 0), s.get("receptions", 0),
             s.get("receiving_yards", 0), s.get("receiving_touchdowns", 0),
         ])
+        if pos == "RB" and key in elite_rcv:
+            for c in range(11, 15):   # Tgt / Rec / ReYds / ReTD
+                ws.cell(row=ws.max_row, column=c).fill = rcv_fill
     ws.freeze_panes = "C2"
     ws.auto_filter.ref = f"A1:N{ws.max_row}"
     ws.column_dimensions["B"].width = 22
