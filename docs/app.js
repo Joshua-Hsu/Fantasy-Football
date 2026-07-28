@@ -441,6 +441,8 @@
   function statBlock(e) {
     if (!e) return "<div class='muted'>no data</div>";
     var rookie = e.rookie ? "<span class='badge'>R</span>" : "";
+    // WR-caliber receiving RBs: the half-PPR outliers get a lightning badge.
+    var rcv = e.rcv ? "<span class='badge' title='WR-caliber receiving usage'>&#9889;</span>" : "";
     var stat = function (v) { return e.rookie ? "&mdash;" : v.toFixed(1); };
     // Rookies have no stats to judge - give their DRAFT CAPITAL the stat
     // slots instead of a row of dashes, so the card still argues for them.
@@ -460,7 +462,7 @@
         "</div>";
     }
     var draftLine = e.rookie && !dm ? "<div class='muted'>Rookie</div>" : "";
-    return "<div class='name'>" + esc(e.name) + rookie + "</div>" +
+    return "<div class='name'>" + esc(e.name) + rookie + rcv + "</div>" +
       "<div class='muted'>" + esc(e.pos) + " &middot; " + esc(e.team || "TBD") +
       " &middot; Pos #" + posRank(e) + " &middot; Ovr #" + overallRank(e) + "</div>" +
       "<div class='muted'>HC " + coachName(e.hc, e.hcN) + " &middot; OC " + coachName(e.oc, e.ocN) +

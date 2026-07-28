@@ -1028,3 +1028,56 @@ def test_pool_overrides_include_injury_returnee_as_rookie(session, tmp_path):
     # Seeded like a rookie: 2nd-round draft capital slots him near TE18-level
     # value on the seed scale, far above his own production (10 yards).
     assert tes["TE19"]["seed"] > 3 * tes["TE19"]["w3yr"]
+
+
+def test_elite_receiving_rbs_highlighted(session, tmp_path):
+    """WR-caliber receiving RBs get cyan receiving cells in the packet and an
+    rcv flag in the app payload; ordinary RBs don't."""
+    import json
+
+    from fantasy_football.export import write_cheatsheet, write_webapp_data
+
+    _seed(session)
+    # RB0: 80 targets (WR-caliber). RB1: 12 (ordinary). Others: none.
+    stats = {p.player.slug: p for p in
+             session.query(PlayerGameStats).join(Player).filter(Player.position == "RB")}
+    stats["rb0"].targets, stats["rb0"].receptions, stats["rb0"].receiving_yards = 80, 64, 520
+    stats["rb1"].targets, stats["rb1"].receptions = 12, 9
+    session.commit()
+
+    out = tmp_path / "packet.xlsx"
+    write_cheatsheet(session, str(out), year=2025, config=LeagueConfig(teams=1))
+    from openpyxl import load_workbook
+
+    wb = load_workbook(out)
+    CYAN = "D0E0E3"
+
+    def color(cell):
+        rgb = cell.fill.fgColor.rgb if cell.fill.patternType else ""
+        return str(rgb)[-6:]
+
+    t2 = wb["2025 Top 200 Stats"]
+    fills = {}
+    for r in range(2, t2.max_row + 1):
+        name = t2.cell(row=r, column=2).value
+        fills[name] = color(t2.cell(row=r, column=11))   # Tgt
+    assert fills["RB0"] == CYAN
+    assert fills["RB1"] != CYAN
+    assert t2.cell(row=1, column=16).value.startswith("RB with WR-caliber")
+
+    rb = wb["RB"]
+    tgt_col = [c.value for c in rb[1]].index("Tgt%") + 1
+    rb_fills = {}
+    for r in range(2, rb.max_row + 1):
+        name = rb.cell(row=r, column=4).value
+        if name:
+            rb_fills[name] = color(rb.cell(row=r, column=tgt_col))
+    assert rb_fills["RB0"] == CYAN
+    assert rb_fills["RB1"] != CYAN
+
+    outjs = tmp_path / "data.js"
+    write_webapp_data(session, str(outjs), year=2025, config=LeagueConfig(teams=1))
+    payload = json.loads(outjs.read_text().split("window.FF_DATA = ", 1)[1].rstrip(";\n"))
+    rbs = {e["name"]: e for e in payload["positions"]["RB"]}
+    assert rbs["RB0"].get("rcv") == 1
+    assert "rcv" not in rbs["RB1"]
