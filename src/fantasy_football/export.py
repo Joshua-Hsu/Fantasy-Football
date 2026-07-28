@@ -1012,6 +1012,65 @@ def write_tiers_csv(
     return path
 
 
+#: Five-band stat heat map, best -> worst (the commissioner's hand-painted
+#: key from the 2026-07-06 packet, automated): green > yellow > orange >
+#: purple > red. Google-Sheets pastels so hand edits compose with it.
+_HEAT_FILLS = ["D9EAD3", "FFF2CC", "FCE5CD", "D9D2E9", "F4CCCC"]
+
+
+def _apply_heat(ws, cols, group_fn, *, reverse: bool = False,
+                include_zero: bool = False, first_row: int = 2) -> None:
+    """Quintile-band fills for stat columns, graded within a comparison group.
+
+    ``group_fn(row_i)`` names the grading pool for a row (position, or a
+    constant for tab-wide pooling). Zeros stay unpainted (a WR's 0 carries is
+    noise, not a grade) unless ``include_zero`` — used with ``reverse`` for
+    INT, where 0 is the best number on the column.
+    """
+    import bisect
+
+    from openpyxl.styles import PatternFill
+
+    def eligible(v):
+        return isinstance(v, (int, float)) and (include_zero or v != 0)
+
+    pools: dict = {}
+    for r in range(first_row, ws.max_row + 1):
+        for c in cols:
+            v = ws.cell(row=r, column=c).value
+            if eligible(v):
+                pools.setdefault((group_fn(r), c), []).append(v)
+    for vals in pools.values():
+        vals.sort()
+    fills = [PatternFill("solid", fgColor=color) for color in _HEAT_FILLS]
+    for r in range(first_row, ws.max_row + 1):
+        for c in cols:
+            v = ws.cell(row=r, column=c).value
+            if not eligible(v):
+                continue
+            vals = pools[(group_fn(r), c)]
+            if len(vals) < 2:
+                continue
+            if reverse:
+                score = 1 - bisect.bisect_left(vals, v) / len(vals)
+            else:
+                score = bisect.bisect_right(vals, v) / len(vals)
+            band = min(int((1 - score) * 5), 4)
+            ws.cell(row=r, column=c).fill = fills[band]
+
+
+def _heat_legend(ws, *, start_col: int, row: int = 1) -> None:
+    """Five swatches + caption naming the heat-map scale."""
+    from openpyxl.styles import PatternFill
+
+    for i, color in enumerate(_HEAT_FILLS):
+        ws.cell(row=row, column=start_col + i).fill = PatternFill("solid", fgColor=color)
+    ws.cell(row=row, column=start_col).value = "best"
+    ws.cell(row=row, column=start_col + 4).value = "worst"
+    ws.cell(row=row, column=start_col + 5).value = (
+        "stat quality vs position (receiving pooled; INT inverted)")
+
+
 def _elite_receiving_rbs(rb_keys, player_stats) -> set:
     """RBs with WR-caliber receiving usage — the half-PPR outliers.
 
@@ -1435,6 +1494,7 @@ def write_cheatsheet(
     ws.cell(row=1, column=16).value = "RB with WR-caliber receiving usage"
     ws.cell(row=1, column=15).fill = PatternFill("solid", fgColor="D0E0E3")
     skill = [t for t in totals if t[2] not in ("K", "QB")]
+    elite_rows: list[int] = []
     for i, (key, name, pos, team, g, fpts, ppg) in enumerate(skill[:200], 1):
         s = player_stats.get(key, {})
         ws.append([
@@ -1444,8 +1504,16 @@ def write_cheatsheet(
             s.get("receiving_yards", 0), s.get("receiving_touchdowns", 0),
         ])
         if pos == "RB" and key in elite_rcv:
-            for c in range(11, 15):   # Tgt / Rec / ReYds / ReTD
-                ws.cell(row=ws.max_row, column=c).fill = rcv_fill
+            elite_rows.append(ws.max_row)
+    # Five-band stat heat map (the hand-painted key, automated): points and
+    # rushing graded within position, receiving pooled across all
+    # pass-catchers on the tab. Then the cyan outlier mark wins its cells.
+    _apply_heat(ws, [6, 7, 8, 9, 10], lambda r: ws.cell(row=r, column=4).value)
+    _apply_heat(ws, [11, 12, 13, 14], lambda r: "ALL")
+    _heat_legend(ws, start_col=18)
+    for r in elite_rows:
+        for c in range(11, 15):   # Tgt / Rec / ReYds / ReTD
+            ws.cell(row=r, column=c).fill = rcv_fill
     ws.freeze_panes = "C2"
     ws.auto_filter.ref = f"A1:N{ws.max_row}"
     ws.column_dimensions["B"].width = 22
@@ -1468,6 +1536,11 @@ def write_cheatsheet(
             s.get("interceptions_thrown", 0),
             s.get("rush_attempts", 0), s.get("rush_yards", 0), s.get("rush_touchdowns", 0),
         ])
+    # One position: every column pools across the tab; INT graded inverted
+    # (fewer picks = greener).
+    _apply_heat(ws, [5, 6, 7, 8, 10, 11, 12], lambda r: "QB")
+    _apply_heat(ws, [9], lambda r: "QB", reverse=True, include_zero=True)
+    _heat_legend(ws, start_col=14)
     ws.freeze_panes = "C2"
     ws.auto_filter.ref = f"A1:L{ws.max_row}"
     ws.column_dimensions["B"].width = 22
