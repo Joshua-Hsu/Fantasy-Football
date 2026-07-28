@@ -265,10 +265,11 @@ def _read_tier_pins(
 
 
 def _read_yahoo_values(path: str | None) -> dict:
-    """{normalized name: (proj$, avg$)} from a yahoo/values.<date>.csv.
+    """{normalized name: (proj$, avg$, fp$)} from a yahoo/values.<date>.csv.
 
     Reads both the API and manual-snapshot formats (name, proj_value,
-    avg_cost columns); blank/non-numeric dollars stay blank.
+    avg_cost, optional fp_value columns); blank/non-numeric dollars stay
+    blank. fp_value is the FantasyPros auction value ridealong.
     """
     import csv
     import os
@@ -295,7 +296,8 @@ def _read_yahoo_values(path: str | None) -> dict:
             name = (row.get("name") or "").strip()
             if name:
                 out[_norm_name(name)] = (num(row.get("proj_value")),
-                                         num(row.get("avg_cost")))
+                                         num(row.get("avg_cost")),
+                                         num(row.get("fp_value")))
     return out
 
 

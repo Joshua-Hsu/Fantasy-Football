@@ -1145,17 +1145,18 @@ def test_draft_board_yahoo_columns(session, tmp_path):
     _seed(session)
     out = tmp_path / "packet.xlsx"
     write_cheatsheet(session, str(out), year=2025, config=LeagueConfig(teams=1),
-                     yahoo_values={"rb0": (61, 63), "rb1": (24, "")})
+                     yahoo_values={"rb0": (61, 63, 55), "rb1": (24, "", "")})
     from openpyxl import load_workbook
 
     ws = load_workbook(out)["Draft Board"]
-    heads = [c.value for c in ws[1][:17]]
-    assert heads[15] == "Yah$" and heads[16] == "YahAvg$"
+    heads = [c.value for c in ws[1][:18]]
+    assert heads[15] == "Yah$" and heads[16] == "YahAvg$" and heads[17] == "FP$"
     rows = {ws.cell(row=r, column=3).value: r for r in range(2, ws.max_row + 1)}
     assert ws.cell(row=rows["RB0"], column=16).value == 61
     assert ws.cell(row=rows["RB0"], column=17).value == 63
     assert ws.cell(row=rows["RB1"], column=16).value == 24
     assert ws.cell(row=rows["RB1"], column=17).value in ("", None)
+    assert ws.cell(row=rows["RB0"], column=18).value == 55  # FantasyPros
     assert ws.cell(row=rows["RB2"], column=16).value in ("", None)
     # Rec$ formula follows the relocated control block.
     assert "$T$7" in str(ws["E2"].value)
@@ -1168,11 +1169,11 @@ def test_read_yahoo_values_and_latest_file(tmp_path):
     d.mkdir()
     (d / "values.2026-07-10.csv").write_text("date,name,proj_value,avg_cost\n")  # empty
     (d / "values.2026-07-28.csv").write_text(
-        "date,name,team_pos,proj_value,avg_cost\n"
-        "2026-07-28,Jahmyr Gibbs,DET - RB,61,63.2\n"
-        "2026-07-28,Bo Nix,DEN - QB,21,\n")
+        "date,name,team_pos,proj_value,avg_cost,fp_value\n"
+        "2026-07-28,Jahmyr Gibbs,DET - RB,61,63.2,61\n"
+        "2026-07-28,Bo Nix,DEN - QB,21,,5\n")
     latest = _latest_yahoo_file(str(d))
     assert latest.endswith("values.2026-07-28.csv")
     vals = _read_yahoo_values(latest)
-    assert vals["jahmyr gibbs"] == (61, 63)
-    assert vals["bo nix"] == (21, "")
+    assert vals["jahmyr gibbs"] == (61, 63, 61)
+    assert vals["bo nix"] == (21, "", 5)
