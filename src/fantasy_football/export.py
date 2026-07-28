@@ -1560,10 +1560,11 @@ def write_cheatsheet(
 # Draft Board column layout (1-indexed):
 #  A Pos  B Tier  C Player  D Base$  E Rec$  F Drafted  G Paid  H Weight(hidden)
 #  I UserRtg  J LastYr  K PPG  L 3yr  M Tm  N Ovr  O PosBid
-#  P Yah$  Q YahAvg$ (weekly Yahoo snapshot, joined by name) ; controls in S/T.
+#  P Yah$  Q YahAvg$  R FP$ (weekly market snapshot, joined by name);
+#  controls in S/T.
 _DRAFT_HEADERS = ["Pos", "Tier", "Player", "Base$", "Rec$", "Drafted", "Paid",
                   "Weight", "UserRtg", "LastYr", "PPG", "3yrWtd", "Tm", "Ovr",
-                  "PosBid", "Yah$", "YahAvg$"]
+                  "PosBid", "Yah$", "YahAvg$", "FP$"]
 
 
 def _norm_name(name: str) -> str:
@@ -1598,11 +1599,11 @@ def _draft_sheet(wb, board, config, header_font, center, tier_fill,
 
     for i, r in enumerate(rows, start=2):
         name = r.name + (" (R)" if r.is_rookie else "")
-        yah = yahoo_values.get(_norm_name(r.name), ("", ""))
+        yah = list(yahoo_values.get(_norm_name(r.name), ())) + ["", "", ""]
         ws.append([
             r.position, r.tier, name, r.dollars, None, None, None, None,
             r.user_rating, r.total, r.ppg, r.w3yr, r.team, r.overall_rank, None,
-            yah[0], yah[1],
+            yah[0], yah[1], yah[2],
         ])
         # PosBid mirrors the player's Bid cell on his position tab, so a bid
         # written there flows straight into the board.
@@ -1640,15 +1641,15 @@ def _draft_sheet(wb, board, config, header_font, center, tier_fill,
         ws.cell(row=idx, column=20, value=value)
 
     ws.freeze_panes = "A2"
-    ws.auto_filter.ref = f"A1:Q{last}"
+    ws.auto_filter.ref = f"A1:R{last}"
     ws.column_dimensions["C"].width = 22
     for col in ("A", "B", "D", "E", "F", "G", "I", "J", "K", "L", "M", "N", "O",
-                "P", "Q"):
+                "P", "Q", "R"):
         ws.column_dimensions[col].width = 9
     ws.column_dimensions["H"].hidden = True
     ws.column_dimensions["S"].width = 16
     for row in range(2, last + 1):
-        for col in (4, 5, 7, 16, 17):  # Base$, Rec$, Paid, Yah$, YahAvg$
+        for col in (4, 5, 7, 16, 17, 18):  # $$ columns incl Yah/YahAvg/FP
             ws.cell(row=row, column=col).number_format = '"$"0'
     ws.cell(row=1, column=20).number_format = '"$"0'  # total pool
     ws.cell(row=5, column=20).number_format = '"$"0'  # remaining pool
