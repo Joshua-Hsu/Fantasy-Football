@@ -362,6 +362,7 @@
       "<div class='actions'>" +
       "<button class='btn btn-primary' onclick='FF.commitPicks()'>&#128640; Commit to GitHub</button>" +
       "<button class='btn' onclick=\"location.hash='#/packet'\">&#128424; My draft packet</button>" +
+      "<button class='btn' onclick=\"location.hash='#/cost'\">&#128176; Roster cost</button>" +
       "<button class='btn' onclick='FF.exportTiers()'>&#11015; Export tiers CSV</button>" +
       "<label class='btn' style='cursor:pointer'>&#11014; Import tiers CSV" +
       "<input type='file' accept='.csv' style='display:none' onchange='FF.importTiers(this)'></label>" +
@@ -371,6 +372,58 @@
       // instantly settles "is my view stale or is the data wrong".
       "<br>Tiers build: <code>" +
       esc(String((window.FF_DATA || {}).base || "unstamped")) + "</code></p>";
+  }
+
+  // ---- roster cost: price any 15-man squad at the community's values ----
+  var ROSTER_STORE = "ff_roster_v1";
+  var BUDGET = 200;
+  function loadRoster() {
+    try {
+      var r = JSON.parse(localStorage.getItem(ROSTER_STORE));
+      return (r && r.keys) || [];
+    } catch (e) { return []; }
+  }
+  function saveRoster(keys) {
+    localStorage.setItem(ROSTER_STORE, JSON.stringify({ keys: keys }));
+  }
+  function costPage() {
+    var keys = loadRoster();
+    var rows = "", total = 0, posCount = {};
+    keys.forEach(function (k) {
+      var e = BYKEY[k];
+      if (!e) return;
+      total += e.price || 0;
+      posCount[e.pos] = (posCount[e.pos] || 0) + 1;
+      rows += "<tr><td>" + esc(e.pos) + "</td><td>" + esc(e.name) + "</td><td>" +
+        esc(e.team || "") + "</td><td>$" + (e.price || 0) + "</td><td>" +
+        "<button class='ad-mini' onclick=\"FF.costRemove('" + e.key + "')\">&#10005;</button>" +
+        "</td></tr>";
+    });
+    var selects = ORDER.map(function (p) {
+      var pool = (DATA[p] || []).slice()
+        .sort(function (a, b) { return (b.price || 0) - (a.price || 0); })
+        .filter(function (e) { return keys.indexOf(e.key) < 0; });
+      if (!pool.length) return "";
+      return "<select onchange='FF.costAdd(this)'><option value=''>+ " + p + "</option>" +
+        pool.map(function (e) {
+          return "<option value='" + e.key + "'>" + esc(e.name) + " — $" + (e.price || 0) + "</option>";
+        }).join("") + "</select>";
+    }).join(" ");
+    var left = BUDGET - total;
+    var counts = ORDER.filter(function (p) { return posCount[p]; })
+      .map(function (p) { return posCount[p] + " " + p; }).join(" &middot; ");
+    app.innerHTML = nav(" &middot; <span class='muted'>roster cost</span>") +
+      "<h1>Roster cost</h1>" +
+      "<p class='lead'>Draft any squad on paper and see what it costs at the " +
+      "community's prices ($" + BUDGET + " budget, 15 roster spots).</p>" +
+      "<div class='actions'>" + selects + "</div>" +
+      "<p id='cost-total'><b" + (left < 0 ? " style='color:var(--down)'" : "") + ">Total $" + total + "</b>" +
+      " &middot; " + (left >= 0 ? "$" + left + " left" : "$" + (-left) + " OVER budget") +
+      " &middot; " + keys.length + "/15 spots" + (counts ? " &middot; " + counts : "") + "</p>" +
+      (rows ? "<div class='table-wrap'><table><thead><tr><th>Pos</th><th>Player</th>" +
+        "<th>Tm</th><th>$</th><th></th></tr></thead><tbody>" + rows + "</tbody></table></div>" +
+        "<div class='actions'><button class='btn' onclick='FF.costClear()'>Clear roster</button></div>"
+       : "<p class='muted'>Add players with the position menus above.</p>");
   }
 
   function coachName(name, isNew) {
@@ -905,6 +958,23 @@
   // ---- public actions ----
 
   window.FF = {
+    costAdd: function (sel) {
+      var k = sel.value;
+      if (!k) return;
+      var keys = loadRoster();
+      if (keys.indexOf(k) < 0) keys.push(k);
+      saveRoster(keys);
+      costPage();
+    },
+    costRemove: function (k) {
+      saveRoster(loadRoster().filter(function (x) { return x !== k; }));
+      costPage();
+    },
+    costClear: function () {
+      if (!confirm("Clear this roster?")) return;
+      saveRoster([]);
+      costPage();
+    },
     adGrip: function (ev, pos, key) {
       ev.preventDefault();
       var g = document.createElement("div");
@@ -1226,6 +1296,7 @@
     m = h.match(/^#\/rank\/(\w+)/); if (m) return rank(m[1]);
     if (h.indexOf("#/packet") === 0) return packet();
     if (h.indexOf("#/levels") === 0) return levelsPage();
+    if (h.indexOf("#/cost") === 0) return costPage();
     m = h.match(/^#\/admin(?:\/(\w+))?/); if (m) return adminPage(m[1]);
     home();
   }
