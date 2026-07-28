@@ -70,8 +70,8 @@ def test_write_cheatsheet_has_draft_board_and_live_formulas(session, tmp_path):
     assert [c.value for c in ws[1][:7]] == ["Pos", "Tier", "Player", "Base$", "Rec$", "Drafted", "Paid"]
     # Rec$ (column E) is a live formula reacting to Drafted/Paid.
     assert str(ws["E2"].value).startswith("=IF(F2")
-    # Control block (column P / index 16) carries the remaining-pool math.
-    labels = [ws.cell(row=r, column=16).value for r in range(1, 8)]
+    # Control block (column S / index 19) carries the remaining-pool math.
+    labels = [ws.cell(row=r, column=19).value for r in range(1, 8)]
     assert "Remaining pool" in labels and "Remaining weight" in labels
 
 
@@ -1132,3 +1132,47 @@ def test_stats_tabs_five_band_heat_map(session, tmp_path):
     # Legend swatches present on both tabs.
     assert color(t2.cell(row=1, column=18)) == GRN
     assert color(qb.cell(row=1, column=14)) == GRN
+
+
+
+def test_draft_board_yahoo_columns(session, tmp_path):
+    """Weekly Yahoo snapshot values land on the board, joined by name."""
+    from fantasy_football.export import _norm_name, write_cheatsheet
+
+    assert _norm_name("A.J. Brown Jr.") == _norm_name("AJ Brown")
+    assert _norm_name("Kenneth Walker III") == "kenneth walker"
+
+    _seed(session)
+    out = tmp_path / "packet.xlsx"
+    write_cheatsheet(session, str(out), year=2025, config=LeagueConfig(teams=1),
+                     yahoo_values={"rb0": (61, 63), "rb1": (24, "")})
+    from openpyxl import load_workbook
+
+    ws = load_workbook(out)["Draft Board"]
+    heads = [c.value for c in ws[1][:17]]
+    assert heads[15] == "Yah$" and heads[16] == "YahAvg$"
+    rows = {ws.cell(row=r, column=3).value: r for r in range(2, ws.max_row + 1)}
+    assert ws.cell(row=rows["RB0"], column=16).value == 61
+    assert ws.cell(row=rows["RB0"], column=17).value == 63
+    assert ws.cell(row=rows["RB1"], column=16).value == 24
+    assert ws.cell(row=rows["RB1"], column=17).value in ("", None)
+    assert ws.cell(row=rows["RB2"], column=16).value in ("", None)
+    # Rec$ formula follows the relocated control block.
+    assert "$T$7" in str(ws["E2"].value)
+
+
+def test_read_yahoo_values_and_latest_file(tmp_path):
+    from fantasy_football.cli import _latest_yahoo_file, _read_yahoo_values
+
+    d = tmp_path / "yahoo"
+    d.mkdir()
+    (d / "values.2026-07-10.csv").write_text("date,name,proj_value,avg_cost\n")  # empty
+    (d / "values.2026-07-28.csv").write_text(
+        "date,name,team_pos,proj_value,avg_cost\n"
+        "2026-07-28,Jahmyr Gibbs,DET - RB,61,63.2\n"
+        "2026-07-28,Bo Nix,DEN - QB,21,\n")
+    latest = _latest_yahoo_file(str(d))
+    assert latest.endswith("values.2026-07-28.csv")
+    vals = _read_yahoo_values(latest)
+    assert vals["jahmyr gibbs"] == (61, 63)
+    assert vals["bo nix"] == (21, "")

@@ -264,6 +264,57 @@ def _read_tier_pins(
     return pins, released
 
 
+def _read_yahoo_values(path: str | None) -> dict:
+    """{normalized name: (proj$, avg$)} from a yahoo/values.<date>.csv.
+
+    Reads both the API and manual-snapshot formats (name, proj_value,
+    avg_cost columns); blank/non-numeric dollars stay blank.
+    """
+    import csv
+    import os
+
+    from .export import _norm_name
+
+    if not path or not os.path.exists(path):
+        return {}
+    out: dict = {}
+
+    def num(v):
+        try:
+            return round(float(v))
+        except (TypeError, ValueError):
+            return ""
+
+    with open(path, newline="") as fh:
+        reader = csv.DictReader(fh)
+        if "name" not in (reader.fieldnames or []):
+            return {}
+        for i, row in enumerate(reader):
+            if i >= _MAX_TIERS_ROWS:
+                break
+            name = (row.get("name") or "").strip()
+            if name:
+                out[_norm_name(name)] = (num(row.get("proj_value")),
+                                         num(row.get("avg_cost")))
+    return out
+
+
+def _latest_yahoo_file(dirpath: str = "yahoo") -> str | None:
+    """Newest yahoo/values.<date>.csv that actually has data rows."""
+    import glob
+    import os
+
+    for path in sorted(glob.glob(os.path.join(dirpath, "values.*.csv")),
+                       reverse=True):
+        try:
+            with open(path) as fh:
+                if len(fh.readlines()) > 1:
+                    return path
+        except OSError:
+            continue
+    return None
+
+
 def _read_pool_overrides(path: str | None) -> set[str]:
     """Read manual pool includes: CSV with ``player[,treat]`` columns.
 
@@ -810,6 +861,7 @@ def _cmd_cheatsheet(args: argparse.Namespace) -> int:
             backups=backups, starters=starters, backup_overrides=overrides,
             ratings=_read_ratings(getattr(args, "tiers_file", None)),
             pinned_tiers=pins or None,
+            yahoo_values=_read_yahoo_values(_latest_yahoo_file()) or None,
         )
     print(f"Wrote draft packet to {path}")
     return 0

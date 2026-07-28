@@ -1277,6 +1277,7 @@ def write_cheatsheet(
     backup_overrides: dict[str, str] | None = None,
     ratings: dict[str, float] | None = None,
     pinned_tiers: dict[str, int] | None = None,
+    yahoo_values: dict | None = None,
 ) -> str:
     """Write the draft packet to an .xlsx file. Returns the path.
 
@@ -1548,7 +1549,8 @@ def write_cheatsheet(
         ws.column_dimensions[c].width = 7
 
     # --- Live Draft Board: recommended prices that react to picks ----------
-    _draft_sheet(wb, board, config, header_font, center, _tier_fill, bid_cells)
+    _draft_sheet(wb, board, config, header_font, center, _tier_fill, bid_cells,
+                 yahoo_values=yahoo_values)
     wb.move_sheet("Draft Board", -(len(wb.sheetnames) - 1))  # make it first
 
     wb.save(path)
@@ -1557,16 +1559,28 @@ def write_cheatsheet(
 
 # Draft Board column layout (1-indexed):
 #  A Pos  B Tier  C Player  D Base$  E Rec$  F Drafted  G Paid  H Weight(hidden)
-#  I UserRtg  J LastYr  K PPG  L 3yr  M Tm  N Ovr  O PosBid ; controls in P/Q.
+#  I UserRtg  J LastYr  K PPG  L 3yr  M Tm  N Ovr  O PosBid
+#  P Yah$  Q YahAvg$ (weekly Yahoo snapshot, joined by name) ; controls in S/T.
 _DRAFT_HEADERS = ["Pos", "Tier", "Player", "Base$", "Rec$", "Drafted", "Paid",
                   "Weight", "UserRtg", "LastYr", "PPG", "3yrWtd", "Tm", "Ovr",
-                  "PosBid"]
+                  "PosBid", "Yah$", "YahAvg$"]
+
+
+def _norm_name(name: str) -> str:
+    """Join key for Yahoo rows: lowercase, alphanumerics, no suffixes."""
+    import re as _re
+
+    s = _re.sub(r"[^a-z0-9 ]", "", str(name).lower().replace("-", " "))
+    return " ".join(t for t in s.split()
+                    if t not in ("jr", "sr", "ii", "iii", "iv", "v"))
 
 
 def _draft_sheet(wb, board, config, header_font, center, tier_fill,
-                 bid_cells: dict[str, tuple[str, str]] | None = None) -> None:
+                 bid_cells: dict[str, tuple[str, str]] | None = None,
+                 yahoo_values: dict | None = None) -> None:
     ws = wb.create_sheet("Draft Board")
     bid_cells = bid_cells or {}
+    yahoo_values = yahoo_values or {}
     ws.append(_DRAFT_HEADERS)
     for c in range(1, len(_DRAFT_HEADERS) + 1):
         ws.cell(row=1, column=c).font = header_font
@@ -1584,9 +1598,11 @@ def _draft_sheet(wb, board, config, header_font, center, tier_fill,
 
     for i, r in enumerate(rows, start=2):
         name = r.name + (" (R)" if r.is_rookie else "")
+        yah = yahoo_values.get(_norm_name(r.name), ("", ""))
         ws.append([
             r.position, r.tier, name, r.dollars, None, None, None, None,
             r.user_rating, r.total, r.ppg, r.w3yr, r.team, r.overall_rank, None,
+            yah[0], yah[1],
         ])
         # PosBid mirrors the player's Bid cell on his position tab, so a bid
         # written there flows straight into the board.
@@ -1604,7 +1620,7 @@ def _draft_sheet(wb, board, config, header_font, center, tier_fill,
         # remaining pool across remaining weights (control block in column Q).
         ws.cell(row=i, column=5).value = (
             f'=IF(F{i}="x",G{i},'
-            f'IF($Q$7>0,ROUND(1+H{i}/$Q$7*($Q$5-$Q$6),0),D{i}))'
+            f'IF($T$7>0,ROUND(1+H{i}/$T$7*($T$5-$T$6),0),D{i}))'
         )
         for c in range(1, len(_DRAFT_HEADERS) + 1):
             ws.cell(row=i, column=c).fill = tier_fill(r.tier)
@@ -1615,23 +1631,24 @@ def _draft_sheet(wb, board, config, header_font, center, tier_fill,
         ("Total slots", config.teams * config.roster_size),
         ("Spent", f'=SUMIFS({paid},{drafted},"x")'),
         ("Drafted", f'=COUNTIF({drafted},"x")'),
-        ("Remaining pool", "=Q1-Q3"),
-        ("Remaining slots", "=Q2-Q4"),
+        ("Remaining pool", "=T1-T3"),
+        ("Remaining slots", "=T2-T4"),
         ("Remaining weight", f'=SUMIFS({weight},{drafted},"<>x")'),
     ]
     for idx, (label, value) in enumerate(controls, start=1):
-        ws.cell(row=idx, column=16, value=label).font = header_font
-        ws.cell(row=idx, column=17, value=value)
+        ws.cell(row=idx, column=19, value=label).font = header_font
+        ws.cell(row=idx, column=20, value=value)
 
     ws.freeze_panes = "A2"
-    ws.auto_filter.ref = f"A1:O{last}"
+    ws.auto_filter.ref = f"A1:Q{last}"
     ws.column_dimensions["C"].width = 22
-    for col in ("A", "B", "D", "E", "F", "G", "I", "J", "K", "L", "M", "N", "O"):
+    for col in ("A", "B", "D", "E", "F", "G", "I", "J", "K", "L", "M", "N", "O",
+                "P", "Q"):
         ws.column_dimensions[col].width = 9
     ws.column_dimensions["H"].hidden = True
-    ws.column_dimensions["P"].width = 16
+    ws.column_dimensions["S"].width = 16
     for row in range(2, last + 1):
-        for col in (4, 5, 7):  # Base$, Rec$, Paid
+        for col in (4, 5, 7, 16, 17):  # Base$, Rec$, Paid, Yah$, YahAvg$
             ws.cell(row=row, column=col).number_format = '"$"0'
-    ws.cell(row=1, column=17).number_format = '"$"0'  # total pool
-    ws.cell(row=5, column=17).number_format = '"$"0'  # remaining pool
+    ws.cell(row=1, column=20).number_format = '"$"0'  # total pool
+    ws.cell(row=5, column=20).number_format = '"$"0'  # remaining pool
