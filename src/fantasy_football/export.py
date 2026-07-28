@@ -1483,6 +1483,13 @@ def write_cheatsheet(
             ws.cell(row=ws.max_row, column=3).fill = new_fill
         if t.oc_new:
             ws.cell(row=ws.max_row, column=4).fill = new_fill
+    # Heat-map the stat columns (E..V) across the 32 teams. Defensive points
+    # allowed and the offense ranks are better when LOW, so they grade
+    # inverted; vacated shares grade high=green (open opportunity).
+    _apply_heat(ws, [5, 8, 9, 10, 11, 12, 13, 15, 16, 18, 19, 20, 21, 22],
+                lambda r: "NFL")
+    _apply_heat(ws, [6, 7, 14, 17], lambda r: "NFL",
+                reverse=True, include_zero=True)
     ws.freeze_panes = "C2"
     for c, w in zip(range(1, len(ts_headers) + 1),
                     (4, 6, 17, 17, 6, 6, 6, 8, 7, 7, 5, 8, 8, 7, 8, 8, 7,
@@ -1613,7 +1620,10 @@ def _draft_sheet(wb, board, config, header_font, center, tier_fill,
         sheet_cell = bid_cells.get(r.key)
         if sheet_cell:
             sheet, cell = sheet_cell
-            ws.cell(row=i, column=15).value = f"='{sheet}'!{cell}"
+            # IF-guard: a bare reference renders an empty Bid cell as 0,
+            # which would mark the whole board drafted at $0.
+            ws.cell(row=i, column=15).value = (
+                f"=IF('{sheet}'!{cell}=\"\",\"\",'{sheet}'!{cell})")
         # Paid defaults to the position-tab bid; Drafted auto-marks once paid.
         # Both are plain formulas, so typing a value over them still works.
         ws.cell(row=i, column=7).value = f'=IF(O{i}<>"",O{i},"")'

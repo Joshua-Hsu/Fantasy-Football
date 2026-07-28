@@ -204,7 +204,9 @@ def test_packet_position_sheet_layout_and_tabs(session, tmp_path):
     # PosBid, Drafted auto-marks from Paid.
     db_rows = {db.cell(row=r, column=3).value: r for r in range(2, db.max_row + 1)}
     r0 = db_rows["RB0"]
-    assert str(db.cell(row=r0, column=15).value) == "='RB'!H2"
+    # IF-guarded: a bare ref would render an empty Bid as 0 and mark the
+    # whole board drafted at $0.
+    assert str(db.cell(row=r0, column=15).value) == "=IF('RB'!H2=\"\",\"\",'RB'!H2)"
     assert str(db.cell(row=r0, column=7).value) == f'=IF(O{r0}<>"",O{r0},"")'
     assert str(db.cell(row=r0, column=6).value) == f'=IF(G{r0}<>"","x","")'
 

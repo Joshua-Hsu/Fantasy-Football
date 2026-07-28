@@ -24,7 +24,7 @@ Negative plays use **Yahoo defaults**: INT thrown −1, fumble lost −2 (no QB 
 penalty; defensive sack is +1).
 
 League settings: **Half-PPR**, roster 1 QB / 2 RB / 2 WR / 1 TE / 1 FLEX
-(RB/WR/TE) / 1 K / 1 DEF / 5 bench — relevant for replacement levels when
+(RB/WR/TE) / 1 K / 1 DEF / 6 bench — relevant for replacement levels when
 computing auction values.
 
 When adding features, respect this layering: scoring reads stat lines,
