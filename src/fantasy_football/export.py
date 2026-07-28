@@ -28,7 +28,10 @@ from .valuation import (
 )
 
 # A few soft fills cycled per tier so tier bands are easy to scan.
-_TIER_FILLS = ["FFF6E5", "E8F0FE", "E9F7EF", "FCE8F3", "F3E8FD", "EAF2F8", "FFF0E6"]
+# Tiers 1-5 mirror the stat heat scale (green > yellow > orange > purple >
+# red); 6+ continue with cool pastels so deep tiers stay distinguishable.
+_TIER_FILLS = ["D9EAD3", "FFF2CC", "FCE5CD", "D9D2E9", "F4CCCC",
+               "D0E0E3", "C9DAF8", "EAD1DC", "EFEFEF"]
 
 _HEADERS = ["Tier", "PosRank", "TierRank", "Player", "Tm", "Ovr", "$", "UserRtg",
             "LastYr", "PPG", "3yrWtd"]
@@ -1059,16 +1062,20 @@ def _apply_heat(ws, cols, group_fn, *, reverse: bool = False,
             ws.cell(row=r, column=c).fill = fills[band]
 
 
-def _heat_legend(ws, *, start_col: int, row: int = 1) -> None:
-    """Five swatches + caption naming the heat-map scale."""
-    from openpyxl.styles import PatternFill
+def _color_key(ws, *, start_row: int, col: int = 19) -> None:
+    """The packet's one color legend (Draft Board, under the controls)."""
+    from openpyxl.styles import Font, PatternFill
 
-    for i, color in enumerate(_HEAT_FILLS):
-        ws.cell(row=row, column=start_col + i).fill = PatternFill("solid", fgColor=color)
-    ws.cell(row=row, column=start_col).value = "best"
-    ws.cell(row=row, column=start_col + 4).value = "worst"
-    ws.cell(row=row, column=start_col + 5).value = (
-        "stat quality vs position (receiving pooled; INT inverted)")
+    ws.cell(row=start_row, column=col, value="Color key").font = Font(bold=True)
+    labels = ["best / Tier 1", "good / Tier 2", "mid / Tier 3",
+              "below / Tier 4", "worst / Tier 5"]
+    for i, (color, label) in enumerate(zip(_HEAT_FILLS, labels), 1):
+        cell = ws.cell(row=start_row + i, column=col, value=label)
+        cell.fill = PatternFill("solid", fgColor=color)
+    ws.cell(row=start_row + 6, column=col,
+            value="stats graded vs position; receiving pooled; INT inverted")
+    ws.cell(row=start_row + 7, column=col,
+            value="bold+underline = RB with WR-caliber receiving usage")
 
 
 def _elite_receiving_rbs(rb_keys, player_stats) -> set:
@@ -1326,8 +1333,9 @@ def write_cheatsheet(
     def _tier_fill(tier: int) -> PatternFill:
         return PatternFill("solid", fgColor=_TIER_FILLS[(tier - 1) % len(_TIER_FILLS)])
 
-    # Cyan marks the half-PPR gold: RBs with WR-caliber receiving usage.
-    rcv_fill = PatternFill("solid", fgColor="D0E0E3")
+    # Bold+underline marks the half-PPR gold: RBs with WR-caliber receiving
+    # usage. A font mark, not a fill, so heat/tier colors stay visible.
+    rcv_font = Font(bold=True, underline="single")
     elite_rcv = _elite_receiving_rbs(
         [t[0] for t in totals if t[2] == "RB"], player_stats)
 
@@ -1405,7 +1413,7 @@ def write_cheatsheet(
             for c in range(1, len(headers) + 1):
                 ws.cell(row=row_i, column=c).fill = _tier_fill(r.tier)
             if pos == "RB" and r.key in elite_rcv and "Tgt%" in headers:
-                ws.cell(row=row_i, column=headers.index("Tgt%") + 1).fill = rcv_fill
+                ws.cell(row=row_i, column=headers.index("Tgt%") + 1).font = rcv_font
             ws.cell(row=row_i, column=1).alignment = wrap
             ws.cell(row=row_i, column=recd_col).number_format = '"$"0'
             bid_cells[r.key] = (ws.title, f"{get_column_letter(bid_col)}{row_i}")
@@ -1491,9 +1499,6 @@ def write_cheatsheet(
     for c in range(1, len(t2_headers) + 1):
         ws.cell(row=1, column=c).font = header_font
         ws.cell(row=1, column=c).alignment = center
-    # Legend for the cyan receiving-outlier mark.
-    ws.cell(row=1, column=16).value = "RB with WR-caliber receiving usage"
-    ws.cell(row=1, column=15).fill = PatternFill("solid", fgColor="D0E0E3")
     skill = [t for t in totals if t[2] not in ("K", "QB")]
     elite_rows: list[int] = []
     for i, (key, name, pos, team, g, fpts, ppg) in enumerate(skill[:200], 1):
@@ -1511,10 +1516,9 @@ def write_cheatsheet(
     # pass-catchers on the tab. Then the cyan outlier mark wins its cells.
     _apply_heat(ws, [6, 7, 8, 9, 10], lambda r: ws.cell(row=r, column=4).value)
     _apply_heat(ws, [11, 12, 13, 14], lambda r: "ALL")
-    _heat_legend(ws, start_col=18)
     for r in elite_rows:
         for c in range(11, 15):   # Tgt / Rec / ReYds / ReTD
-            ws.cell(row=r, column=c).fill = rcv_fill
+            ws.cell(row=r, column=c).font = rcv_font
     ws.freeze_panes = "C2"
     ws.auto_filter.ref = f"A1:N{ws.max_row}"
     ws.column_dimensions["B"].width = 22
@@ -1541,7 +1545,6 @@ def write_cheatsheet(
     # (fewer picks = greener).
     _apply_heat(ws, [5, 6, 7, 8, 10, 11, 12], lambda r: "QB")
     _apply_heat(ws, [9], lambda r: "QB", reverse=True, include_zero=True)
-    _heat_legend(ws, start_col=14)
     ws.freeze_panes = "C2"
     ws.auto_filter.ref = f"A1:L{ws.max_row}"
     ws.column_dimensions["B"].width = 22
@@ -1639,6 +1642,7 @@ def _draft_sheet(wb, board, config, header_font, center, tier_fill,
     for idx, (label, value) in enumerate(controls, start=1):
         ws.cell(row=idx, column=19, value=label).font = header_font
         ws.cell(row=idx, column=20, value=value)
+    _color_key(ws, start_row=9)
 
     ws.freeze_panes = "A2"
     ws.auto_filter.ref = f"A1:R{last}"
