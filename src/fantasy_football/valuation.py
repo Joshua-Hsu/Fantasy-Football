@@ -54,7 +54,7 @@ class LeagueConfig:
         default_factory=lambda: {"QB": 1, "RB": 2, "WR": 2, "TE": 1, "K": 1, "DST": 1}
     )
     flex: int = 1  # FLEX spots per team (RB/WR/TE)
-    bench: int = 5
+    bench: int = 6
     #: Market-behavior price ceilings per position. Raw VOR overprices elite
     #: QBs in a 1-QB league (huge margin over QB12, but nobody actually bids
     #: RB1 money on a QB); the cap encodes what the room will really pay, and
