@@ -842,8 +842,10 @@ def _cmd_pull_yahoo(args: argparse.Namespace) -> int:
                   ("YAHOO_CLIENT_ID", "YAHOO_CLIENT_SECRET", "YAHOO_REFRESH_TOKEN"))
     rows: list[dict] = []
     seen: set[str] = set()
+    fetched_any = False
     if all(creds):
         pages = fetch_salcap_api(*creds)
+        fetched_any = fetched_any or bool(pages)
         for start, text in pages:
             with open(os.path.join(raw_dir, f"api-{start}.json"), "w") as fh:
                 fh.write(text)
@@ -851,11 +853,15 @@ def _cmd_pull_yahoo(args: argparse.Namespace) -> int:
                 if row["name"] not in seen:
                     seen.add(row["name"])
                     rows.append(row)
-    else:
+        if not rows:
+            print("note: API yielded no rows (Fantasy Sports authorization "
+                  "pending?) - falling back to the public page")
+    if not rows:
         if getattr(args, "browser", False):
             pages = fetch_salcap_pages_browser()
         else:
             pages = fetch_salcap_pages()
+        fetched_any = fetched_any or bool(pages)
         for offset, html in pages:
             with open(os.path.join(raw_dir, f"salcap-{offset}.html"), "w") as fh:
                 fh.write(html)
@@ -864,7 +870,7 @@ def _cmd_pull_yahoo(args: argparse.Namespace) -> int:
                     seen.add(row["name"])
                     rows.append(row)
 
-    if not pages:
+    if not fetched_any:
         print("error: no salcap pages fetched (Yahoo unreachable or blocking)")
         return 1
 
