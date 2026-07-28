@@ -1081,3 +1081,54 @@ def test_elite_receiving_rbs_highlighted(session, tmp_path):
     rbs = {e["name"]: e for e in payload["positions"]["RB"]}
     assert rbs["RB0"].get("rcv") == 1
     assert "rcv" not in rbs["RB1"]
+
+
+def test_stats_tabs_five_band_heat_map(session, tmp_path):
+    """Stats tabs ship pre-painted: quintile bands within the grading group,
+    receiving pooled, INT inverted, zeros unpainted."""
+    from fantasy_football.export import write_cheatsheet
+
+    _seed(session)
+    game = session.query(Game).first()
+    gb = session.query(Team).filter_by(abbreviation="GB").one()
+    qb_lines = [(4400, 35, 4), (4000, 30, 7), (3600, 24, 9),
+                (3200, 20, 12), (2800, 15, 16)]
+    for i, (yds, td, ints) in enumerate(qb_lines):
+        p = Player(full_name=f"QB{i}", position="QB", slug=f"qb{i}")
+        session.add(p)
+        session.flush()
+        session.add(PlayerGameStats(player_id=p.id, game_id=game.id, team_id=gb.id,
+                                    pass_yards=yds, pass_touchdowns=td,
+                                    interceptions_thrown=ints, pass_attempts=500))
+    session.commit()
+
+    out = tmp_path / "packet.xlsx"
+    write_cheatsheet(session, str(out), year=2025, config=LeagueConfig(teams=1))
+    from openpyxl import load_workbook
+
+    wb = load_workbook(out)
+    GRN, RED = "D9EAD3", "F4CCCC"
+
+    def color(cell):
+        return str(cell.fill.fgColor.rgb)[-6:] if cell.fill.patternType else ""
+
+    t2 = wb["2025 Top 200 Stats"]
+    rows = {t2.cell(row=r, column=2).value: r for r in range(2, t2.max_row + 1)}
+    # RuYds (col 9) graded within RB: best RB green, worst RB red.
+    assert color(t2.cell(row=rows["RB0"], column=9)) == GRN
+    assert color(t2.cell(row=rows["RB5"], column=9)) == RED
+    # Zero receiving cells stay unpainted (RBs have no targets in fixture).
+    assert color(t2.cell(row=rows["RB2"], column=11)) not in (GRN, RED) or \
+           t2.cell(row=rows["RB2"], column=11).value != 0
+
+    qb = wb["2025 QB Stats"]
+    qrows = {qb.cell(row=r, column=2).value: r for r in range(2, qb.max_row + 1)}
+    # PaYds (col 7): best green, worst red.
+    assert color(qb.cell(row=qrows["QB0"], column=7)) == GRN
+    assert color(qb.cell(row=qrows["QB4"], column=7)) == RED
+    # INT (col 9) INVERTED: fewest picks green, most red.
+    assert color(qb.cell(row=qrows["QB0"], column=9)) == GRN
+    assert color(qb.cell(row=qrows["QB4"], column=9)) == RED
+    # Legend swatches present on both tabs.
+    assert color(t2.cell(row=1, column=18)) == GRN
+    assert color(qb.cell(row=1, column=14)) == GRN
