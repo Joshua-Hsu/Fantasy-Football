@@ -1311,6 +1311,7 @@ def write_cheatsheet(
         rating_overrides=ratings, pinned_tiers=pinned_tiers,
     )
     tier_notes = tier_notes or {}
+    yahoo_values = yahoo_values or {}
     backups = backups or {}
     starters = starters or {}
     backup_overrides = backup_overrides or {}
@@ -1370,7 +1371,11 @@ def write_cheatsheet(
         ws = wb.create_sheet(pos[:31])
         has_backup = pos != "DST"
         shares = share_cols.get(pos, [])
-        headers = (["Tier", "Team", "PPG", "Starter"] + shares + ["Rec$", "Bid"]
+        # Market context (Yahoo projected / Yahoo live avg / FantasyPros)
+        # sits between our Rec$ and your Bid, so the whole pricing picture
+        # reads left-to-right without leaving the tab.
+        headers = (["Tier", "Team", "PPG", "Starter"] + shares
+                   + ["Rec$", "Yah$", "YahAvg$", "FP$", "Bid"]
                    + (["Bkp PPG", "Backup"]
                       + ["Bkp " + sh for sh in shares]
                       + ["Bkp Bid"] if has_backup else []))
@@ -1400,7 +1405,8 @@ def write_cheatsheet(
             for sh in shares:
                 src = tshares if sh == "Tgt%" else rshares
                 line.append(src.get(r.key, ""))
-            line += [r.dollars, None]
+            mk = list(yahoo_values.get(_norm_name(r.name), ())) + ["", "", ""]
+            line += [r.dollars, mk[0], mk[1], mk[2], None]
             if has_backup:
                 bk_name, bk_ppg, bk_key = _backup_for(r, rows)
                 line += [bk_ppg, bk_name]
@@ -1415,11 +1421,13 @@ def write_cheatsheet(
             if pos == "RB" and r.key in elite_rcv and "Tgt%" in headers:
                 ws.cell(row=row_i, column=headers.index("Tgt%") + 1).font = rcv_font
             ws.cell(row=row_i, column=1).alignment = wrap
-            ws.cell(row=row_i, column=recd_col).number_format = '"$"0'
+            for money in ("Rec$", "Yah$", "YahAvg$", "FP$"):
+                ws.cell(row=row_i,
+                        column=headers.index(money) + 1).number_format = '"$"0'
             bid_cells[r.key] = (ws.title, f"{get_column_letter(bid_col)}{row_i}")
 
         ws.freeze_panes = "A2"
-        widths = ([26, 6, 7, 22] + [6] * len(shares) + [7, 7]
+        widths = ([26, 6, 7, 22] + [6] * len(shares) + [7, 7, 8, 6, 7]
                   + ([8, 20] + [7] * len(shares) + [8] if has_backup else []))
         for c, w in zip(range(1, len(headers) + 1), widths):
             ws.column_dimensions[get_column_letter(c)].width = w
