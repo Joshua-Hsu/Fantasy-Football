@@ -199,15 +199,18 @@ def test_packet_position_sheet_layout_and_tabs(session, tmp_path):
 
     db = wb["Draft Board"]
     dh = [c.value for c in db[1]]
-    assert dh[14] == "PosBid"     # column O; P/Q hold the control block
-    # RB0 is the top row; his PosBid pulls the RB tab's Bid cell, Paid follows
-    # PosBid, Drafted auto-marks from Paid.
+    assert dh[14] == "MyBid"      # column O: planned bid mirrored from tabs
+    # RB0 is the top row; his MyBid pulls the RB tab's Bid cell as planning
+    # reference. Paid is typed on the board; Drafted auto-marks from Paid.
     db_rows = {db.cell(row=r, column=3).value: r for r in range(2, db.max_row + 1)}
     r0 = db_rows["RB0"]
     # IF-guarded: a bare ref would render an empty Bid as 0 and mark the
     # whole board drafted at $0.
     assert str(db.cell(row=r0, column=15).value) == "=IF('RB'!H2=\"\",\"\",'RB'!H2)"
-    assert str(db.cell(row=r0, column=7).value) == f'=IF(O{r0}<>"",O{r0},"")'
+    # Paid (G) is a plain typed cell now - planned bids must not auto-mark
+    # players as drafted; Drafted (F) still keys off Paid.
+    assert db.cell(row=r0, column=7).value in (None, "")
+    assert str(db.cell(row=r0, column=6).value) == f'=IF(G{r0}<>"","x","")'
     assert str(db.cell(row=r0, column=6).value) == f'=IF(G{r0}<>"","x","")'
 
 
