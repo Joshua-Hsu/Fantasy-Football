@@ -153,6 +153,7 @@ def test_packet_position_sheet_layout_and_tabs(session, tmp_path):
         backups={"rb0": ("rb5", "RB5")},          # depth chart: RB5 backs up RB0
         starters={("GB", "RB"): ["RB0"], ("GB", "QB"): ["Some QB"]},
         backup_overrides={"rb1": "Hand Picked"},  # manual fix wins for RB1
+        yahoo_values={"rb0": (61, 63, 55)},       # market context columns
     )
     from openpyxl import load_workbook
 
@@ -162,19 +163,22 @@ def test_packet_position_sheet_layout_and_tabs(session, tmp_path):
         assert tab in wb.sheetnames
 
     ws = wb["RB"]
-    assert [c.value for c in ws[1][:13]] == [
-        "Tier", "Team", "PPG", "Starter", "Tgt%", "Rush%", "Rec$", "Bid",
+    assert [c.value for c in ws[1][:16]] == [
+        "Tier", "Team", "PPG", "Starter", "Tgt%", "Rush%",
+        "Rec$", "Yah$", "YahAvg$", "FP$", "Bid",
         "Bkp PPG", "Backup", "Bkp Tgt%", "Bkp Rush%", "Bkp Bid"]
     # Row 2 = best RB: hand-written tier note + depth-chart backup.
     assert ws["A2"].value == "Bell cows - pay up"
     assert ws["D2"].value == "RB0"
     assert float(ws["F2"].value) > 0        # RB0's rush-attempt share populated
-    assert ws["J2"].value == "RB5"
+    # Market columns sit between Rec$ and Bid on every position tab.
+    assert ws["H2"].value == 61 and ws["I2"].value == 63 and ws["J2"].value == 55
+    assert ws["M2"].value == "RB5"
     # RB1's backup comes from the manual override.
     rows = {ws.cell(row=r, column=4).value: r for r in range(2, ws.max_row + 1)}
-    assert ws.cell(row=rows["RB1"], column=10).value == "Hand Picked"
+    assert ws.cell(row=rows["RB1"], column=13).value == "Hand Picked"
     # A later RB with no depth entry falls back to next same-team RB.
-    assert ws.cell(row=rows["RB2"], column=10).value == "RB3"
+    assert ws.cell(row=rows["RB2"], column=13).value == "RB3"
 
     ts = wb["Team Stats"]
     header = [c.value for c in ts[1]]
@@ -187,7 +191,7 @@ def test_packet_position_sheet_layout_and_tabs(session, tmp_path):
     assert ts.cell(row=gb_row, column=qb_col).value == "Some QB"  # depth-chart starter
 
     # RB0's depth-chart backup (rb5) gets his usage shares in the Bkp columns.
-    assert float(ws.cell(row=2, column=12).value) > 0   # Bkp Rush%
+    assert float(ws.cell(row=2, column=15).value) > 0   # Bkp Rush%
 
     t2 = wb["2025 Top 200 Stats"]
     assert [c.value for c in t2[1][:7]] == ["Rk", "Player", "Tm", "Pos", "G", "FPTS", "PPG"]
@@ -206,7 +210,7 @@ def test_packet_position_sheet_layout_and_tabs(session, tmp_path):
     r0 = db_rows["RB0"]
     # IF-guarded: a bare ref would render an empty Bid as 0 and mark the
     # whole board drafted at $0.
-    assert str(db.cell(row=r0, column=15).value) == "=IF('RB'!H2=\"\",\"\",'RB'!H2)"
+    assert str(db.cell(row=r0, column=15).value) == "=IF('RB'!K2=\"\",\"\",'RB'!K2)"
     # Paid (G) is a plain typed cell now - planned bids must not auto-mark
     # players as drafted; Drafted (F) still keys off Paid.
     assert db.cell(row=r0, column=7).value in (None, "")
