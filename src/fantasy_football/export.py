@@ -1569,12 +1569,12 @@ def write_cheatsheet(
 
 # Draft Board column layout (1-indexed):
 #  A Pos  B Tier  C Player  D Base$  E Rec$  F Drafted  G Paid  H Weight(hidden)
-#  I UserRtg  J LastYr  K PPG  L 3yr  M Tm  N Ovr  O PosBid
+#  I UserRtg  J LastYr  K PPG  L 3yr  M Tm  N Ovr  O MyBid (planned, from tabs)
 #  P Yah$  Q YahAvg$  R FP$ (weekly market snapshot, joined by name);
 #  controls in S/T.
 _DRAFT_HEADERS = ["Pos", "Tier", "Player", "Base$", "Rec$", "Drafted", "Paid",
                   "Weight", "UserRtg", "LastYr", "PPG", "3yrWtd", "Tm", "Ovr",
-                  "PosBid", "Yah$", "YahAvg$", "FP$"]
+                  "MyBid", "Yah$", "YahAvg$", "FP$"]
 
 
 def _norm_name(name: str) -> str:
@@ -1615,7 +1615,7 @@ def _draft_sheet(wb, board, config, header_font, center, tier_fill,
             r.user_rating, r.total, r.ppg, r.w3yr, r.team, r.overall_rank, None,
             yah[0], yah[1], yah[2],
         ])
-        # PosBid mirrors the player's Bid cell on his position tab, so a bid
+        # MyBid mirrors the player's Bid cell on his position tab, so a bid
         # written there flows straight into the board.
         sheet_cell = bid_cells.get(r.key)
         if sheet_cell:
@@ -1624,9 +1624,10 @@ def _draft_sheet(wb, board, config, header_font, center, tier_fill,
             # which would mark the whole board drafted at $0.
             ws.cell(row=i, column=15).value = (
                 f"=IF('{sheet}'!{cell}=\"\",\"\",'{sheet}'!{cell})")
-        # Paid defaults to the position-tab bid; Drafted auto-marks once paid.
-        # Both are plain formulas, so typing a value over them still works.
-        ws.cell(row=i, column=7).value = f'=IF(O{i}<>"",O{i},"")'
+        # Draft-day input: type the ACTUAL sale price into Paid (G) here on
+        # the board; Drafted auto-marks and the room re-prices. MyBid (O) is
+        # planning reference only - prefilled tab bids never mark a player
+        # drafted.
         ws.cell(row=i, column=6).value = f'=IF(G{i}<>"","x","")'
         # Weight = max(Base$ - 1, 0); recompute defensively in-sheet.
         ws.cell(row=i, column=8).value = f"=MAX(D{i}-1,0)"
