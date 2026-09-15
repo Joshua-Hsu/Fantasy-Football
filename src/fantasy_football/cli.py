@@ -740,6 +740,45 @@ def _cmd_load_draft(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_dvp(args: argparse.Namespace) -> int:
+    from sqlalchemy import func, select
+
+    from .matchups import DVP_POSITIONS, defense_vs_position, write_dvp_js
+    from .models import Game
+    from .scoring import PRESETS
+
+    rules = PRESETS[args.scoring]
+    with _open_session(args) as session:
+        year = args.year or session.scalar(
+            select(func.max(Game.season_year)).where(Game.season_type == "regular")
+        )
+        if year is None:
+            print("No seasons loaded.")
+            return 1
+        baseline = args.baseline_year
+        if baseline is None:
+            baseline = year - 1
+        if args.pos:
+            pos = args.pos.upper()
+            if pos not in DVP_POSITIONS:
+                print(f"Unknown position {pos!r} (choose from {'/'.join(DVP_POSITIONS)})")
+                return 1
+            table = defense_vs_position(session, year, rules=rules)
+            if not table["teams"]:
+                print(f"No {year} stats loaded yet.")
+                return 1
+            print(f"{year} fantasy points allowed per game to {pos} "
+                  f"(through week {table['through_week']}; 1 = toughest)")
+            rows = sorted(table["teams"].items(), key=lambda kv: kv[1]["rk"][pos])
+            for abbr, t in rows:
+                print(f"  {t['rk'][pos]:2}. {abbr:4} {t[pos]:6.1f}  ({t['g']}g)")
+        if args.out:
+            path = write_dvp_js(session, args.out, year,
+                                baseline_year=baseline or None, rules=rules)
+            print(f"Wrote {path}")
+    return 0
+
+
 def _cmd_load_redzone(args: argparse.Namespace) -> int:
     from sqlalchemy import func, select
 
@@ -1121,6 +1160,18 @@ def build_parser() -> argparse.ArgumentParser:
     p_rz = sub.add_parser("load-redzone", help="Set red-zone targets from play-by-play")
     p_rz.add_argument("--year", type=int, default=None, help="Season (default: latest loaded)")
     p_rz.set_defaults(func=_cmd_load_redzone)
+
+    p_dvp = sub.add_parser(
+        "dvp", help="Defense-vs-position: fantasy points allowed by defense, for matchup calls"
+    )
+    p_dvp.add_argument("--year", type=int, default=None, help="Season (default: latest loaded)")
+    p_dvp.add_argument("--baseline-year", type=int, default=None, dest="baseline_year",
+                       help="Full-season comparison year for the app sidecar (default: year-1; 0 disables)")
+    p_dvp.add_argument("--pos", default=None, help="Print the ranked table for one position (QB/RB/WR/TE)")
+    p_dvp.add_argument("--out", default="docs/dvp.js",
+                       help="Write the app sidecar here (default docs/dvp.js; empty string skips)")
+    p_dvp.add_argument("--scoring", choices=["standard", "half_ppr", "ppr"], default="half_ppr")
+    p_dvp.set_defaults(func=_cmd_dvp)
 
     p_byes = sub.add_parser("load-byes", help="Set team bye weeks from the schedule")
     p_byes.add_argument("--year", type=int, default=None, help="Season year (default: current year)")

@@ -347,6 +347,13 @@
   table.pk td.bid { min-width:3rem; background:var(--surface-2); }
   tr.tier-gap td { border-bottom:2px solid var(--ink); padding:0; height:.4rem; background:var(--surface-2); }
 
+  /* ---- Matchups (defense vs position) ---- */
+  .dvp-tabs { display:flex; gap:.4rem; margin:0 0 .8rem; }
+  .pill.dvp-tab { text-decoration:none; }
+  .pill.dvp-on { background:var(--accent-soft); color:var(--accent-ink); border-color:var(--accent-ink); }
+  tr.dvp-easy td { background:rgba(46,160,67,.14); }
+  tr.dvp-hard td { background:rgba(248,81,73,.10); }
+
   @media print {
     .nav, .no-print, .actions { display:none !important; }
     body { max-width:none; padding:0; background:#fff; color:#000; }
@@ -366,6 +373,7 @@
   window.FF_CONFIG = { workerUrl: "https://ff-commit-worker.joshuahsu2.workers.dev" };
 </script>
 <script src="data.js?v=20260714"></script>
-<script src="app.js?v=20260728"></script>
+<script src="dvp.js?v=20260915"></script>
+<script src="app.js?v=20260915"></script>
 </body>
 </html>

@@ -1,0 +1,54 @@
+# Weekly defense-vs-position refresh: reloads the current season's box
+# scores from nflverse (plus last season as the early-week baseline) and
+# regenerates docs/dvp.js — the Matchups page's data sidecar. Runs Tuesday
+# mornings, after Monday night's stats land in nflverse's nightly build.
+# Independent of the master-tiers rebuild: matchup data changes every
+# week whether or not anyone submitted picks.
+name: Defense vs Position
+
+on:
+  schedule:
+    - cron: "0 12 * * 2"   # Tuesdays 12:00 UTC
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: dvp
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install package
+        run: pip install -e ".[ingest]"
+
+      - name: Load current + baseline seasons
+        run: |
+          python -m fantasy_football.cli init-db
+          YEAR=$(date -u +%Y)
+          python -m fantasy_football.cli load-season --year $((YEAR - 1))
+          python -m fantasy_football.cli load-season --year "$YEAR" || \
+            echo "current season not published yet - baseline only"
+
+      - name: Build docs/dvp.js
+        run: |
+          python -m fantasy_football.cli dvp --out docs/dvp.js
+          V=$(date -u +%Y%m%d)
+          sed -i -E "s/(dvp\.js\?v=)[0-9]+/\1$V/" docs/index.html
+
+      - name: Commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/dvp.js docs/index.html
+          git commit -m "DvP refresh $(date -u +%F)" || echo "no changes"
+          git push

@@ -363,6 +363,7 @@
       "<button class='btn btn-primary' onclick='FF.commitPicks()'>&#128640; Commit to GitHub</button>" +
       "<button class='btn' onclick=\"location.hash='#/packet'\">&#128424; My draft packet</button>" +
       "<button class='btn' onclick=\"location.hash='#/cost'\">&#128176; Roster cost</button>" +
+      (window.FF_DVP ? "<button class='btn' onclick=\"location.hash='#/dvp'\">&#127919; Matchups</button>" : "") +
       "<button class='btn' onclick='FF.exportTiers()'>&#11015; Export tiers CSV</button>" +
       "<label class='btn' style='cursor:pointer'>&#11014; Import tiers CSV" +
       "<input type='file' accept='.csv' style='display:none' onchange='FF.importTiers(this)'></label>" +
@@ -714,6 +715,49 @@
       "<div class='lv-grid'>" + ladder + "</div>" +
       "<h2 class='lv-h2'>&#127942; Trophy case</h2>" +
       "<div class='tr-grid'>" + trophies + "</div>";
+  }
+
+  // ---- matchups: defense-vs-position (#/dvp) ----
+  // Reads the dvp.js sidecar (regenerated weekly, independent of the master
+  // rebuild); the page simply doesn't render when the file is missing.
+  function dvpPage(pos) {
+    var V = window.FF_DVP;
+    if (!V || !V.teams || !Object.keys(V.teams).length) {
+      app.innerHTML = nav() + "<h1>Matchups</h1>" +
+        "<p class='lead'>No matchup data yet - dvp.js appears after the first week's stats land.</p>";
+      return;
+    }
+    pos = (pos || "RB").toUpperCase();
+    if ((V.positions || []).indexOf(pos) < 0) pos = (V.positions || ["RB"])[0];
+    var tabs = (V.positions || []).map(function (p) {
+      return "<a class='pill dvp-tab" + (p === pos ? " dvp-on" : "") + "' href='#/dvp/" + p + "'>" + p + "</a>";
+    }).join("");
+    var teams = Object.keys(V.teams);
+    teams.sort(function (a, b) { return V.teams[b][pos] - V.teams[a][pos]; }); // softest first
+    var n = teams.length, cut = Math.min(8, Math.floor(n / 4)) || 1;
+    var baseHdr = V.baseline_year ? "'" + String(V.baseline_year).slice(2) + " Rk" : "";
+    var rows = teams.map(function (d, i) {
+      var t = V.teams[d];
+      var base = (V.baseline && V.baseline[d] && V.baseline[d].rk) ? V.baseline[d].rk[pos] : "";
+      var opp = (V.opp ? (V.opp[d] || "bye") : "");
+      var cls = i < cut ? " class='dvp-easy'" : (i >= n - cut ? " class='dvp-hard'" : "");
+      return "<tr" + cls + "><td>" + t.rk[pos] + "</td><td>" + esc(d) + "</td><td>" +
+        t[pos].toFixed(1) + "</td><td>" + t.g + "</td>" +
+        (baseHdr ? "<td>" + base + "</td>" : "") +
+        (V.week ? "<td>" + esc(opp) + "</td>" : "") + "</tr>";
+    }).join("");
+    app.innerHTML = nav(" &middot; <span class='muted'>matchups</span>") +
+      "<h1>Defense vs " + esc(pos) + "</h1>" +
+      "<p class='lead'>Fantasy points allowed per game to " + esc(pos) + "s, " + V.year +
+      " through week " + V.through_week + ". Softest defenses first (rank 32 gives up the most) - " +
+      "start players facing the green rows, think twice into the red." +
+      (baseHdr ? " " + baseHdr + " is last season's full-sample rank; trust it more in the early weeks." : "") +
+      (V.week ? " Wk " + V.week + " shows who that defense faces next (v home, @ away)." : "") + "</p>" +
+      "<div class='dvp-tabs'>" + tabs + "</div>" +
+      "<div class='table-wrap'><table class='pk'><thead><tr><th>Rk</th><th>Def</th>" +
+      "<th>FP/g</th><th>G</th>" + (baseHdr ? "<th>" + baseHdr + "</th>" : "") +
+      (V.week ? "<th>Wk " + V.week + "</th>" : "") + "</tr></thead><tbody>" + rows +
+      "</tbody></table></div>";
   }
 
   // ---- commissioner: master tier editor (#/admin) ----
@@ -1297,6 +1341,7 @@
     if (h.indexOf("#/packet") === 0) return packet();
     if (h.indexOf("#/levels") === 0) return levelsPage();
     if (h.indexOf("#/cost") === 0) return costPage();
+    m = h.match(/^#\/dvp(?:\/(\w+))?/); if (m) return dvpPage(m[1]);
     m = h.match(/^#\/admin(?:\/(\w+))?/); if (m) return adminPage(m[1]);
     home();
   }
