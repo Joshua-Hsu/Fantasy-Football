@@ -736,24 +736,31 @@
     teams.sort(function (a, b) { return V.teams[b][pos] - V.teams[a][pos]; }); // softest first
     var n = teams.length, cut = Math.min(8, Math.floor(n / 4)) || 1;
     var baseHdr = V.baseline_year ? "'" + String(V.baseline_year).slice(2) + " Rk" : "";
-    // Funnel: WR and TE ranks far apart means the defense CHOOSES where
-    // passes go (bracket the outside, funnel the middle - or the reverse).
-    // Scheme is sticky, so this is more predictive than either rank alone.
-    var funnel = function (t) {
-      if (!t.rk || t.rk.WR == null || t.rk.TE == null) return "";
-      if (t.rk.TE - t.rk.WR >= 15) return "&rarr;TE funnel";
-      if (t.rk.WR - t.rk.TE >= 15) return "&rarr;WR funnel";
-      return "";
+    // Funnels: big rank splits mean the defense CHOOSES what it stops, and
+    // scheme repeats - so a split is more predictive than either rank alone.
+    // Two levels: run vs pass (RB rank against the QB/WR/TE average), and
+    // within the pass, WR vs TE (bracket the outside, concede the middle,
+    // or the reverse).
+    var funnels = function (t) {
+      var out = [];
+      if (!t.rk || t.rk.RB == null || t.rk.QB == null || t.rk.WR == null || t.rk.TE == null) return out;
+      var passRk = (t.rk.QB + t.rk.WR + t.rk.TE) / 3;
+      if (t.rk.RB - passRk >= 10) out.push("&rarr;run funnel");
+      else if (passRk - t.rk.RB >= 10) out.push("&rarr;pass funnel");
+      if (pos === "WR" || pos === "TE") {
+        if (t.rk.TE - t.rk.WR >= 15) out.push("&rarr;TE funnel");
+        else if (t.rk.WR - t.rk.TE >= 15) out.push("&rarr;WR funnel");
+      }
+      return out;
     };
-    var showFunnel = (pos === "WR" || pos === "TE");
     var rows = teams.map(function (d, i) {
       var t = V.teams[d];
       var base = (V.baseline && V.baseline[d] && V.baseline[d].rk) ? V.baseline[d].rk[pos] : "";
       var opp = (V.opp ? (V.opp[d] || "bye") : "");
       var cls = i < cut ? " class='dvp-easy'" : (i >= n - cut ? " class='dvp-hard'" : "");
-      var notes = [];
-      var fn = showFunnel ? funnel(t) : "";
-      if (fn) notes.push("<span class='badge'>" + fn + "</span>");
+      var notes = funnels(t).map(function (fn) {
+        return "<span class='badge'>" + fn + "</span>";
+      });
       ((V.flags && V.flags[d]) || []).forEach(function (f) {
         notes.push("<span class='dvp-" + (f.w === "out" ? "out'>&#9660;" : "back'>&#9650;") +
           " " + esc(f.n) + " (" + esc(f.p) + ") " + f.w + "</span>");
@@ -771,7 +778,7 @@
       "start players facing the green rows, think twice into the red." +
       (baseHdr ? " " + baseHdr + " is last season's full-sample rank; trust it more in the early weeks." : "") +
       (V.week ? " Wk " + V.week + " shows who that defense faces next (v home, @ away)." : "") +
-      (showFunnel ? " A funnel badge means WR and TE ranks are 15+ spots apart - that defense chooses where passes go, and scheme repeats." : "") +
+      " Funnel badges mark defenses with big rank splits - they choose what they stop, and scheme repeats: run/pass funnels compare the RB rank to the passing ranks, WR/TE funnels split the pass game." +
       " &#9660;/&#9650; mark a core defender who sat out or returned in the latest game - the rank was earned with different personnel." + "</p>" +
       "<div class='dvp-tabs'>" + tabs + "</div>" +
       "<div class='table-wrap'><table class='pk'><thead><tr><th>Rk</th><th>Def</th>" +
