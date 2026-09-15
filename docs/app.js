@@ -753,6 +753,15 @@
       }
       return out;
     };
+    // Game-environment pace: plays the defense's OPPONENTS get per game.
+    // A clock-milking team shrinks everyone's snap count regardless of how
+    // soft the positional matchup looks. The chip judges off the fuller
+    // sample (baseline until ~week 4), the number shown is current-season.
+    var paceOf = function (d) {
+      var t = V.teams[d] || {}, b = (V.baseline && V.baseline[d]) || {};
+      return (V.through_week >= 4 ? (t.pace || b.pace) : (b.pace || t.pace)) || null;
+    };
+    var hasPace = teams.some(function (d) { return paceOf(d); });
     var rows = teams.map(function (d, i) {
       var t = V.teams[d];
       var base = (V.baseline && V.baseline[d] && V.baseline[d].rk) ? V.baseline[d].rk[pos] : "";
@@ -761,13 +770,18 @@
       var notes = funnels(t).map(function (fn) {
         return "<span class='badge'>" + fn + "</span>";
       });
+      var pace = paceOf(d);
+      if (pace && pace.rk <= 6) notes.push("<span class='dvp-slow'>&#8987; slow games</span>");
+      else if (pace && pace.rk >= n - 5) notes.push("<span class='dvp-fast'>&#9889; fast games</span>");
       ((V.flags && V.flags[d]) || []).forEach(function (f) {
         notes.push("<span class='dvp-" + (f.w === "out" ? "out'>&#9660;" : "back'>&#9650;") +
           " " + esc(f.n) + " (" + esc(f.p) + ") " + f.w + "</span>");
       });
+      var curPace = (t.pace || pace);
       return "<tr" + cls + "><td>" + t.rk[pos] + "</td><td>" + esc(d) + "</td><td>" +
         t[pos].toFixed(1) + "</td><td>" + t.g + "</td>" +
         (baseHdr ? "<td>" + base + "</td>" : "") +
+        (hasPace ? "<td>" + (curPace ? curPace.opl.toFixed(0) : "") + "</td>" : "") +
         (V.week ? "<td>" + esc(opp) + "</td>" : "") +
         "<td class='note-col'>" + notes.join(" ") + "</td></tr>";
     }).join("");
@@ -779,10 +793,12 @@
       (baseHdr ? " " + baseHdr + " is last season's full-sample rank; trust it more in the early weeks." : "") +
       (V.week ? " Wk " + V.week + " shows who that defense faces next (v home, @ away)." : "") +
       " Funnel badges mark defenses with big rank splits - they choose what they stop, and scheme repeats: run/pass funnels compare the RB rank to the passing ranks, WR/TE funnels split the pass game." +
-      " &#9660;/&#9650; mark a core defender who sat out or returned in the latest game - the rank was earned with different personnel." + "</p>" +
+      " &#9660;/&#9650; mark a core defender who sat out or returned in the latest game - the rank was earned with different personnel." +
+      (hasPace ? " OpPl is how many plays this team's opponents get to run per game - clock-milking teams (&#8987;) shrink everyone's chances, fast games (&#9889;) inflate them." : "") + "</p>" +
       "<div class='dvp-tabs'>" + tabs + "</div>" +
       "<div class='table-wrap'><table class='pk'><thead><tr><th>Rk</th><th>Def</th>" +
       "<th>FP/g</th><th>G</th>" + (baseHdr ? "<th>" + baseHdr + "</th>" : "") +
+      (hasPace ? "<th>OpPl</th>" : "") +
       (V.week ? "<th>Wk " + V.week + "</th>" : "") + "<th class='note-col'>Notes</th></tr></thead><tbody>" + rows +
       "</tbody></table></div>";
   }
