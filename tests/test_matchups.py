@@ -111,3 +111,30 @@ def test_empty_season_is_harmless(session):
     table = defense_vs_position(session, 2030)
     assert table == {"through_week": 0, "teams": {}}
     assert next_week(session, 2030) is None
+
+
+def test_personnel_flags_out_and_back():
+    from fantasy_football.matchups import personnel_flags
+
+    def wk(team, player, pos, week, pct):
+        return {"team": team, "player": player, "position": pos,
+                "week": week, "defense_pct": pct}
+
+    rows = (
+        # Core corner all year, then misses week 4 -> out.
+        [wk("TB", "CB One", "CB", w, 0.95) for w in (1, 2, 3)] +
+        [wk("TB", "CB One", "CB", 4, 0.0)] +
+        # Core safety missed week 3, returns week 4 -> back.
+        [wk("TB", "S Two", "S", w, 0.9) for w in (1, 2)] +
+        [wk("TB", "S Two", "S", 3, 0.05), wk("TB", "S Two", "S", 4, 0.88)] +
+        # Rotational guy (40%) disappearing is not a flag.
+        [wk("TB", "LB Rot", "LB", w, 0.4) for w in (1, 2, 3)] +
+        # Steady starter -> no flag.
+        [wk("MIA", "LB Steady", "LB", w, 0.99) for w in (1, 2, 3, 4)]
+    )
+    flags = personnel_flags(rows, through_week=4)
+    assert set(flags) == {"TB"}
+    assert {(f["n"], f["w"]) for f in flags["TB"]} == {
+        ("CB One", "out"), ("S Two", "back")}
+    # Week 1 has no baseline: nothing is ever flagged.
+    assert personnel_flags(rows, through_week=1) == {}
