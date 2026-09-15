@@ -736,15 +736,33 @@
     teams.sort(function (a, b) { return V.teams[b][pos] - V.teams[a][pos]; }); // softest first
     var n = teams.length, cut = Math.min(8, Math.floor(n / 4)) || 1;
     var baseHdr = V.baseline_year ? "'" + String(V.baseline_year).slice(2) + " Rk" : "";
+    // Funnel: WR and TE ranks far apart means the defense CHOOSES where
+    // passes go (bracket the outside, funnel the middle - or the reverse).
+    // Scheme is sticky, so this is more predictive than either rank alone.
+    var funnel = function (t) {
+      if (!t.rk || t.rk.WR == null || t.rk.TE == null) return "";
+      if (t.rk.TE - t.rk.WR >= 15) return "&rarr;TE funnel";
+      if (t.rk.WR - t.rk.TE >= 15) return "&rarr;WR funnel";
+      return "";
+    };
+    var showFunnel = (pos === "WR" || pos === "TE");
     var rows = teams.map(function (d, i) {
       var t = V.teams[d];
       var base = (V.baseline && V.baseline[d] && V.baseline[d].rk) ? V.baseline[d].rk[pos] : "";
       var opp = (V.opp ? (V.opp[d] || "bye") : "");
       var cls = i < cut ? " class='dvp-easy'" : (i >= n - cut ? " class='dvp-hard'" : "");
+      var notes = [];
+      var fn = showFunnel ? funnel(t) : "";
+      if (fn) notes.push("<span class='badge'>" + fn + "</span>");
+      ((V.flags && V.flags[d]) || []).forEach(function (f) {
+        notes.push("<span class='dvp-" + (f.w === "out" ? "out'>&#9660;" : "back'>&#9650;") +
+          " " + esc(f.n) + " (" + esc(f.p) + ") " + f.w + "</span>");
+      });
       return "<tr" + cls + "><td>" + t.rk[pos] + "</td><td>" + esc(d) + "</td><td>" +
         t[pos].toFixed(1) + "</td><td>" + t.g + "</td>" +
         (baseHdr ? "<td>" + base + "</td>" : "") +
-        (V.week ? "<td>" + esc(opp) + "</td>" : "") + "</tr>";
+        (V.week ? "<td>" + esc(opp) + "</td>" : "") +
+        "<td class='note-col'>" + notes.join(" ") + "</td></tr>";
     }).join("");
     app.innerHTML = nav(" &middot; <span class='muted'>matchups</span>") +
       "<h1>Defense vs " + esc(pos) + "</h1>" +
@@ -752,11 +770,13 @@
       " through week " + V.through_week + ". Softest defenses first (rank 32 gives up the most) - " +
       "start players facing the green rows, think twice into the red." +
       (baseHdr ? " " + baseHdr + " is last season's full-sample rank; trust it more in the early weeks." : "") +
-      (V.week ? " Wk " + V.week + " shows who that defense faces next (v home, @ away)." : "") + "</p>" +
+      (V.week ? " Wk " + V.week + " shows who that defense faces next (v home, @ away)." : "") +
+      (showFunnel ? " A funnel badge means WR and TE ranks are 15+ spots apart - that defense chooses where passes go, and scheme repeats." : "") +
+      " &#9660;/&#9650; mark a core defender who sat out or returned in the latest game - the rank was earned with different personnel." + "</p>" +
       "<div class='dvp-tabs'>" + tabs + "</div>" +
       "<div class='table-wrap'><table class='pk'><thead><tr><th>Rk</th><th>Def</th>" +
       "<th>FP/g</th><th>G</th>" + (baseHdr ? "<th>" + baseHdr + "</th>" : "") +
-      (V.week ? "<th>Wk " + V.week + "</th>" : "") + "</tr></thead><tbody>" + rows +
+      (V.week ? "<th>Wk " + V.week + "</th>" : "") + "<th class='note-col'>Notes</th></tr></thead><tbody>" + rows +
       "</tbody></table></div>";
   }
 

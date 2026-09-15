@@ -17,6 +17,11 @@ Surfaces:
 - A ``baseline`` year (normally the prior season) rides along so the first
   few weeks — when one bad Sunday still swings a rank by ten spots — can be
   read against a full-season sample.
+- ``personnel_flags`` (from nflverse snap counts) marks defenses whose core
+  defenders went missing or came back in the latest week — the two ways a
+  points-allowed rank goes quietly stale. The app pairs this with a
+  client-side "funnel" badge (WR rank and TE rank far apart = the defense
+  chooses where passes go, which is scheme and therefore sticky).
 
 Only regular-season weeks feed the table: playoff defenses see atypical
 opponents and would skew the per-game averages.
@@ -37,6 +42,15 @@ DVP_POSITIONS = ("QB", "RB", "WR", "TE")
 
 #: Regular-season cutoff — playoff weeks (19+) never feed the averages.
 _REG_WEEKS = 18
+
+#: nflverse per-player snap participation (defense_pct drives the flags).
+SNAP_COUNTS_URL = ("https://github.com/nflverse/nflverse-data/releases/"
+                   "download/snap_counts/snap_counts_{year}.csv")
+
+#: A "core" defender plays most of the snaps; below "absent" he effectively
+#: didn't play (inactive, or left almost immediately).
+CORE_PCT = 0.60
+ABSENT_PCT = 0.15
 
 
 def defense_vs_position(
@@ -121,6 +135,78 @@ def next_week(session: Session, year: int) -> int | None:
     return weeks
 
 
+def personnel_flags(rows, *, through_week: int) -> dict[str, list[dict]]:
+    """Flag defenses whose latest game was played with changed personnel.
+
+    A points-allowed rank silently assumes the same eleven keep showing up;
+    it goes stale in both directions — a core defender leaving makes the
+    defense weaker than its rank, one returning makes it stronger. From the
+    snap-count rows (dicts with ``week``, ``player``, ``position``, ``team``,
+    ``defense_pct``) the latest played week is compared against each player's
+    earlier participation:
+
+    - ``out``: a core defender (avg >= 60% of defensive snaps in his earlier
+      games) who was absent (<= 15% or missing) in the latest week.
+    - ``back``: a core defender playing the latest week after missing the
+      week before it.
+
+    Needs at least two played weeks (week 1 has no baseline; nothing is
+    inferred across seasons — offseason roster churn would flag every team).
+    Returns ``{team_abbr: [{"n": name, "p": pos, "w": "out"|"back"}, ...]}``
+    with at most four flags per team, biggest snap shares first.
+    """
+    if through_week < 2:
+        return {}
+    hist: dict[tuple[str, str], dict] = {}
+    for r in rows:
+        wk = int(r["week"])
+        if wk > through_week:
+            continue
+        pct = float(r.get("defense_pct") or 0)
+        key = (str(r["team"]), str(r["player"]))
+        ent = hist.setdefault(key, {"pos": r.get("position", ""), "weeks": {}})
+        ent["weeks"][wk] = max(ent["weeks"].get(wk, 0.0), pct)
+
+    out: dict[str, list] = {}
+    for (team, player), ent in hist.items():
+        weeks = ent["weeks"]
+        earlier = [p for w, p in weeks.items() if w < through_week and p > ABSENT_PCT]
+        if not earlier or max(earlier) < CORE_PCT:
+            continue  # never a core defender before the latest week
+        avg = sum(earlier) / len(earlier)
+        if avg < CORE_PCT:
+            continue
+        latest = weeks.get(through_week, 0.0)
+        prev = weeks.get(through_week - 1, 0.0)
+        if latest <= ABSENT_PCT:
+            flag = "out"
+        elif latest >= CORE_PCT and prev <= ABSENT_PCT:
+            flag = "back"
+        else:
+            continue
+        out.setdefault(team, []).append(
+            {"n": player, "p": ent["pos"], "w": flag, "_avg": avg})
+    for team in out:
+        out[team].sort(key=lambda f: -f["_avg"])
+        out[team] = [{k: v for k, v in f.items() if k != "_avg"}
+                     for f in out[team][:4]]
+    return out
+
+
+def fetch_snap_counts(year: int) -> list[dict]:
+    """Regular-season snap-count rows from nflverse (needs pandas/network).
+
+    Callers treat failures as 'no flags this week' — the matchup table is
+    useful without them, so a missing file (early September) or a network
+    hiccup must never sink the build.
+    """
+    import pandas as pd
+
+    df = pd.read_csv(SNAP_COUNTS_URL.format(year=year))
+    df = df[df["game_type"] == "REG"]
+    return df[["week", "player", "position", "team", "defense_pct"]].to_dict("records")
+
+
 def write_dvp_js(
     session: Session,
     path: str,
@@ -128,6 +214,7 @@ def write_dvp_js(
     *,
     baseline_year: int | None = None,
     rules: ScoringRules = DEFAULT_RULES,
+    flags: dict[str, list[dict]] | None = None,
 ) -> str:
     """Write ``docs/dvp.js`` (``window.FF_DVP``) for the Tier Builder app."""
     cur = defense_vs_position(session, year, rules=rules)
@@ -146,6 +233,8 @@ def write_dvp_js(
     if wk:
         payload["week"] = wk
         payload["opp"] = week_opponents(session, year, wk)
+    if flags:
+        payload["flags"] = flags
     with open(path, "w") as fh:
         fh.write("// Generated by `fantasy_football dvp` - do not edit by hand.\n")
         fh.write("window.FF_DVP = ")

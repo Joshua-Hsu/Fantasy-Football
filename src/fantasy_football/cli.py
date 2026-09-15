@@ -773,8 +773,18 @@ def _cmd_dvp(args: argparse.Namespace) -> int:
             for abbr, t in rows:
                 print(f"  {t['rk'][pos]:2}. {abbr:4} {t[pos]:6.1f}  ({t['g']}g)")
         if args.out:
+            flags = None
+            if not args.no_snaps:
+                try:
+                    from .matchups import fetch_snap_counts, personnel_flags
+                    cur = defense_vs_position(session, year, rules=rules)
+                    flags = personnel_flags(fetch_snap_counts(year),
+                                            through_week=cur["through_week"])
+                except Exception as exc:  # noqa: BLE001 - flags are optional
+                    print(f"warning: personnel flags skipped: {exc}")
             path = write_dvp_js(session, args.out, year,
-                                baseline_year=baseline or None, rules=rules)
+                                baseline_year=baseline or None, rules=rules,
+                                flags=flags)
             print(f"Wrote {path}")
     return 0
 
@@ -1171,6 +1181,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_dvp.add_argument("--out", default="docs/dvp.js",
                        help="Write the app sidecar here (default docs/dvp.js; empty string skips)")
     p_dvp.add_argument("--scoring", choices=["standard", "half_ppr", "ppr"], default="half_ppr")
+    p_dvp.add_argument("--no-snaps", action="store_true", dest="no_snaps",
+                       help="Skip fetching snap counts (no personnel out/back flags)")
     p_dvp.set_defaults(func=_cmd_dvp)
 
     p_byes = sub.add_parser("load-byes", help="Set team bye weeks from the schedule")
