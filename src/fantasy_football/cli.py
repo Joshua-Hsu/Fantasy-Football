@@ -782,9 +782,10 @@ def _cmd_dvp(args: argparse.Namespace) -> int:
                                             through_week=cur["through_week"])
                 except Exception as exc:  # noqa: BLE001 - flags are optional
                     print(f"warning: personnel flags skipped: {exc}")
+            from .matchups import read_defense_notes
             path = write_dvp_js(session, args.out, year,
                                 baseline_year=baseline or None, rules=rules,
-                                flags=flags)
+                                flags=flags, notes=read_defense_notes(args.notes))
             print(f"Wrote {path}")
     return 0
 
@@ -1181,6 +1182,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_dvp.add_argument("--out", default="docs/dvp.js",
                        help="Write the app sidecar here (default docs/dvp.js; empty string skips)")
     p_dvp.add_argument("--scoring", choices=["standard", "half_ppr", "ppr"], default="half_ppr")
+    p_dvp.add_argument("--notes", default="defense_notes.csv",
+                       help="Hand-written defensive scouting notes CSV (team,date,note)")
     p_dvp.add_argument("--no-snaps", action="store_true", dest="no_snaps",
                        help="Skip fetching snap counts (no personnel out/back flags)")
     p_dvp.set_defaults(func=_cmd_dvp)
