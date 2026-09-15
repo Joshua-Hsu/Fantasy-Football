@@ -774,18 +774,30 @@ def _cmd_dvp(args: argparse.Namespace) -> int:
                 print(f"  {t['rk'][pos]:2}. {abbr:4} {t[pos]:6.1f}  ({t['g']}g)")
         if args.out:
             flags = None
+            metrics: dict[str, dict] = {}
             if not args.no_snaps:
+                cur = defense_vs_position(session, year, rules=rules)
+                wk = cur["through_week"]
                 try:
-                    from .matchups import fetch_snap_counts, personnel_flags
-                    cur = defense_vs_position(session, year, rules=rules)
-                    flags = personnel_flags(fetch_snap_counts(year),
-                                            through_week=cur["through_week"])
+                    from .matchups import (fetch_snap_counts, package_rates,
+                                           personnel_flags)
+                    snaps = fetch_snap_counts(year)
+                    flags = personnel_flags(snaps, through_week=wk)
+                    for a, m in package_rates(snaps, through_week=wk).items():
+                        metrics.setdefault(a, {}).update(m)
                 except Exception as exc:  # noqa: BLE001 - flags are optional
                     print(f"warning: personnel flags skipped: {exc}")
+                try:
+                    from .matchups import fetch_scheme_pbp, pressure_metrics
+                    for a, m in pressure_metrics(fetch_scheme_pbp(year)).items():
+                        metrics.setdefault(a, {}).update(m)
+                except Exception as exc:  # noqa: BLE001 - metrics are optional
+                    print(f"warning: pressure metrics skipped: {exc}")
             from .matchups import read_defense_notes
             path = write_dvp_js(session, args.out, year,
                                 baseline_year=baseline or None, rules=rules,
-                                flags=flags, notes=read_defense_notes(args.notes))
+                                flags=flags, notes=read_defense_notes(args.notes),
+                                metrics=metrics or None)
             print(f"Wrote {path}")
     return 0
 

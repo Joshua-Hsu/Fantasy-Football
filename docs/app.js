@@ -778,11 +778,29 @@
           " " + esc(f.n) + " (" + esc(f.p) + ") " + f.w + "</span>");
       });
       var curPace = (t.pace || pace);
-      // Hand-written scouting notes (defense_notes.csv): the qualitative
-      // layer - scheme identity, why a rank is real - shown on row tap.
+      // Tap to expand: an auto scheme-metrics line (personnel packages from
+      // snap counts, blitz/box from play-by-play) plus any hand-written
+      // scouting notes from defense_notes.csv - the measured and the
+      // narrative versions of "what is this defense trying to do".
       var scout = (V.notes && V.notes[d]) || [];
-      var row = "<tr class='" + cls + (scout.length ? " dvp-hasnote" : "") + "'" +
-        (scout.length ? " onclick='FF.dvpToggle(this)'" : "") +
+      var m = (V.metrics && V.metrics[d]) || null;
+      var mline = "";
+      if (m) {
+        var parts = [];
+        if (m.db) {
+          var shape = m.db >= 5.1 ? "dime-lean" : m.db >= 4.7 ? "nickel-heavy" :
+                      m.db >= 4.3 ? "nickel-base" : "base-heavy";
+          parts.push(m.db.toFixed(1) + " DBs/snap (" + shape + ")");
+        }
+        if (m.prs != null)
+          parts.push("pressure " + m.prs.toFixed(0) + "%" +
+                     (m.rkPrs ? " (#" + m.rkPrs + ")" : ""));
+        if (curPace) parts.push("opp " + curPace.opl.toFixed(0) + " plays/g");
+        mline = parts.join(" &middot; ");
+      }
+      var expandable = scout.length || mline;
+      var row = "<tr class='" + cls + (expandable ? " dvp-hasnote" : "") + "'" +
+        (expandable ? " onclick='FF.dvpToggle(this)'" : "") +
         "><td>" + t.rk[pos] + "</td><td>" + esc(d) +
         (scout.length ? " <span class='dvp-i'>&#9432;</span>" : "") + "</td><td>" +
         t[pos].toFixed(1) + "</td><td>" + t.g + "</td>" +
@@ -790,8 +808,9 @@
         (hasPace ? "<td>" + (curPace ? curPace.opl.toFixed(0) : "") + "</td>" : "") +
         (V.week ? "<td>" + esc(opp) + "</td>" : "") +
         "<td class='note-col'>" + notes.join(" ") + "</td></tr>";
-      if (scout.length) {
+      if (expandable) {
         row += "<tr class='dvp-noterow' hidden><td colspan='9' class='note-col'>" +
+          (mline ? "<div class='dvp-scout'><b>auto</b> " + mline + "</div>" : "") +
           scout.map(function (s) {
             return "<div class='dvp-scout'><b>" + esc(s.d || "") + "</b> " + esc(s.t) + "</div>";
           }).join("") + "</td></tr>";
