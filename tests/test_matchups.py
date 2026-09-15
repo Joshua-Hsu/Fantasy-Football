@@ -138,3 +138,21 @@ def test_personnel_flags_out_and_back():
         ("CB One", "out"), ("S Two", "back")}
     # Week 1 has no baseline: nothing is ever flagged.
     assert personnel_flags(rows, through_week=1) == {}
+
+
+def test_team_pace_opponent_plays(session):
+    from fantasy_football.matchups import team_pace
+    from fantasy_football.models import TeamGameStats
+
+    g1, g2, g3 = _seed(session)
+    session.add_all([
+        TeamGameStats(team_id=g1.home_team_id, game_id=g1.id, is_home=True, plays=75),
+        TeamGameStats(team_id=g1.away_team_id, game_id=g1.id, is_home=False, plays=45),
+        TeamGameStats(team_id=g2.home_team_id, game_id=g2.id, is_home=True, plays=60),
+        TeamGameStats(team_id=g2.away_team_id, game_id=g2.id, is_home=False, plays=58),
+    ])
+    session.commit()
+    pace = team_pace(session, 2026)
+    # GB's opponent (CHI) ran 45 plays; CHI's opponent (GB) ran 75.
+    assert pace["GB"]["opl"] == 45.0 and pace["GB"]["rk"] == 1
+    assert pace["CHI"]["opl"] == 75.0 and pace["CHI"]["rk"] == 4

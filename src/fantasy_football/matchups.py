@@ -34,7 +34,7 @@ import json
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .models import Game, Player, PlayerGameStats, Team
+from .models import Game, Player, PlayerGameStats, Team, TeamGameStats
 from .scoring import DEFAULT_RULES, ScoringRules, score_stats
 
 #: Offensive positions worth a matchup read (K matchups are noise).
@@ -135,6 +135,39 @@ def next_week(session: Session, year: int) -> int | None:
     return weeks
 
 
+def team_pace(session: Session, year: int) -> dict[str, dict]:
+    """Game-environment pace: how many plays a team's OPPONENTS get to run.
+
+    A clock-milking team (long drives, heavy run rate, good defense) shrinks
+    the other offense's snap count — fewer plays means fewer fantasy chances
+    for anyone facing them, regardless of how soft the positional matchup
+    looks. ``opp_plays`` per game captures pace + time of possession + game
+    script in one number. Returns ``{abbr: {"opl": opp plays/g, "rk": rank}}``
+    with rank 1 = fewest opponent plays (the biggest game-shrinkers).
+    """
+    abbr = {t.id: t.abbreviation for t in session.execute(select(Team)).scalars()}
+    rows = session.execute(
+        select(TeamGameStats, Game)
+        .join(Game, TeamGameStats.game_id == Game.id)
+        .where(Game.season_year == year, Game.week <= _REG_WEEKS)
+    ).all()
+    by_game: dict[int, list] = {}
+    for tg, game in rows:
+        by_game.setdefault(tg.game_id, []).append(tg)
+    opp_plays: dict[str, list[int]] = {}
+    for tgs in by_game.values():
+        if len(tgs) != 2:
+            continue
+        for me, them in (tgs, reversed(tgs)):
+            a = abbr.get(me.team_id)
+            if a and them.plays:
+                opp_plays.setdefault(a, []).append(them.plays)
+    out = {a: {"opl": round(sum(v) / len(v), 1)} for a, v in opp_plays.items() if v}
+    for i, a in enumerate(sorted(out, key=lambda a: out[a]["opl"])):
+        out[a]["rk"] = i + 1
+    return out
+
+
 def personnel_flags(rows, *, through_week: int) -> dict[str, list[dict]]:
     """Flag defenses whose latest game was played with changed personnel.
 
@@ -218,6 +251,9 @@ def write_dvp_js(
 ) -> str:
     """Write ``docs/dvp.js`` (``window.FF_DVP``) for the Tier Builder app."""
     cur = defense_vs_position(session, year, rules=rules)
+    for a, pace in team_pace(session, year).items():
+        if a in cur["teams"]:
+            cur["teams"][a]["pace"] = pace
     payload = {
         "year": year,
         "through_week": cur["through_week"],
@@ -227,6 +263,9 @@ def write_dvp_js(
     if baseline_year:
         base = defense_vs_position(session, baseline_year, rules=rules)
         if base["teams"]:
+            for a, pace in team_pace(session, baseline_year).items():
+                if a in base["teams"]:
+                    base["teams"][a]["pace"] = pace
             payload["baseline_year"] = baseline_year
             payload["baseline"] = base["teams"]
     wk = next_week(session, year)
