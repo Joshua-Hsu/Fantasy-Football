@@ -177,3 +177,34 @@ def test_read_defense_notes(tmp_path):
     assert len(notes["TB"][0]["t"]) == 500
     assert notes["TB"][-1]["d"] == "2026-09-01"
     assert read_defense_notes(str(tmp_path / "missing.csv")) == {}
+
+
+def test_package_rates_and_pressure_metrics():
+    from fantasy_football.matchups import package_rates, pressure_metrics
+
+    snaps = [
+        # NE week 1: 5 DBs near full-time + 2 LBs -> nickel look.
+        *[{"team": "NE", "week": 1, "position": "CB", "defense_pct": 1.0}
+          for _ in range(3)],
+        {"team": "NE", "week": 1, "position": "S", "defense_pct": 1.0},
+        {"team": "NE", "week": 1, "position": "FS", "defense_pct": 0.9},
+        {"team": "NE", "week": 1, "position": "LB", "defense_pct": 1.0},
+        {"team": "NE", "week": 1, "position": "ILB", "defense_pct": 0.8},
+        {"team": "NE", "week": 1, "position": "DE", "defense_pct": 1.0},  # ignored
+        {"team": "NE", "week": 2, "position": "CB", "defense_pct": 1.0},  # beyond cutoff
+    ]
+    rates = package_rates(snaps, through_week=1)
+    assert rates["NE"]["db"] == pytest.approx(4.9)
+    assert rates["NE"]["lb"] == pytest.approx(1.8)
+
+    pbp = (
+        [{"defteam": "TB", "pass": 1, "sack": 1, "qb_hit": 0} for _ in range(2)] +
+        [{"defteam": "TB", "pass": 1, "sack": 0, "qb_hit": 1} for _ in range(2)] +
+        [{"defteam": "TB", "pass": 1, "sack": 0, "qb_hit": 0} for _ in range(6)] +
+        [{"defteam": "TB", "pass": 0, "sack": 0, "qb_hit": 0},
+         {"defteam": "NE", "pass": 1, "sack": 0, "qb_hit": 0}]
+    )
+    pm = pressure_metrics(pbp)
+    assert pm["TB"]["prs"] == pytest.approx(40.0)
+    assert pm["TB"]["rkPrs"] == 1
+    assert pm["NE"]["prs"] == pytest.approx(0.0)
