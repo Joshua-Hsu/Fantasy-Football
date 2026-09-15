@@ -156,3 +156,24 @@ def test_team_pace_opponent_plays(session):
     # GB's opponent (CHI) ran 45 plays; CHI's opponent (GB) ran 75.
     assert pace["GB"]["opl"] == 45.0 and pace["GB"]["rk"] == 1
     assert pace["CHI"]["opl"] == 75.0 and pace["CHI"]["rk"] == 4
+
+
+def test_read_defense_notes(tmp_path):
+    from fantasy_football.matchups import read_defense_notes
+
+    path = tmp_path / "notes.csv"
+    path.write_text(
+        "team,date,note\n"
+        "TB,2026-09-15,Nickel-heavy; funnels to the middle\n"
+        "tb,2026-09-01,Older note\n"
+        "TOOLONG,2026-09-15,skipped - bad team code\n"
+        ",2026-09-15,skipped - no team\n"
+        "TB,2026-09-20," + "x" * 600 + "\n"
+    )
+    notes = read_defense_notes(str(path))
+    assert set(notes) == {"TB"}
+    # Newest first, lowercase team normalized, long text capped.
+    assert notes["TB"][0]["d"] == "2026-09-20"
+    assert len(notes["TB"][0]["t"]) == 500
+    assert notes["TB"][-1]["d"] == "2026-09-01"
+    assert read_defense_notes(str(tmp_path / "missing.csv")) == {}

@@ -766,7 +766,7 @@
       var t = V.teams[d];
       var base = (V.baseline && V.baseline[d] && V.baseline[d].rk) ? V.baseline[d].rk[pos] : "";
       var opp = (V.opp ? (V.opp[d] || "bye") : "");
-      var cls = i < cut ? " class='dvp-easy'" : (i >= n - cut ? " class='dvp-hard'" : "");
+      var cls = i < cut ? "dvp-easy" : (i >= n - cut ? "dvp-hard" : "");
       var notes = funnels(t).map(function (fn) {
         return "<span class='badge'>" + fn + "</span>";
       });
@@ -778,12 +778,25 @@
           " " + esc(f.n) + " (" + esc(f.p) + ") " + f.w + "</span>");
       });
       var curPace = (t.pace || pace);
-      return "<tr" + cls + "><td>" + t.rk[pos] + "</td><td>" + esc(d) + "</td><td>" +
+      // Hand-written scouting notes (defense_notes.csv): the qualitative
+      // layer - scheme identity, why a rank is real - shown on row tap.
+      var scout = (V.notes && V.notes[d]) || [];
+      var row = "<tr class='" + cls + (scout.length ? " dvp-hasnote" : "") + "'" +
+        (scout.length ? " onclick='FF.dvpToggle(this)'" : "") +
+        "><td>" + t.rk[pos] + "</td><td>" + esc(d) +
+        (scout.length ? " <span class='dvp-i'>&#9432;</span>" : "") + "</td><td>" +
         t[pos].toFixed(1) + "</td><td>" + t.g + "</td>" +
         (baseHdr ? "<td>" + base + "</td>" : "") +
         (hasPace ? "<td>" + (curPace ? curPace.opl.toFixed(0) : "") + "</td>" : "") +
         (V.week ? "<td>" + esc(opp) + "</td>" : "") +
         "<td class='note-col'>" + notes.join(" ") + "</td></tr>";
+      if (scout.length) {
+        row += "<tr class='dvp-noterow' hidden><td colspan='9' class='note-col'>" +
+          scout.map(function (s) {
+            return "<div class='dvp-scout'><b>" + esc(s.d || "") + "</b> " + esc(s.t) + "</div>";
+          }).join("") + "</td></tr>";
+      }
+      return row;
     }).join("");
     app.innerHTML = nav(" &middot; <span class='muted'>matchups</span>") +
       "<h1>Defense vs " + esc(pos) + "</h1>" +
@@ -1045,6 +1058,10 @@
   // ---- public actions ----
 
   window.FF = {
+    dvpToggle: function (tr) {
+      var next = tr.nextElementSibling;
+      if (next && next.className.indexOf("dvp-noterow") >= 0) next.hidden = !next.hidden;
+    },
     costAdd: function (sel) {
       var k = sel.value;
       if (!k) return;
