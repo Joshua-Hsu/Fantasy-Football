@@ -168,13 +168,13 @@ def test_read_defense_notes(tmp_path):
         "tb,2026-09-01,Older note\n"
         "TOOLONG,2026-09-15,skipped - bad team code\n"
         ",2026-09-15,skipped - no team\n"
-        "TB,2026-09-20," + "x" * 600 + "\n"
+        "TB,2026-09-20," + "x" * 1000 + "\n"
     )
     notes = read_defense_notes(str(path))
     assert set(notes) == {"TB"}
     # Newest first, lowercase team normalized, long text capped.
     assert notes["TB"][0]["d"] == "2026-09-20"
-    assert len(notes["TB"][0]["t"]) == 500
+    assert len(notes["TB"][0]["t"]) == 900
     assert notes["TB"][-1]["d"] == "2026-09-01"
     assert read_defense_notes(str(tmp_path / "missing.csv")) == {}
 

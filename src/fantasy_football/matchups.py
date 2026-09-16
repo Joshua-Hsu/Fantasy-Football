@@ -328,7 +328,7 @@ def read_defense_notes(path: str) -> dict[str, list[dict]]:
             if not team or len(team) > 3 or not text:
                 continue
             notes.setdefault(team, []).append(
-                {"d": (row.get("date") or "").strip()[:10], "t": text[:500]})
+                {"d": (row.get("date") or "").strip()[:10], "t": text[:900]})
     for team in notes:
         notes[team] = sorted(notes[team], key=lambda x: x["d"], reverse=True)[:3]
     return notes
