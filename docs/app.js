@@ -762,6 +762,56 @@
       return (V.through_week >= 4 ? (t.pace || b.pace) : (b.pace || t.pace)) || null;
     };
     var hasPace = teams.some(function (d) { return paceOf(d); });
+    // ---- My team: the roster from #/cost, matched to this week's slate ----
+    // Rank shown is the trusted one (baseline until ~wk4, then current);
+    // green = soft matchup (rk 22+), red = tough (rk 11-).
+    var myRows = "";
+    var rosterKeys = loadRoster();
+    if (rosterKeys.length) {
+      var posOrder = { QB: 0, RB: 1, WR: 2, TE: 3, K: 4, DST: 5 };
+      var picks = rosterKeys.map(function (k) { return BYKEY[k]; })
+        .filter(Boolean)
+        .sort(function (a, b) {
+          return (posOrder[a.pos] - posOrder[b.pos]) || (b.ppg || 0) - (a.ppg || 0);
+        });
+      myRows = picks.map(function (e) {
+        var o = (V.opp && V.opp[e.team]) || "";
+        var d = o ? o.replace(/^[v@]/, "") : "";
+        var t = d && V.teams[d];
+        var cells = "<td class='pk-name'>" + esc(e.name) + "</td><td>" + esc(e.pos) +
+          "</td><td>" + esc(e.team) + "</td><td>" + (o ? esc(o) : "BYE") + "</td>";
+        if (!t || !t.rk || t.rk[e.pos] == null) {
+          return "<tr>" + cells + "<td></td><td></td><td class='note-col'></td></tr>";
+        }
+        var cur = t.rk[e.pos];
+        var b = (V.baseline && V.baseline[d] && V.baseline[d].rk) ? V.baseline[d].rk[e.pos] : null;
+        var trusted = V.through_week >= 4 ? cur : (b != null ? b : cur);
+        var cls = trusted >= 22 ? " class='dvp-easy'" : (trusted <= 11 ? " class='dvp-hard'" : "");
+        var notes = funnels(t).map(function (fn) {
+          return "<span class='badge'>" + fn + "</span>";
+        });
+        var pace = paceOf(d);
+        if (pace && pace.rk <= 6) notes.push("<span class='dvp-slow'>&#8987; slow</span>");
+        else if (pace && pace.rk >= n - 5) notes.push("<span class='dvp-fast'>&#9889; fast</span>");
+        ((V.flags && V.flags[d]) || []).forEach(function (f) {
+          notes.push("<span class='dvp-" + (f.w === "out" ? "out'>&#9660;" : "back'>&#9650;") +
+            " " + esc(f.n) + "</span>");
+        });
+        return "<tr" + cls + ">" + cells + "<td>" + cur + "</td><td>" + (b != null ? b : "") +
+          "</td><td class='note-col'>" + notes.join(" ") + "</td></tr>";
+      }).join("");
+    }
+    var mySection = rosterKeys.length
+      ? "<h2 class='dvp-h2'>My team &middot; week " + (V.week || "?") + "</h2>" +
+        "<div class='table-wrap'><table class='pk'><thead><tr><th class='note-col'>Player</th>" +
+        "<th>Pos</th><th>Tm</th><th>Opp</th><th>Rk</th>" +
+        "<th>" + (V.baseline_year ? "'" + String(V.baseline_year).slice(2) : "") + "</th>" +
+        "<th class='note-col'>Notes</th></tr></thead><tbody>" + myRows + "</tbody></table></div>" +
+        "<p class='muted'>Rank = opponent defense vs that position (32 = softest). " +
+        "Row color uses the fuller sample early in the season. " +
+        "<a href='#/cost'>Edit roster</a></p>"
+      : "<p class='muted'>Add your roster on the <a href='#/cost'>Roster cost</a> page " +
+        "and your players' weekly matchups will appear here.</p>";
     var rows = teams.map(function (d, i) {
       var t = V.teams[d];
       var base = (V.baseline && V.baseline[d] && V.baseline[d].rk) ? V.baseline[d].rk[pos] : "";
@@ -827,6 +877,8 @@
       " Funnel badges mark defenses with big rank splits - they choose what they stop, and scheme repeats: run/pass funnels compare the RB rank to the passing ranks, WR/TE funnels split the pass game." +
       " &#9660;/&#9650; mark a core defender who sat out or returned in the latest game - the rank was earned with different personnel." +
       (hasPace ? " OpPl is how many plays this team's opponents get to run per game - clock-milking teams (&#8987;) shrink everyone's chances, fast games (&#9889;) inflate them." : "") + "</p>" +
+      mySection +
+      "<h2 class='dvp-h2'>All defenses</h2>" +
       "<div class='dvp-tabs'>" + tabs + "</div>" +
       "<div class='table-wrap'><table class='pk'><thead><tr><th>Rk</th><th>Def</th>" +
       "<th>FP/g</th><th>G</th>" + (baseHdr ? "<th>" + baseHdr + "</th>" : "") +
