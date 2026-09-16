@@ -785,8 +785,14 @@
         }
         var cur = t.rk[e.pos];
         var b = (V.baseline && V.baseline[d] && V.baseline[d].rk) ? V.baseline[d].rk[e.pos] : null;
-        var trusted = V.through_week >= 4 ? cur : (b != null ? b : cur);
-        var cls = trusted >= 22 ? " class='dvp-easy'" : (trusted <= 11 ? " class='dvp-hard'" : "");
+        // Color only when this season and last AGREE - a soft '26 rank over a
+        // tough '25 one (or vice versa) is a conflict, not a verdict, and the
+        // badges/notes carry the tiebreak. Late season (wk 8+) the current
+        // rank has earned the right to speak alone.
+        var late = V.through_week >= 8;
+        var soft = cur >= 20 && (late || b == null || b >= 20);
+        var tough = cur <= 13 && (late || b == null || b <= 13);
+        var cls = soft ? " class='dvp-easy'" : (tough ? " class='dvp-hard'" : "");
         var notes = funnels(t).map(function (fn) {
           return "<span class='badge'>" + fn + "</span>";
         });
@@ -808,7 +814,9 @@
         "<th>" + (V.baseline_year ? "'" + String(V.baseline_year).slice(2) : "") + "</th>" +
         "<th class='note-col'>Notes</th></tr></thead><tbody>" + myRows + "</tbody></table></div>" +
         "<p class='muted'>Rank = opponent defense vs that position (32 = softest). " +
-        "Row color uses the fuller sample early in the season. " +
+        "Green = soft matchup by both this season and last; red = tough by both; " +
+        "no color = the two seasons disagree, so read the badges and tap the " +
+        "defense's row below for the scouting note. " +
         "<a href='#/cost'>Edit roster</a></p>"
       : "<p class='muted'>Add your roster on the <a href='#/cost'>Roster cost</a> page " +
         "and your players' weekly matchups will appear here.</p>";

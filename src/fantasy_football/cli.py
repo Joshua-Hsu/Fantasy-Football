@@ -889,6 +889,28 @@ def _read_depth_overrides(path: str | None) -> dict[str, str]:
     return out
 
 
+
+def _latest_completed_year(session) -> int | None:
+    """Latest season with a PLAYED late-regular-season game (week >= 17).
+
+    In-season, ``load-seasons`` pulls the current year the moment week 1
+    publishes, so "latest loaded season" silently becomes a one-week sample.
+    Valuation, tiers and the app's stat cards are built on full-season
+    production, so year-defaulting commands resolve here instead.
+    """
+    from sqlalchemy import func, select
+
+    from .models import Game
+
+    return session.scalar(
+        select(func.max(Game.season_year)).where(
+            Game.season_type == "regular",
+            Game.week >= 17,
+            Game.home_score.is_not(None),
+        )
+    )
+
+
 def _cmd_cheatsheet(args: argparse.Namespace) -> int:
     import datetime as _dt
 
@@ -918,8 +940,9 @@ def _cmd_cheatsheet(args: argparse.Namespace) -> int:
             print(f"warning: depth charts unavailable ({exc}); using heuristic backups")
 
     with _open_session(args) as session:
+        year = args.year or _latest_completed_year(session)
         path = write_cheatsheet(
-            session, args.out, year=args.year, config=config,
+            session, args.out, year=year, config=config,
             rules=PRESETS[args.scoring], basis=args.basis,
             manual_tiers=manual, fixed_prices=prices, tier_notes=notes,
             backups=backups, starters=starters, backup_overrides=overrides,
@@ -1038,8 +1061,9 @@ def _cmd_build_webapp(args: argparse.Namespace) -> int:
     leaders = _pick_leaderboard(["picks", "archive"])
 
     with _open_session(args) as session:
+        year = args.year or _latest_completed_year(session)
         path = write_webapp_data(
-            session, args.out, year=args.year, config=config,
+            session, args.out, year=year, config=config,
             rules=PRESETS[args.scoring], basis=args.basis, depth=args.depth,
             manual_tiers=manual, seed_overrides=seeds, pinned_tiers=pins or None,
             prices=prices,
