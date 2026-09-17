@@ -585,7 +585,7 @@ def load_team_stats(session: Session, year: int) -> int:
 
 #: Roster statuses that mean a player is on an NFL roster (draftable). Unsigned
 #: free agents (UFA/RFA/UDF) and cut/retired players are not "active".
-ACTIVE_STATUSES = {"ACT", "RES", "PUP", "DEV"}
+ACTIVE_STATUSES = {"ACT", "RES", "PUP", "DEV", "EXE"}  # EXE = commissioner exempt: still a rostered asset
 
 
 def load_active_roster(session: Session, year: int) -> int:
