@@ -765,6 +765,46 @@
     // ---- My team: the roster from #/cost, matched to this week's slate ----
     // Rank shown is the trusted one (baseline until ~wk4, then current);
     // green = soft matchup (rk 22+), red = tough (rk 11-).
+    // ---- Matchup model: one number fusing every layer ----
+    // proj = ppg x vegas^.45 x dvp^.35 x pace^.2, each factor a ratio to
+    // league average, clamped so no single signal dominates. DvP blends
+    // last season with this one by weeks played (w = wk/8, capped .8).
+    // K keys off the team's implied total alone; DST inverts the OPPONENT's
+    // implied total. Transparent by design - every input is on this page.
+    var clamp = function (x, lo, hi) { return Math.max(lo, Math.min(hi, x)); };
+    var avgOf = function (vals) {
+      var s0 = 0, n0 = 0;
+      vals.forEach(function (v) { if (v != null && v !== "") { s0 += v; n0++; } });
+      return n0 ? s0 / n0 : null;
+    };
+    var wNow = Math.min((V.through_week || 1) / 8, 0.8);
+    var avgIT = V.vegas ? avgOf(Object.keys(V.vegas).map(function (k) { return V.vegas[k].it; })) : null;
+    var avgOpl = avgOf(teams.map(function (d) { var p = paceOf(d); return p && p.opl; }));
+    var dvpBlend = function (d, pos) {
+      var t = V.teams[d]; if (!t || t[pos] == null) return null;
+      var b = (V.baseline && V.baseline[d]) ? V.baseline[d][pos] : null;
+      return b != null ? wNow * t[pos] + (1 - wNow) * b : t[pos];
+    };
+    var dvpAvg = {};
+    (V.positions || []).forEach(function (pos) {
+      dvpAvg[pos] = avgOf(teams.map(function (d) { return dvpBlend(d, pos); }));
+    });
+    var modelProj = function (e, d) {
+      if (!e.ppg) return null;
+      var vg = (V.vegas && V.vegas[e.team]) || null;
+      var vF = (vg && avgIT) ? clamp(vg.it / avgIT, 0.7, 1.35) : 1;
+      if (e.pos === "K") return e.ppg * Math.pow(vF, 0.8);
+      if (e.pos === "DST") {
+        var og = (V.vegas && d && V.vegas[d]) || null;
+        var dF = (og && avgIT) ? clamp(avgIT / og.it, 0.7, 1.35) : 1;
+        return e.ppg * Math.pow(dF, 0.8);
+      }
+      var blended = d ? dvpBlend(d, e.pos) : null;
+      var dvpF = (blended != null && dvpAvg[e.pos]) ? clamp(blended / dvpAvg[e.pos], 0.75, 1.3) : 1;
+      var p = d && paceOf(d);
+      var pF = (p && avgOpl) ? clamp(p.opl / avgOpl, 0.85, 1.15) : 1;
+      return e.ppg * Math.pow(vF, 0.45) * Math.pow(dvpF, 0.35) * Math.pow(pF, 0.2);
+    };
     var myRows = "";
     var rosterKeys = loadRoster();
     if (rosterKeys.length) {
@@ -790,8 +830,15 @@
         }
         var cells = "<td class='pk-name'>" + esc(e.name) + "</td><td>" + esc(e.pos) +
           "</td><td>" + esc(e.team) + "</td><td>" + (o ? esc(o) : "BYE") + "</td>" + itCell;
+        var proj = modelProj(e, d);
+        var projCell = "<td>" + (proj != null ?
+          "<b>" + proj.toFixed(1) + "</b>" +
+          (e.ppg ? "<span class='dvp-" + (proj >= e.ppg ? "back" : "out") + "'> " +
+            (proj >= e.ppg ? "&#9650;" : "&#9660;") +
+            Math.abs(100 * (proj - e.ppg) / e.ppg).toFixed(0) + "%</span>" : "")
+          : "") + "</td>";
         if (!t || !t.rk || t.rk[e.pos] == null) {
-          return "<tr>" + cells + "<td></td><td></td><td class='note-col'></td></tr>";
+          return "<tr>" + cells + "<td></td><td></td>" + projCell + "<td class='note-col'></td></tr>";
         }
         var cur = t.rk[e.pos];
         var b = (V.baseline && V.baseline[d] && V.baseline[d].rk) ? V.baseline[d].rk[e.pos] : null;
@@ -814,7 +861,7 @@
             " " + esc(f.n) + "</span>");
         });
         return "<tr" + cls + ">" + cells + "<td>" + cur + "</td><td>" + (b != null ? b : "") +
-          "</td><td class='note-col'>" + notes.join(" ") + "</td></tr>";
+          "</td>" + projCell + "<td class='note-col'>" + notes.join(" ") + "</td></tr>";
       }).join("");
     }
     var mySection = rosterKeys.length
@@ -822,8 +869,11 @@
         "<div class='table-wrap'><table class='pk'><thead><tr><th class='note-col'>Player</th>" +
         "<th>Pos</th><th>Tm</th><th>Opp</th>" + (V.vegas ? "<th>ImpTot</th>" : "") + "<th>Rk</th>" +
         "<th>" + (V.baseline_year ? "'" + String(V.baseline_year).slice(2) : "") + "</th>" +
-        "<th class='note-col'>Notes</th></tr></thead><tbody>" + myRows + "</tbody></table></div>" +
-        "<p class='muted'>ImpTot = Vegas implied points for the player's offense " +
+        "<th>Proj</th><th class='note-col'>Notes</th></tr></thead><tbody>" + myRows + "</tbody></table></div>" +
+        "<p class='muted'>Proj = matchup model: season PPG scaled by Vegas implied " +
+        "total (weight .45), opponent points allowed to the position (.35, " +
+        "last-season-weighted early) and pace (.2); the arrow is the edge vs " +
+        "the player's own average. ImpTot = Vegas implied points for the player's offense " +
         "(green 26+, red 17.5-); hover for the game total. " +
         "Rank = opponent defense vs that position (32 = softest). " +
         "Green = soft matchup by both this season and last; red = tough by both; " +
