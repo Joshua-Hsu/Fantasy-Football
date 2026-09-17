@@ -364,6 +364,7 @@
       "<button class='btn' onclick=\"location.hash='#/packet'\">&#128424; My draft packet</button>" +
       "<button class='btn' onclick=\"location.hash='#/cost'\">&#128176; Roster cost</button>" +
       (window.FF_DVP ? "<button class='btn' onclick=\"location.hash='#/dvp'\">&#127919; Matchups</button>" : "") +
+      ((window.FF_DVP || {}).vegasWeeks ? "<button class='btn' onclick=\"location.hash='#/vegas'\">&#128200; Vegas</button>" : "") +
       "<button class='btn' onclick='FF.exportTiers()'>&#11015; Export tiers CSV</button>" +
       "<label class='btn' style='cursor:pointer'>&#11014; Import tiers CSV" +
       "<input type='file' accept='.csv' style='display:none' onchange='FF.importTiers(this)'></label>" +
@@ -966,6 +967,56 @@
       "</tbody></table></div>";
   }
 
+
+  // ---- Vegas: implied totals by week, graded against actual scores (#/vegas) ----
+  function vegasPage(week) {
+    var V = window.FF_DVP, W = (V && V.vegasWeeks) || null;
+    if (!W || !Object.keys(W).length) {
+      app.innerHTML = nav() + "<h1>Vegas</h1><p class='lead'>No betting lines loaded yet.</p>";
+      return;
+    }
+    var weeks = Object.keys(W).map(Number).sort(function (a, b) { return a - b; });
+    var wk = parseInt(week, 10);
+    if (!(weeks.indexOf(wk) >= 0)) wk = (V.week && weeks.indexOf(V.week) >= 0) ? V.week : weeks[weeks.length - 1];
+    var idx = weeks.indexOf(wk);
+    var prev = idx > 0 ? weeks[idx - 1] : null, next = idx < weeks.length - 1 ? weeks[idx + 1] : null;
+    // One row per team, sorted by implied total; actual + miss once played.
+    var rows = [];
+    W[String(wk)].forEach(function (g) {
+      rows.push({ tm: g.h, opp: "v" + g.a, it: g.ith, gt: g.gt, act: g.hs, fav: g.sp > 0 });
+      rows.push({ tm: g.a, opp: "@" + g.h, it: g.ita, gt: g.gt, act: g.as, fav: g.sp < 0 });
+    });
+    rows.sort(function (a, b) { return b.it - a.it; });
+    var played = rows.filter(function (r) { return r.act != null; });
+    var absErr = 0, over = 0;
+    played.forEach(function (r) { absErr += Math.abs(r.act - r.it); if (r.act > r.it) over++; });
+    var summary = played.length
+      ? "<p class='muted'>Graded: books missed by <b>" + (absErr / played.length).toFixed(1) +
+        "</b> points per team on average; <b>" + over + "</b> of " + played.length +
+        " teams beat their implied total.</p>"
+      : "<p class='muted'>Upcoming - actuals fill in after the games.</p>";
+    var body = rows.map(function (r) {
+      var diff = r.act != null ? r.act - r.it : null;
+      var cls = diff == null ? "" : (diff >= 7 ? " class='dvp-easy'" : (diff <= -7 ? " class='dvp-hard'" : ""));
+      return "<tr" + cls + "><td class='pk-name'>" + esc(r.tm) + (r.fav ? " <span class='muted'>fav</span>" : "") +
+        "</td><td>" + esc(r.opp) + "</td><td>" + r.gt + "</td><td><b>" + r.it.toFixed(1) + "</b></td><td>" +
+        (r.act != null ? r.act : "") + "</td><td>" +
+        (diff == null ? "" : (diff > 0 ? "+" : "") + diff.toFixed(1)) + "</td></tr>";
+    }).join("");
+    app.innerHTML = nav(" &middot; <span class='muted'>vegas</span>") +
+      "<h1>Implied totals &middot; week " + wk + "</h1>" +
+      "<p class='lead'>What the betting market expects each offense to score (game total halved, shifted by half the spread), " +
+      "and once the week is played, what actually happened. Green rows beat their number by 7+, red rows fell 7+ short.</p>" +
+      "<div class='dvp-tabs'>" +
+      (prev ? "<a class='pill dvp-tab' href='#/vegas/" + prev + "'>&lsaquo; wk " + prev + "</a>" : "") +
+      "<span class='pill dvp-tab dvp-on'>week " + wk + "</span>" +
+      (next ? "<a class='pill dvp-tab' href='#/vegas/" + next + "'>wk " + next + " &rsaquo;</a>" : "") +
+      "</div>" + summary +
+      "<div class='table-wrap'><table class='pk'><thead><tr><th class='note-col'>Team</th><th>Opp</th>" +
+      "<th>Total</th><th>Implied</th><th>Actual</th><th>+/-</th></tr></thead><tbody>" + body +
+      "</tbody></table></div>";
+  }
+
   // ---- commissioner: master tier editor (#/admin) ----
   // The page is reachable by anyone (static site), but Overwrite only works
   // with the ADMIN_CODE secret held by the Worker. Tiers here are LITERAL:
@@ -1552,6 +1603,7 @@
     if (h.indexOf("#/levels") === 0) return levelsPage();
     if (h.indexOf("#/cost") === 0) return costPage();
     m = h.match(/^#\/dvp(?:\/(\w+))?/); if (m) return dvpPage(m[1]);
+    m = h.match(/^#\/vegas(?:\/(\d+))?/); if (m) return vegasPage(m[1]);
     m = h.match(/^#\/admin(?:\/(\w+))?/); if (m) return adminPage(m[1]);
     home();
   }
