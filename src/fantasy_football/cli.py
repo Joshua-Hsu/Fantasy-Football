@@ -794,18 +794,23 @@ def _cmd_dvp(args: argparse.Namespace) -> int:
                 except Exception as exc:  # noqa: BLE001 - metrics are optional
                     print(f"warning: pressure metrics skipped: {exc}")
             vegas = None
+            vweeks = None
             try:
-                from .matchups import fetch_vegas, implied_totals, next_week
+                from .matchups import (fetch_vegas, implied_totals, next_week,
+                                       vegas_weeks)
+                vrows = fetch_vegas(year)
+                vweeks = vegas_weeks(vrows) or None
                 wk_next = next_week(session, year)
                 if wk_next:
-                    vegas = implied_totals(fetch_vegas(year), week=wk_next) or None
+                    vegas = implied_totals(vrows, week=wk_next) or None
             except Exception as exc:  # noqa: BLE001 - lines are optional
                 print(f"warning: vegas lines skipped: {exc}")
             from .matchups import read_defense_notes
             path = write_dvp_js(session, args.out, year,
                                 baseline_year=baseline or None, rules=rules,
                                 flags=flags, notes=read_defense_notes(args.notes),
-                                metrics=metrics or None, vegas=vegas)
+                                metrics=metrics or None, vegas=vegas,
+                                vegas_weeks_payload=vweeks)
             print(f"Wrote {path}")
     return 0
 

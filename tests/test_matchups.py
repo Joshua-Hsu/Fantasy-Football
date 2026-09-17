@@ -228,3 +228,22 @@ def test_implied_totals():
     assert v["MIA"] == {"it": 15.5, "gt": 44.5}
     assert v["NE"]["it"] == 23.5 and v["PIT"]["it"] == 18.0
     assert "XX" not in v and "LA" not in v
+
+
+def test_vegas_weeks_history():
+    from fantasy_football.matchups import vegas_weeks
+
+    rows = [
+        {"week": 1, "home_team": "GB", "away_team": "CHI", "spread_line": 3.0,
+         "total_line": 44.0, "home_score": 30, "away_score": 10},
+        {"week": 2, "home_team": "SF", "away_team": "MIA", "spread_line": 13.5,
+         "total_line": 44.5, "home_score": float("nan"), "away_score": float("nan")},
+        {"week": 3, "home_team": "X", "away_team": "Y", "spread_line": float("nan"),
+         "total_line": float("nan")},   # no line posted yet
+    ]
+    w = vegas_weeks(rows)
+    assert sorted(w) == [1, 2]
+    g = w[1][0]
+    assert (g["ith"], g["ita"], g["hs"], g["as"]) == (23.5, 20.5, 30, 10)
+    u = w[2][0]
+    assert u["hs"] is None and u["as"] is None and u["ith"] == 29.0
