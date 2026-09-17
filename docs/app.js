@@ -778,8 +778,18 @@
         var o = (V.opp && V.opp[e.team]) || "";
         var d = o ? o.replace(/^[v@]/, "") : "";
         var t = d && V.teams[d];
+        // Vegas implied team total: the books' forecast of this player's
+        // offense's points - the sharpest public scoring signal there is.
+        var vg = (V.vegas && V.vegas[e.team]) || null;
+        var itCell = "";
+        if (V.vegas) {
+          var itTxt = vg ? vg.it.toFixed(1) : "";
+          if (vg && vg.it >= 26) itTxt = "<span class='dvp-fast'>" + itTxt + "</span>";
+          else if (vg && vg.it <= 17.5) itTxt = "<span class='dvp-out'>" + itTxt + "</span>";
+          itCell = "<td" + (vg ? " title='game total " + vg.gt + "'" : "") + ">" + itTxt + "</td>";
+        }
         var cells = "<td class='pk-name'>" + esc(e.name) + "</td><td>" + esc(e.pos) +
-          "</td><td>" + esc(e.team) + "</td><td>" + (o ? esc(o) : "BYE") + "</td>";
+          "</td><td>" + esc(e.team) + "</td><td>" + (o ? esc(o) : "BYE") + "</td>" + itCell;
         if (!t || !t.rk || t.rk[e.pos] == null) {
           return "<tr>" + cells + "<td></td><td></td><td class='note-col'></td></tr>";
         }
@@ -810,10 +820,12 @@
     var mySection = rosterKeys.length
       ? "<h2 class='dvp-h2'>My team &middot; week " + (V.week || "?") + "</h2>" +
         "<div class='table-wrap'><table class='pk'><thead><tr><th class='note-col'>Player</th>" +
-        "<th>Pos</th><th>Tm</th><th>Opp</th><th>Rk</th>" +
+        "<th>Pos</th><th>Tm</th><th>Opp</th>" + (V.vegas ? "<th>ImpTot</th>" : "") + "<th>Rk</th>" +
         "<th>" + (V.baseline_year ? "'" + String(V.baseline_year).slice(2) : "") + "</th>" +
         "<th class='note-col'>Notes</th></tr></thead><tbody>" + myRows + "</tbody></table></div>" +
-        "<p class='muted'>Rank = opponent defense vs that position (32 = softest). " +
+        "<p class='muted'>ImpTot = Vegas implied points for the player's offense " +
+        "(green 26+, red 17.5-); hover for the game total. " +
+        "Rank = opponent defense vs that position (32 = softest). " +
         "Green = soft matchup by both this season and last; red = tough by both; " +
         "no color = the two seasons disagree, so read the badges and tap the " +
         "defense's row below for the scouting note. " +
@@ -836,6 +848,11 @@
           " " + esc(f.n) + " (" + esc(f.p) + ") " + f.w + "</span>");
       });
       var curPace = (t.pace || pace);
+      var offIT = "";
+      if (V.vegas && opp && opp !== "bye") {
+        var og = V.vegas[opp.replace(/^[v@]/, "")];
+        if (og) offIT = og.it.toFixed(1);
+      }
       // Tap to expand: an auto scheme-metrics line (personnel packages from
       // snap counts, blitz/box from play-by-play) plus any hand-written
       // scouting notes from defense_notes.csv - the measured and the
@@ -865,6 +882,7 @@
         (baseHdr ? "<td>" + base + "</td>" : "") +
         (hasPace ? "<td>" + (curPace ? curPace.opl.toFixed(0) : "") + "</td>" : "") +
         (V.week ? "<td>" + esc(opp) + "</td>" : "") +
+        (V.vegas ? "<td>" + offIT + "</td>" : "") +
         "<td class='note-col'>" + notes.join(" ") + "</td></tr>";
       if (expandable) {
         row += "<tr class='dvp-noterow' hidden><td colspan='9' class='note-col'>" +
@@ -884,14 +902,17 @@
       (V.week ? " Wk " + V.week + " shows who that defense faces next (v home, @ away)." : "") +
       " Funnel badges mark defenses with big rank splits - they choose what they stop, and scheme repeats: run/pass funnels compare the RB rank to the passing ranks, WR/TE funnels split the pass game." +
       " &#9660;/&#9650; mark a core defender who sat out or returned in the latest game - the rank was earned with different personnel." +
-      (hasPace ? " OpPl is how many plays this team's opponents get to run per game - clock-milking teams (&#8987;) shrink everyone's chances, fast games (&#9889;) inflate them." : "") + "</p>" +
+      (hasPace ? " OpPl is how many plays this team's opponents get to run per game - clock-milking teams (&#8987;) shrink everyone's chances, fast games (&#9889;) inflate them." : "") +
+      (V.vegas ? " OppIT is the Vegas implied total of the offense this defense faces next - the books' own forecast of how many points they give up." : "") + "</p>" +
       mySection +
       "<h2 class='dvp-h2'>All defenses</h2>" +
       "<div class='dvp-tabs'>" + tabs + "</div>" +
       "<div class='table-wrap'><table class='pk'><thead><tr><th>Rk</th><th>Def</th>" +
       "<th>FP/g</th><th>G</th>" + (baseHdr ? "<th>" + baseHdr + "</th>" : "") +
       (hasPace ? "<th>OpPl</th>" : "") +
-      (V.week ? "<th>Wk " + V.week + "</th>" : "") + "<th class='note-col'>Notes</th></tr></thead><tbody>" + rows +
+      (V.week ? "<th>Wk " + V.week + "</th>" : "") +
+      (V.vegas ? "<th>OppIT</th>" : "") +
+      "<th class='note-col'>Notes</th></tr></thead><tbody>" + rows +
       "</tbody></table></div>";
   }
 

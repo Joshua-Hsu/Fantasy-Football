@@ -208,3 +208,23 @@ def test_package_rates_and_pressure_metrics():
     assert pm["TB"]["prs"] == pytest.approx(40.0)
     assert pm["TB"]["rkPrs"] == 1
     assert pm["NE"]["prs"] == pytest.approx(0.0)
+
+
+def test_implied_totals():
+    from fantasy_football.matchups import implied_totals
+
+    rows = [
+        {"week": 2, "home_team": "SF", "away_team": "MIA",
+         "spread_line": 13.5, "total_line": 44.5},
+        {"week": 2, "home_team": "NE", "away_team": "PIT",
+         "spread_line": 5.5, "total_line": 41.5},
+        {"week": 2, "home_team": "XX", "away_team": "YY",
+         "spread_line": float("nan"), "total_line": 47.0},   # no line yet
+        {"week": 3, "home_team": "SF", "away_team": "LA",
+         "spread_line": 3.0, "total_line": 50.0},            # other week
+    ]
+    v = implied_totals(rows, week=2)
+    assert v["SF"] == {"it": 29.0, "gt": 44.5}
+    assert v["MIA"] == {"it": 15.5, "gt": 44.5}
+    assert v["NE"]["it"] == 23.5 and v["PIT"]["it"] == 18.0
+    assert "XX" not in v and "LA" not in v
