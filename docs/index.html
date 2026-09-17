@@ -149,7 +149,7 @@
   .vs { display:flex; justify-content:center; gap:.6rem; margin:1.1rem 0 2rem; }
 
   /* ---- Ranking table ---- */
-  .table-wrap { border:1px solid var(--line); border-radius:var(--radius); overflow:hidden; box-shadow:var(--shadow); }
+  .table-wrap { border:1px solid var(--line); border-radius:var(--radius); overflow-x:auto; -webkit-overflow-scrolling:touch; box-shadow:var(--shadow); }
   table { width:100%; border-collapse:collapse; font-variant-numeric:tabular-nums; font-size:.92rem; }
   thead th { font-size:.7rem; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); font-weight:700; background:var(--surface-2); }
   th,td { text-align:right; padding:.7rem .8rem; border-bottom:1px solid var(--line); }
@@ -364,6 +364,16 @@
   .dvp-scout { text-align:left; max-width:none; padding:.15rem 0; }
   .dvp-scout b { color:var(--muted); font-weight:600; margin-right:.35rem; }
   .dvp-h2 { font-size:1.15rem; letter-spacing:-.01em; margin:1.4rem 0 .6rem; }
+  /* Wide tables scroll sideways on phones; the first column stays pinned. */
+  .dvp-stick { position:sticky; left:0; z-index:1; background:var(--surface); }
+  thead th.dvp-stick { background:var(--surface-2); }
+  tr.dvp-easy td.dvp-stick { background:#e6f4e9; }
+  tr.dvp-hard td.dvp-stick { background:#fbe9e8; }
+  @media (prefers-color-scheme: dark) {
+    tr.dvp-easy td.dvp-stick { background:#12261a; }
+    tr.dvp-hard td.dvp-stick { background:#2a1615; }
+  }
+  @media (max-width: 640px) { .mob-hide { display:none; } table.pk th, table.pk td { padding:.32rem .4rem; } }
 
   @media print {
     .nav, .no-print, .actions { display:none !important; }
@@ -385,6 +395,6 @@
 </script>
 <script src="data.js?v=2026091718"></script>
 <script src="dvp.js?v=2026091716"></script>
-<script src="app.js?v=2026091716"></script>
+<script src="app.js?v=2026091720"></script>
 </body>
 </html>

@@ -829,8 +829,6 @@
           else if (vg && vg.it <= 17.5) itTxt = "<span class='dvp-out'>" + itTxt + "</span>";
           itCell = "<td" + (vg ? " title='game total " + vg.gt + "'" : "") + ">" + itTxt + "</td>";
         }
-        var cells = "<td class='pk-name'>" + esc(e.name) + "</td><td>" + esc(e.pos) +
-          "</td><td>" + esc(e.team) + "</td><td>" + (o ? esc(o) : "BYE") + "</td>" + itCell;
         var proj = modelProj(e, d);
         var projCell = "<td>" + (proj != null ?
           "<b>" + proj.toFixed(1) + "</b>" +
@@ -838,8 +836,13 @@
             (proj >= e.ppg ? "&#9650;" : "&#9660;") +
             Math.abs(100 * (proj - e.ppg) / e.ppg).toFixed(0) + "%</span>" : "")
           : "") + "</td>";
+        // Column order puts Proj right after Opp so it survives a phone
+        // viewport; Player is sticky and Tm hides on narrow screens.
+        var cells = "<td class='pk-name dvp-stick'>" + esc(e.name) + "</td><td>" + esc(e.pos) +
+          "</td><td class='mob-hide'>" + esc(e.team) + "</td><td>" + (o ? esc(o) : "BYE") + "</td>" +
+          projCell + itCell;
         if (!t || !t.rk || t.rk[e.pos] == null) {
-          return "<tr>" + cells + "<td></td><td></td>" + projCell + "<td class='note-col'></td></tr>";
+          return "<tr>" + cells + "<td></td><td></td><td class='note-col'></td></tr>";
         }
         var cur = t.rk[e.pos];
         var b = (V.baseline && V.baseline[d] && V.baseline[d].rk) ? V.baseline[d].rk[e.pos] : null;
@@ -862,15 +865,16 @@
             " " + esc(f.n) + "</span>");
         });
         return "<tr" + cls + ">" + cells + "<td>" + cur + "</td><td>" + (b != null ? b : "") +
-          "</td>" + projCell + "<td class='note-col'>" + notes.join(" ") + "</td></tr>";
+          "</td><td class='note-col'>" + notes.join(" ") + "</td></tr>";
       }).join("");
     }
     var mySection = rosterKeys.length
       ? "<h2 class='dvp-h2'>My team &middot; week " + (V.week || "?") + "</h2>" +
-        "<div class='table-wrap'><table class='pk'><thead><tr><th class='note-col'>Player</th>" +
-        "<th>Pos</th><th>Tm</th><th>Opp</th>" + (V.vegas ? "<th>ImpTot</th>" : "") + "<th>Rk</th>" +
+        "<div class='table-wrap'><table class='pk'><thead><tr><th class='note-col dvp-stick'>Player</th>" +
+        "<th>Pos</th><th class='mob-hide'>Tm</th><th>Opp</th><th>Proj</th>" +
+        (V.vegas ? "<th>ImpTot</th>" : "") + "<th>Rk</th>" +
         "<th>" + (V.baseline_year ? "'" + String(V.baseline_year).slice(2) : "") + "</th>" +
-        "<th>Proj</th><th class='note-col'>Notes</th></tr></thead><tbody>" + myRows + "</tbody></table></div>" +
+        "<th class='note-col'>Notes</th></tr></thead><tbody>" + myRows + "</tbody></table></div>" +
         "<p class='muted'>Proj = matchup model: season PPG scaled by Vegas implied " +
         "total (weight .45), opponent points allowed to the position (.35, " +
         "last-season-weighted early) and pace (.2); the arrow is the edge vs " +
