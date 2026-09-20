@@ -777,8 +777,11 @@ def _cmd_usage(args: argparse.Namespace) -> int:
                 pts = [score_stats(st, rules) for st, _ in rows]
                 tg = [st.targets for st, _ in rows]
                 ca = [st.rush_attempts for st, _ in rows]
+                best = sorted(pts, reverse=True)[:4]
                 print(f"  {yr}: {len(rows)}g  {sum(pts)/len(pts):.1f} ppg  "
-                      f"{sum(tg)/len(tg):.1f} tgt/g  {sum(ca)/len(ca):.1f} car/g")
+                      f"{sum(tg)/len(tg):.1f} tgt/g  {sum(ca)/len(ca):.1f} car/g  "
+                      f"best {'/'.join(f'{b:.1f}' for b in best)}  "
+                      f"12+ in {sum(1 for x in pts if x >= 12)}g")
                 if yr == year:
                     for st, wk in rows:
                         print(f"    wk{wk:2}  {st.targets:2}tgt {st.receptions:2}rec "
