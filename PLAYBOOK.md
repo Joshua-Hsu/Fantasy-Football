@@ -19,6 +19,15 @@ luck, they were skipped steps.
    If the recommendation disagrees with the board, write **OVERRIDE** and
    exactly one structural reason (injury, depth chart, scheme note). No
    structural reason = the board wins.
+2b. **An average is not a ceiling.** Quote the weekly distribution
+   (`cli usage` prints the best games), never describe a player's mean as
+   his cap. *(Schultz: called a "hard ~8-point ceiling"; 8.0 was his
+   average - he had four 12+ games in 2025 and scored 20 the next week.)*
+2c. **The agreement rule applies to prose, not just row colors.** When
+   this season's rank and last season's disagree hard, say "no verdict",
+   do not pick the side that makes the better story. *(CIN 5th vs TE in
+   wk1, 32nd in 2025 - "trust the week-1 number" was a coin flip dressed
+   up as analysis.)*
 3. **One game is not a role.** A usage claim needs two games or a
    structural cause. This applies symmetrically: one bad game does not kill
    a role either. *(Gesicki's 7 targets were one game, in a defined funnel;
@@ -63,3 +72,4 @@ Wednesday board is how the Ferguson TD was given away.
 | 2026-08-26 | Claim Ferguson $2 | Step 1 (usage): wk10+ fade was in the data; user flagged it | $2, a roster churn |
 | 2026-09-16 | Drop Ferguson for Gesicki $4 | Steps 2+3: board had Ferguson vWAS as the best TE matchup; 7 targets was one game in a funnel | $4 and a TD in a must-win week |
 | 2026-09-15 | Loveland named a trade target | Step 1 (usage): 2 tgt / 0 rec / 0.0 in wk1, in the DB | credibility; 0-point weeks 1-2 |
+| 2026-09-16 | Talked out of queuing Schultz vCIN ("floor only", "bad spot") | Steps 2b+2c: average called a ceiling; sided with a 1-week rank against a 32nd '25 rank | Schultz 20, Gesicki 0 |
