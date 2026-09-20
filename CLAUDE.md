@@ -253,6 +253,22 @@ fully reproducible via the loaders in ~50s.
 enforcement (`PRAGMA foreign_keys = ON`) per connection — FKs are off by default
 in SQLite, so anything bypassing this helper loses referential integrity.
 
+## In-season decision discipline
+
+`decisions.csv` (date,week,decision,who,board,override,rationale,outcome,
+verdict) is the pre-registered decision log, rendered at `#/log` by the
+`dvp` build. Rules that came out of a graded miss (wk2 2026: dropping the
+board's best TE matchup for a one-game "role"): (1) every add/drop/start/sit
+recommendation quotes the matchup board's grade for EVERY candidate first;
+a recommendation that disagrees with the board is labeled OVERRIDE with one
+structural reason, else the board wins; (2) one game is not a role - usage
+claims need two games or a structural cause; (3) when new evidence lands
+after a recommendation, restate the decision from zero and say if it
+reverses the earlier call; (4) log the call before the games, grade it
+after. `#/dvp` (matchups, My Team sheet, model Proj), `#/vegas` (implied
+totals graded vs actuals) and `#/log` all read the `docs/dvp.js` sidecar,
+refreshed by the Tuesday `dvp.yml` Action.
+
 ## Data sources
 
 All from nflverse's GitHub-published files (no scraping): teams from

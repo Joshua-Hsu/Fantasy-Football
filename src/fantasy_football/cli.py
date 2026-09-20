@@ -805,12 +805,13 @@ def _cmd_dvp(args: argparse.Namespace) -> int:
                     vegas = implied_totals(vrows, week=wk_next) or None
             except Exception as exc:  # noqa: BLE001 - lines are optional
                 print(f"warning: vegas lines skipped: {exc}")
-            from .matchups import read_defense_notes
+            from .matchups import read_decisions, read_defense_notes
             path = write_dvp_js(session, args.out, year,
                                 baseline_year=baseline or None, rules=rules,
                                 flags=flags, notes=read_defense_notes(args.notes),
                                 metrics=metrics or None, vegas=vegas,
-                                vegas_weeks_payload=vweeks)
+                                vegas_weeks_payload=vweeks,
+                                decisions=read_decisions(args.decisions))
             print(f"Wrote {path}")
     return 0
 
@@ -1233,6 +1234,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_dvp.add_argument("--scoring", choices=["standard", "half_ppr", "ppr"], default="half_ppr")
     p_dvp.add_argument("--notes", default="defense_notes.csv",
                        help="Hand-written defensive scouting notes CSV (team,date,note)")
+    p_dvp.add_argument("--decisions", default="decisions.csv",
+                       help="Pre-registered decision log CSV rendered on the app's Log page")
     p_dvp.add_argument("--no-snaps", action="store_true", dest="no_snaps",
                        help="Skip fetching snap counts (no personnel out/back flags)")
     p_dvp.set_defaults(func=_cmd_dvp)
