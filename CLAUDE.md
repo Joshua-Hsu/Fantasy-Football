@@ -255,6 +255,10 @@ in SQLite, so anything bypassing this helper loses referential integrity.
 
 ## In-season decision discipline
 
+**Read `PLAYBOOK.md` before any roster recommendation** - it is the
+checklist (usage from the DB via `cli usage`, board grade, one-game rule,
+league format, log it) plus the graded misses that produced it.
+
 `decisions.csv` (date,week,decision,who,board,override,rationale,outcome,
 verdict) is the pre-registered decision log, rendered at `#/log` by the
 `dvp` build. Rules that came out of a graded miss (wk2 2026: dropping the
