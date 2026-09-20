@@ -31,6 +31,15 @@ luck, they were skipped steps.
    board grade and rationale, then grade it after. Unlogged calls don't
    count; overrides are tracked separately on `#/log`.
 
+## What counts as a gradable call
+
+A logged decision is only eligible for **hit/miss** if it was complete
+enough to be wrong: the player to add, the player to drop, the bid amount,
+or the lineup slot. "Don't chase him" with no drop named is not a call - it
+is logged as **neutral** and never counts toward the hit rate. *(The
+Mahomes "pass" was first graded a hit; it was regraded neutral because no
+drop or bid was ever specified, so it could never have missed.)*
+
 ## When new evidence arrives after a recommendation
 
 Restate the decision from zero. Say plainly if it reverses the earlier
