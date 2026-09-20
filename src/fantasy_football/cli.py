@@ -740,6 +740,54 @@ def _cmd_load_draft(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_usage(args: argparse.Namespace) -> int:
+    """Week-by-week current-season usage for a player, next to last season.
+
+    The mandatory step-1 check from PLAYBOOK.md: a role claim has to survive
+    this table before it can justify a roster move.
+    """
+    from sqlalchemy import func, select
+
+    from .models import Game, Player, PlayerGameStats
+    from .scoring import PRESETS, score_stats
+
+    rules = PRESETS[args.scoring]
+    with _open_session(args) as session:
+        year = args.year or session.scalar(
+            select(func.max(Game.season_year)).where(Game.season_type == "regular"))
+        players = session.execute(
+            select(Player).where(Player.full_name.ilike(f"%{args.player}%"))
+            .where(Player.position.in_(("QB", "RB", "WR", "TE", "K")))
+        ).scalars().all()
+        if not players:
+            print(f"No player matching {args.player!r}")
+            return 1
+        for p in players[:5]:
+            print(f"\n{p.full_name} ({p.position}, {p.current_team or '?'})")
+            for yr in (year, year - 1):
+                rows = session.execute(
+                    select(PlayerGameStats, Game.week)
+                    .join(Game, PlayerGameStats.game_id == Game.id)
+                    .where(PlayerGameStats.player_id == p.id, Game.season_year == yr,
+                           Game.season_type == "regular")
+                    .order_by(Game.week)).all()
+                if not rows:
+                    print(f"  {yr}: no games")
+                    continue
+                pts = [score_stats(st, rules) for st, _ in rows]
+                tg = [st.targets for st, _ in rows]
+                ca = [st.rush_attempts for st, _ in rows]
+                print(f"  {yr}: {len(rows)}g  {sum(pts)/len(pts):.1f} ppg  "
+                      f"{sum(tg)/len(tg):.1f} tgt/g  {sum(ca)/len(ca):.1f} car/g")
+                if yr == year:
+                    for st, wk in rows:
+                        print(f"    wk{wk:2}  {st.targets:2}tgt {st.receptions:2}rec "
+                              f"{st.receiving_yards:4}yd {st.receiving_touchdowns}td | "
+                              f"{st.rush_attempts:2}car {st.rush_yards:4}yd "
+                              f"{st.rush_touchdowns}td -> {score_stats(st, rules):5.1f}")
+    return 0
+
+
 def _cmd_dvp(args: argparse.Namespace) -> int:
     from sqlalchemy import func, select
 
@@ -1221,6 +1269,14 @@ def build_parser() -> argparse.ArgumentParser:
     p_rz = sub.add_parser("load-redzone", help="Set red-zone targets from play-by-play")
     p_rz.add_argument("--year", type=int, default=None, help="Season (default: latest loaded)")
     p_rz.set_defaults(func=_cmd_load_redzone)
+
+    p_usage = sub.add_parser(
+        "usage", help="Week-by-week usage for a player this season vs last (PLAYBOOK step 1)"
+    )
+    p_usage.add_argument("--player", required=True, help="Name (substring, case-insensitive)")
+    p_usage.add_argument("--year", type=int, default=None, help="Season (default: latest loaded)")
+    p_usage.add_argument("--scoring", choices=["standard", "half_ppr", "ppr"], default="half_ppr")
+    p_usage.set_defaults(func=_cmd_usage)
 
     p_dvp = sub.add_parser(
         "dvp", help="Defense-vs-position: fantasy points allowed by defense, for matchup calls"
