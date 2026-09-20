@@ -1,0 +1,11 @@
+date,week,decision,who,board,override,rationale,outcome,verdict
+2026-08-24,pre,Drop Mayfield for Okonkwo (TE),claude,n/a (pre-board),no,Roster had no TE and two QBs; any TE beats an empty slot,Okonkwo 2.6 in wk1; replaced within days,neutral
+2026-08-26,pre,Drop Okonkwo; claim Ferguson $2,claude,n/a (pre-board),no,102 targets / 25 RZ looks in 2025 on the #1 pass offense,Ferguson 1.6 on 2 targets wk1 (late-2025 role confirmed); user had flagged the wk10+ fade before the claim,miss
+2026-09-15,2,Bench Higgins @HOU,user,red (HOU '25 #2 vs WR; slow game),no,User called Houston a run-out-the-clock team; scouting later confirmed 4th-slowest environment,pending,pending
+2026-09-15,2,Sit MHJ vSEA,claude,red (6th/3rd vs WR; disguise shell eats vertical WRs),no,Board and notes agree; both seasons tough,pending,pending
+2026-09-16,2,Bid $4 (not $6) on Gesicki,user,n/a,no,User argued deep TE queue lowered the cost of losing; one real competitor,Won uncontested - $2 saved vs Claude's number,hit
+2026-09-16,2,Drop Ferguson; claim Gesicki $4,claude,Ferguson vWAS = best TE matchup on the board (30th/29th vs TE; seam funnel). Gesicki @HOU 27th/13th,YES,"Argued a one-game 7-target role beats the matchup, despite own note that the targets were Tampa's funnel; defended a Tuesday call after Wednesday's board reversed it",Gesicki 0.0 (no catches); Ferguson scored a TD vs WAS,miss
+2026-09-16,2,Pass on a Mahomes FAAB chase,claude,n/a,no,Maye is the arbitrage; budget belongs to the RB market; Nix on the wire = QB depth exists,Nobody bid; Mahomes cleared to free agency - no budget spent,hit
+2026-09-16,2,Flex Adams over Jameson,claude,Proj Adams 15.4 (+11%) vs Jameson 11.0 (0%); BUF slowest environment + Cover-6 anti-deep shell,no,Board and pace both favored Adams; called a coin flip,pending,pending
+2026-09-16,2,Hold Jacobs through the exempt list,claude,n/a,no,Paid leave with open timeline; GB defense is positive-script insurance on return,pending,pending
+2026-09-17,2,Start Rams DST vNYG,claude,Proj 7.7 (+10%); NYG implied 20.2,no,Four-man pressure real; Giants ball-control caps ceiling,pending,pending

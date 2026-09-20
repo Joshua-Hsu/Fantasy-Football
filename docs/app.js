@@ -365,6 +365,7 @@
       "<button class='btn' onclick=\"location.hash='#/cost'\">&#128176; Roster cost</button>" +
       (window.FF_DVP ? "<button class='btn' onclick=\"location.hash='#/dvp'\">&#127919; Matchups</button>" : "") +
       ((window.FF_DVP || {}).vegasWeeks ? "<button class='btn' onclick=\"location.hash='#/vegas'\">&#128200; Vegas</button>" : "") +
+      ((window.FF_DVP || {}).decisions ? "<button class='btn' onclick=\"location.hash='#/log'\">&#128211; Log</button>" : "") +
       "<button class='btn' onclick='FF.exportTiers()'>&#11015; Export tiers CSV</button>" +
       "<label class='btn' style='cursor:pointer'>&#11014; Import tiers CSV" +
       "<input type='file' accept='.csv' style='display:none' onchange='FF.importTiers(this)'></label>" +
@@ -1021,6 +1022,52 @@
       "</tbody></table></div>";
   }
 
+
+  // ---- Decision log: pre-registered calls graded against outcomes (#/log) ----
+  function logPage() {
+    var V = window.FF_DVP, L = (V && V.decisions) || [];
+    if (!L.length) {
+      app.innerHTML = nav() + "<h1>Decision log</h1><p class='lead'>No decisions logged yet.</p>";
+      return;
+    }
+    var tally = {};
+    var bump = function (k, v) {
+      var t = tally[k] = tally[k] || { hit: 0, miss: 0, neutral: 0, pending: 0, n: 0 };
+      t.n++; t[v === "hit" || v === "miss" || v === "neutral" ? v : "pending"]++;
+    };
+    L.forEach(function (r) { bump(r.who || "?", r.v); if (r.ovr) bump("override", r.v); });
+    var line = function (label, t) {
+      if (!t) return "";
+      var graded = t.hit + t.miss;
+      return "<div class='row'><span>" + esc(label) + " &middot; " + t.n + " calls</span><b>" +
+        (graded ? t.hit + "-" + t.miss + " (" + Math.round(100 * t.hit / graded) + "%)" : "ungraded") +
+        (t.pending ? " &middot; " + t.pending + " pending" : "") + "</b></div>";
+    };
+    var summary = "<div class='card' style='margin-bottom:1rem'>" +
+      line("Claude", tally.claude) + line("You", tally.user) + line("Board overrides", tally.override) +
+      "</div>";
+    var rows = L.map(function (r) {
+      var vcls = r.v === "hit" ? "dvp-easy" : (r.v === "miss" ? "dvp-hard" : "");
+      var detail = "<div class='dvp-scout'><b>board</b> " + esc(r.board || "n/a") + "</div>" +
+        "<div class='dvp-scout'><b>why</b> " + esc(r.why || "") + "</div>" +
+        (r.out ? "<div class='dvp-scout'><b>outcome</b> " + esc(r.out) + "</div>" : "");
+      return "<tr class='" + vcls + " dvp-hasnote' onclick='FF.dvpToggle(this)'><td>" + esc(r.d) +
+        "</td><td class='pk-name'>" + esc(r.t) + (r.ovr ? " <span class='dvp-out'>OVERRIDE</span>" : "") +
+        "</td><td>" + esc(r.who) + "</td><td>" + esc(r.v) + "</td></tr>" +
+        "<tr class='dvp-noterow' hidden><td colspan='4' class='note-col'>" + detail + "</td></tr>";
+    }).join("");
+    app.innerHTML = nav(" &middot; <span class='muted'>log</span>") +
+      "<h1>Decision log</h1>" +
+      "<p class='lead'>Every roster call, written down BEFORE the games with what the matchup board " +
+      "said at the time. OVERRIDE marks a call that went against the board - treat those as suspect. " +
+      "Tap a row for the reasoning and the outcome. The hit rate is the partnership's report card.</p>" +
+      summary +
+      "<div class='table-wrap'><table class='pk'><thead><tr><th>Date</th><th class='note-col'>Decision</th>" +
+      "<th>Who</th><th>Result</th></tr></thead><tbody>" + rows + "</tbody></table></div>" +
+      "<p class='muted'>Source: <code>decisions.csv</code> in the repo - add a row when a decision is made, " +
+      "fill in the outcome when the games are played.</p>";
+  }
+
   // ---- commissioner: master tier editor (#/admin) ----
   // The page is reachable by anyone (static site), but Overwrite only works
   // with the ADMIN_CODE secret held by the Worker. Tiers here are LITERAL:
@@ -1608,6 +1655,7 @@
     if (h.indexOf("#/cost") === 0) return costPage();
     m = h.match(/^#\/dvp(?:\/(\w+))?/); if (m) return dvpPage(m[1]);
     m = h.match(/^#\/vegas(?:\/(\d+))?/); if (m) return vegasPage(m[1]);
+    if (h.indexOf("#/log") === 0) return logPage();
     m = h.match(/^#\/admin(?:\/(\w+))?/); if (m) return adminPage(m[1]);
     home();
   }

@@ -247,3 +247,20 @@ def test_vegas_weeks_history():
     assert (g["ith"], g["ita"], g["hs"], g["as"]) == (23.5, 20.5, 30, 10)
     u = w[2][0]
     assert u["hs"] is None and u["as"] is None and u["ith"] == 29.0
+
+
+def test_read_decisions(tmp_path):
+    from fantasy_football.matchups import read_decisions
+
+    path = tmp_path / "decisions.csv"
+    path.write_text(
+        "date,week,decision,who,board,override,rationale,outcome,verdict\n"
+        "2026-09-16,2,Drop A for B,claude,B worse on board,YES,story over board,B scored 0,miss\n"
+        "2026-09-17,2,Start C,claude,Proj +10%,no,board agrees,,\n"
+        "2026-09-10,1,,user,,,skipped - no decision text,,\n"
+    )
+    log = read_decisions(str(path))
+    assert [r["d"] for r in log] == ["2026-09-17", "2026-09-16"]  # newest first, blank skipped
+    assert log[1]["ovr"] is True and log[1]["v"] == "miss"
+    assert log[0]["ovr"] is False and log[0]["v"] == "pending"
+    assert read_decisions(str(tmp_path / "missing.csv")) == []
