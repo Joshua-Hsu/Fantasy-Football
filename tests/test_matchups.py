@@ -253,6 +253,27 @@ def test_vegas_weeks_history():
     assert u["hs"] is None and u["as"] is None and u["ith"] == 29.0
 
 
+def test_read_injuries(tmp_path, session):
+    from fantasy_football.matchups import read_injuries, write_dvp_js
+
+    path = tmp_path / "injuries.csv"
+    path.write_text(
+        "date,player,team,pos,status,injury,timeline,replacement,note\n"
+        "2026-09-15,Some Back,pit,rb,questionable,toe,unknown,,\n"
+        "2026-09-22,Some Back,PIT,RB,OUT,toe (carted off),not back wk3,Backup Guy leads,run-heavy\n"
+        "2026-09-22,,PIT,RB,OUT,blank name skipped,,,\n"
+    )
+    inj = read_injuries(str(path))
+    assert len(inj) == 1  # newest row per player wins, blank names skipped
+    assert inj[0]["st"] == "OUT" and inj[0]["tm"] == "PIT" and inj[0]["rep"] == "Backup Guy leads"
+    assert read_injuries(str(tmp_path / "missing.csv")) == []
+
+    out = tmp_path / "dvp.js"
+    _seed(session)
+    write_dvp_js(session, str(out), 2026, injuries=inj)
+    assert '"injuries"' in out.read_text() and "Backup Guy" in out.read_text()
+
+
 def test_read_decisions(tmp_path):
     from fantasy_football.matchups import read_decisions
 

@@ -274,6 +274,19 @@ totals graded vs actuals) and `#/log` all read the `docs/dvp.js` sidecar,
 refreshed by the `dvp.yml` Action (Tue 12:00 UTC for box scores, Wed 06:00
 UTC for the lagging snap counts, before Wednesday waivers).
 
+**Injury sweep** (`injuries.csv`, rendered as the Injuries table on
+`#/dvp` and as an OUT/EXEMPT chip on My Team rows; read by
+`read_injuries`, `dvp --injuries`). Columns `date,player,team,pos,status,
+injury,timeline,replacement,note`: the timeline, who absorbs the work (one
+beneficiary vs a split) and the scheme read (what the offense's philosophy
+does with the absence). Newest row per player wins, so append rather than
+edit. It is NOT filled by Actions - the research needs the web (WebSearch
+works in the session; WebFetch to news sites is egress-blocked), so a
+scheduled session Routine runs the sweep Tuesday (waiver prep) and Friday
+(final designations), appends rows, regenerates `docs/dvp.js` and ships it.
+Defensive players matter too: a star edge/safety out or back is what
+moves the personnel flags and the scheme notes.
+
 ## Data sources
 
 All from nflverse's GitHub-published files (no scraping): teams from

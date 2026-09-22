@@ -43,6 +43,15 @@ luck, they were skipped steps.
    for the one thing that is genuinely scarce and injury-driven: a starting
    RB. *(A $22 bid on Bryce Young off two games was drafted and withdrawn
    after the user called it - correctly - poor process.)*
+4c. **Check the injury sheet for every candidate and his backup.**
+   `injuries.csv` (rendered as the Injuries table on `#/dvp`, with an
+   OUT/EXEMPT chip on My Team rows) is refreshed by the scheduled sweep
+   (Tuesday waiver prep, Friday designations). A candidate's value is his
+   role *given* who is hurt around him: who absorbs the work, whether it
+   is one beneficiary or a split, and what the offense's scheme does with
+   it. Quote the sheet's timeline; if the sheet is silent, run the sweep
+   (WebSearch - WebFetch is egress-blocked here) before recommending.
+   Never treat "no timeline" as "back next week".
 5. **Log it before the games.** Add the row to `decisions.csv` with the
    board grade and rationale, then grade it after. Unlogged calls don't
    count; overrides are tracked separately on `#/log`.
