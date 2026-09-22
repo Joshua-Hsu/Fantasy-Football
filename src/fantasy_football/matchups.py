@@ -191,10 +191,17 @@ def personnel_flags(rows, *, through_week: int) -> dict[str, list[dict]]:
     if through_week < 2:
         return {}
     hist: dict[tuple[str, str], dict] = {}
+    # Teams with ANY snap rows in the latest week. The snap-count file lags
+    # the box scores by about a day, so a Monday-night game can be missing
+    # while its stats are already in - without this guard every core
+    # defender on that team would be flagged 'out' (the Rams, wk2 2026).
+    reported: set[str] = set()
     for r in rows:
         wk = int(r["week"])
         if wk > through_week:
             continue
+        if wk == through_week:
+            reported.add(str(r["team"]))
         pct = float(r.get("defense_pct") or 0)
         key = (str(r["team"]), str(r["player"]))
         ent = hist.setdefault(key, {"pos": r.get("position", ""), "weeks": {}})
@@ -202,6 +209,8 @@ def personnel_flags(rows, *, through_week: int) -> dict[str, list[dict]]:
 
     out: dict[str, list] = {}
     for (team, player), ent in hist.items():
+        if team not in reported:
+            continue  # game not in the snap file yet (or a bye) - no verdict
         weeks = ent["weeks"]
         earlier = [p for w, p in weeks.items() if w < through_week and p > ABSENT_PCT]
         if not earlier or max(earlier) < CORE_PCT:

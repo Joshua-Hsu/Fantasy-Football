@@ -138,6 +138,10 @@ def test_personnel_flags_out_and_back():
         ("CB One", "out"), ("S Two", "back")}
     # Week 1 has no baseline: nothing is ever flagged.
     assert personnel_flags(rows, through_week=1) == {}
+    # A team with NO rows in the latest week (game not in the snap file yet,
+    # or a bye) gets no flags - otherwise every starter would read 'out'.
+    lag = [wk("LA", "CB Star", "CB", w, 0.98) for w in (1, 2, 3)]
+    assert personnel_flags(lag + rows, through_week=4).get("LA") is None
 
 
 def test_team_pace_opponent_plays(session):
