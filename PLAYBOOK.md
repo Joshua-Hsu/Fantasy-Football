@@ -36,6 +36,13 @@ luck, they were skipped steps.
    level is high and bench spots are scarce: for streaming positions (TE,
    K, DST) either pay for a clear starter or stream purely by the matchup
    board at $0-1. Never bid $3+ on a narrative.
+4b. **FAAB is for scarcity, and QB is not scarce.** In a 12-team 1-QB
+   league the wire has 15-point QBs every week (wk3 2026: eight of them);
+   the draft's whole QB arbitrage rested on that. Stream the board's green
+   QB for $0-1; never bid double digits on a QB or K or DST. Save the budget
+   for the one thing that is genuinely scarce and injury-driven: a starting
+   RB. *(A $22 bid on Bryce Young off two games was drafted and withdrawn
+   after the user called it - correctly - poor process.)*
 5. **Log it before the games.** Add the row to `decisions.csv` with the
    board grade and rationale, then grade it after. Unlogged calls don't
    count; overrides are tracked separately on `#/log`.
