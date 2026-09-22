@@ -271,7 +271,8 @@ after a recommendation, restate the decision from zero and say if it
 reverses the earlier call; (4) log the call before the games, grade it
 after. `#/dvp` (matchups, My Team sheet, model Proj), `#/vegas` (implied
 totals graded vs actuals) and `#/log` all read the `docs/dvp.js` sidecar,
-refreshed by the Tuesday `dvp.yml` Action.
+refreshed by the `dvp.yml` Action (Tue 12:00 UTC for box scores, Wed 06:00
+UTC for the lagging snap counts, before Wednesday waivers).
 
 ## Data sources
 

@@ -1,14 +1,21 @@
 # Weekly defense-vs-position refresh: reloads the current season's box
 # scores from nflverse (plus last season as the early-week baseline) and
 # regenerates docs/dvp.js — the Matchups page's data sidecar. Runs Tuesday
-# mornings, after Monday night's stats land in nflverse's nightly build.
+# noon UTC (box scores complete) and again Wednesday 06:00 UTC, because the
+# snap-count release trails Monday night by a day and the personnel flags
+# must be complete before Wednesday-morning waivers.
 # Independent of the master-tiers rebuild: matchup data changes every
 # week whether or not anyone submitted picks.
 name: Defense vs Position
 
 on:
   schedule:
-    - cron: "0 12 * * 2"   # Tuesdays 12:00 UTC
+    # Tuesday 12:00 UTC: all 16 box scores are in (stats, lines, ranks).
+    # Wednesday 06:00 UTC (2am ET): the snap-count release lags Monday
+    # night by about a day, so personnel flags need a second pass - and it
+    # lands before Wednesday-morning waivers process (~3:30am ET).
+    - cron: "0 12 * * 2"
+    - cron: "0 6 * * 3"
   workflow_dispatch: {}
 
 permissions:
