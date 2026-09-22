@@ -807,6 +807,11 @@
       var pF = (p && avgOpl) ? clamp(p.opl / avgOpl, 0.85, 1.15) : 1;
       return e.ppg * Math.pow(vF, 0.45) * Math.pow(dvpF, 0.35) * Math.pow(pF, 0.2);
     };
+    var injuryFor = function (name) {
+      var L = V.injuries || [];
+      for (var i = 0; i < L.length; i++) if (L[i].n.toLowerCase() === name.toLowerCase()) return L[i];
+      return null;
+    };
     var myRows = "";
     var rosterKeys = loadRoster();
     if (rosterKeys.length) {
@@ -830,6 +835,7 @@
           else if (vg && vg.it <= 17.5) itTxt = "<span class='dvp-out'>" + itTxt + "</span>";
           itCell = "<td" + (vg ? " title='game total " + vg.gt + "'" : "") + ">" + itTxt + "</td>";
         }
+        var inj = injuryFor(e.name);
         var proj = modelProj(e, d);
         var projCell = "<td>" + (proj != null ?
           "<b>" + proj.toFixed(1) + "</b>" +
@@ -839,7 +845,9 @@
           : "") + "</td>";
         // Column order puts Proj right after Opp so it survives a phone
         // viewport; Player is sticky and Tm hides on narrow screens.
-        var cells = "<td class='pk-name dvp-stick'>" + esc(e.name) + "</td><td>" + esc(e.pos) +
+        var cells = "<td class='pk-name dvp-stick'>" + esc(e.name) +
+          (inj ? " <span class='dvp-out' title='" + esc(inj.inj + " - " + inj.tl) + "'>&#9888; " + esc(inj.st) + "</span>" : "") +
+          "</td><td>" + esc(e.pos) +
           "</td><td class='mob-hide'>" + esc(e.team) + "</td><td>" + (o ? esc(o) : "BYE") + "</td>" +
           projCell + itCell;
         if (!t || !t.rk || t.rk[e.pos] == null) {
@@ -868,6 +876,25 @@
         return "<tr" + cls + ">" + cells + "<td>" + cur + "</td><td>" + (b != null ? b : "") +
           "</td><td class='note-col'>" + notes.join(" ") + "</td></tr>";
       }).join("");
+    }
+    var injSection = "";
+    if (V.injuries && V.injuries.length) {
+      var irows = V.injuries.map(function (r) {
+        return "<tr class='dvp-hasnote' onclick='FF.dvpToggle(this)'><td class='pk-name dvp-stick'>" + esc(r.n) +
+          "</td><td>" + esc(r.tm) + "</td><td>" + esc(r.pos) + "</td><td>" + esc(r.st) +
+          "</td><td class='note-col'>" + esc(r.tl) + "</td></tr>" +
+          "<tr class='dvp-noterow' hidden><td colspan='5' class='note-col'>" +
+          "<div class='dvp-scout'><b>injury</b> " + esc(r.inj) + "</div>" +
+          (r.rep ? "<div class='dvp-scout'><b>replacement</b> " + esc(r.rep) + "</div>" : "") +
+          (r.note ? "<div class='dvp-scout'><b>scheme</b> " + esc(r.note) + "</div>" : "") +
+          "<div class='dvp-scout muted'>as of " + esc(r.d) + "</div></td></tr>";
+      }).join("");
+      injSection = "<h2 class='dvp-h2'>Injuries &middot; " + V.injuries.length + " tracked</h2>" +
+        "<div class='table-wrap'><table class='pk'><thead><tr><th class='note-col dvp-stick'>Player</th>" +
+        "<th>Tm</th><th>Pos</th><th>Status</th><th class='note-col'>Timeline</th></tr></thead><tbody>" +
+        irows + "</tbody></table></div>" +
+        "<p class='muted'>Tap a row for the injury, who absorbs the work, and the scheme read. " +
+        "Refreshed by the Tuesday/Friday injury sweep (<code>injuries.csv</code>).</p>";
     }
     var mySection = rosterKeys.length
       ? "<h2 class='dvp-h2'>My team &middot; week " + (V.week || "?") + "</h2>" +
@@ -960,7 +987,7 @@
       " &#9660;/&#9650; mark a core defender who sat out or returned in the latest game - the rank was earned with different personnel." +
       (hasPace ? " OpPl is how many plays this team's opponents get to run per game - clock-milking teams (&#8987;) shrink everyone's chances, fast games (&#9889;) inflate them." : "") +
       (V.vegas ? " OppIT is the Vegas implied total of the offense this defense faces next - the books' own forecast of how many points they give up." : "") + "</p>" +
-      mySection +
+      mySection + injSection +
       "<h2 class='dvp-h2'>All defenses</h2>" +
       "<div class='dvp-tabs'>" + tabs + "</div>" +
       "<div class='table-wrap'><table class='pk'><thead><tr><th>Rk</th><th>Def</th>" +
