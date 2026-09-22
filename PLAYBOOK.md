@@ -60,6 +60,11 @@ Wednesday board is how the Ferguson TD was given away.
 - Player teams change. Read `team` from `data.js` / the DB, never memory
   (Mike Evans is SF; Etienne is NO; DJ Moore is BUF).
 - Roster status codes: commissioner-exempt is `EXE` and stays active.
+- **No stat line is not DNP.** nflverse omits players with all-zero lines;
+  a TE with 0 targets who played every snap has no row. Check snap counts
+  or the roster status before calling anyone inactive (Gesicki, wk2).
+- The snap-count file lags box scores by ~a day; a team missing from the
+  latest week is "not reported", never "everyone out" (Rams, wk2).
 - The web IS reachable from the harness (WebSearch/WebFetch run outside the
   container's network policy). Test a tool before declaring it unavailable.
 - In-season, "latest season" is a one-week sample; builds pin to the last
