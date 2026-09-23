@@ -24,8 +24,9 @@ Notes are **appended, never edited**: a corrected note supersedes the old one.
    thin paragraph; the fan-style question in `scout._PROMPT` came back with
    scheme, personnel percentages, injuries and a fantasy translation for both
    teams. Always give the NEXT prompt at the end of every reply, in a fenced
-   block, ready to copy. The prompt appends the verified box-score lines so
-   the model anchors on real numbers.
+   block, ready to copy, in EXACTLY that format - the user asked that the
+   copy-paste prompt not carry extra stats (the box lines are appended only
+   on the Gemini API path, `--lines` opt-in).
 3. **Verify every paste before filing.** Run
    `python -m fantasy_football.cli scout-verify --team DEN,JAX` and check each
    named line (carries, targets, yards, TDs). Where the paste's *story*

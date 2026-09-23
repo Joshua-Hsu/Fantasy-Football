@@ -819,7 +819,7 @@ def _cmd_scout_prompts(args: argparse.Namespace) -> int:
         for p in pairs:
             print(f"### {p['b']} @ {p['a']}  ({p['score']})  next: {p['a']} {p['a_next']}, {p['b']} {p['b_next']}\n")
             print(scout_prompt(session, year, week, p["a"], p["b"], a_next=p["a_next"],
-                               b_next=p["b_next"], with_lines=not args.no_lines))
+                               b_next=p["b_next"], with_lines=args.lines))
             print()
     return 0
 
@@ -1391,8 +1391,9 @@ def build_parser() -> argparse.ArgumentParser:
     p_sp.add_argument("--year", type=int, default=None)
     p_sp.add_argument("--week", type=int, default=None, help="Default: the last completed week")
     p_sp.add_argument("--game", default=None, help="Only games involving these teams, e.g. DEN-JAX or DEN,BUF")
-    p_sp.add_argument("--no-lines", action="store_true", dest="no_lines",
-                      help="Omit the verified box-score lines from the prompt")
+    p_sp.add_argument("--lines", action="store_true",
+                      help="Append the verified box-score lines (the Gemini API path does this; "
+                           "the copy-paste prompt stays in the exact format that worked)")
     p_sp.set_defaults(func=_cmd_scout_prompts)
 
     p_sv = sub.add_parser("scout-verify", help="Box-score lines a defense faced (check a paste)")
