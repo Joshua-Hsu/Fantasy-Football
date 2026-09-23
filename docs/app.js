@@ -847,6 +847,9 @@
         // viewport; Player is sticky and Tm hides on narrow screens.
         var cells = "<td class='pk-name dvp-stick'>" + esc(e.name) +
           (inj ? " <span class='dvp-out' title='" + esc(inj.inj + " - " + inj.tl) + "'>&#9888; " + esc(inj.st) + "</span>" : "") +
+          // Phone: the sticky name column hides Proj once you scroll, so
+          // repeat the number under the name.
+          (proj != null ? "<span class='dvp-projmini'>proj " + proj.toFixed(1) + "</span>" : "") +
           "</td><td>" + esc(e.pos) +
           "</td><td class='mob-hide'>" + esc(e.team) + "</td><td>" + (o ? esc(o) : "BYE") + "</td>" +
           projCell + itCell;
@@ -869,9 +872,11 @@
         var pace = paceOf(d);
         if (pace && pace.rk <= 6) notes.push("<span class='dvp-slow'>&#8987; slow</span>");
         else if (pace && pace.rk >= n - 5) notes.push("<span class='dvp-fast'>&#9889; fast</span>");
+        // Colour is from YOUR player's side: a core defender OUT softens the
+        // matchup (green), one BACK hardens it (red).
         ((V.flags && V.flags[d]) || []).forEach(function (f) {
-          notes.push("<span class='dvp-" + (f.w === "out" ? "out'>&#9660;" : "back'>&#9650;") +
-            " " + esc(f.n) + "</span>");
+          notes.push("<span class='dvp-" + (f.w === "out" ? "back'>&#9660;" : "out'>&#9650;") +
+            " " + esc(f.n) + " " + f.w + "</span>");
         });
         return "<tr" + cls + ">" + cells + "<td>" + cur + "</td><td>" + (b != null ? b : "") +
           "</td><td class='note-col'>" + notes.join(" ") + "</td></tr>";
@@ -926,8 +931,10 @@
       var pace = paceOf(d);
       if (pace && pace.rk <= 6) notes.push("<span class='dvp-slow'>&#8987; slow games</span>");
       else if (pace && pace.rk >= n - 5) notes.push("<span class='dvp-fast'>&#9889; fast games</span>");
+      // Same convention as My Team: OUT = softer for the offense facing them
+      // (green), BACK = tougher (red).
       ((V.flags && V.flags[d]) || []).forEach(function (f) {
-        notes.push("<span class='dvp-" + (f.w === "out" ? "out'>&#9660;" : "back'>&#9650;") +
+        notes.push("<span class='dvp-" + (f.w === "out" ? "back'>&#9660;" : "out'>&#9650;") +
           " " + esc(f.n) + " (" + esc(f.p) + ") " + f.w + "</span>");
       });
       var curPace = (t.pace || pace);
@@ -984,7 +991,7 @@
       (baseHdr ? " " + baseHdr + " is last season's full-sample rank; trust it more in the early weeks." : "") +
       (V.week ? " Wk " + V.week + " shows who that defense faces next (v home, @ away)." : "") +
       " Funnel badges mark defenses with big rank splits - they choose what they stop, and scheme repeats: run/pass funnels compare the RB rank to the passing ranks, WR/TE funnels split the pass game." +
-      " &#9660;/&#9650; mark a core defender who sat out or returned in the latest game - the rank was earned with different personnel." +
+      " <span class='dvp-back'>&#9660; out</span> / <span class='dvp-out'>&#9650; back</span> mark a core defender who sat out (softer than the rank says) or returned (tougher) in the latest game - the rank was earned with different personnel." +
       (hasPace ? " OpPl is how many plays this team's opponents get to run per game - clock-milking teams (&#8987;) shrink everyone's chances, fast games (&#9889;) inflate them." : "") +
       (V.vegas ? " OppIT is the Vegas implied total of the offense this defense faces next - the books' own forecast of how many points they give up." : "") + "</p>" +
       mySection + injSection +
