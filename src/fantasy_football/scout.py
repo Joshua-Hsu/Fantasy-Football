@@ -36,10 +36,15 @@ from .models import Game, Player, PlayerGameStats, Team
 
 NOTE_CAP = 900  # matches read_defense_notes
 
-# The wording that got full two-team answers out of Gemini. A terse
-# "scout X for fantasy" prompt came back as one thin paragraph; this reads
-# like a person asking and came back with scheme, personnel and numbers.
-_PROMPT = (
+# The wording that got full two-team answers out of Gemini lives in
+# prompts/defense_scout.txt (edit THAT, with a changelog in prompts/README.md).
+# A terse "scout X for fantasy" prompt came back as one thin paragraph; this
+# reads like a person asking and came back with scheme, personnel and
+# numbers. The copy below is only the fallback if the file is missing.
+PROMPT_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
+    os.path.abspath(__file__)))), "prompts", "defense_scout.txt")
+
+_PROMPT_FALLBACK = (
     "I'm in a fantasy football league and trying to get a real feel for the "
     "{a} and {b} defenses after their week {week} game this season ({year}). "
     "Not just the box score, more how each defense actually played. Were they "
@@ -53,9 +58,18 @@ _PROMPT = (
     "give up fantasy points to, and which do they shut down? {a_short} plays "
     "{a_next} next week and {b_short} plays {b_next}, so how does that apply? "
     "Snap shares, pressure rates, targets allowed, anything with numbers is "
-    "great. A couple of solid paragraphs on each team is perfect, with a "
-    "heading for each team."
+    "great. A couple of solid paragraphs on each team is perfect."
 )
+
+
+def prompt_template(path: str | None = None) -> str:
+    """The scouting question template: the prompts/ file, else the fallback."""
+    path = path or PROMPT_FILE
+    try:
+        text = open(path, encoding="utf-8").read().strip()
+        return text or _PROMPT_FALLBACK
+    except OSError:
+        return _PROMPT_FALLBACK
 
 
 def _team_names(session: Session) -> dict[str, tuple[str, str]]:
@@ -153,7 +167,7 @@ def scout_prompt(session: Session, year: int, week: int, a: str, b: str,
         tm = code.lstrip("@v")
         return ("at the " if code.startswith("@") else "the ") + names.get(tm, (tm, tm))[0].split(" ")[-1]
 
-    text = _PROMPT.format(a=fa, b=fb, a_short=sa, b_short=sb, week=week, prev=max(week - 1, 1),
+    text = prompt_template().format(a=fa, b=fb, a_short=sa, b_short=sb, week=week, prev=max(week - 1, 1),
                           year=year, a_next=opp_name(a_next), b_next=opp_name(b_next))
     if with_lines:
         la, lb = box_lines(session, year, week, a), box_lines(session, year, week, b)
