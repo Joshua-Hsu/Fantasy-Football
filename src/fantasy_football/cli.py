@@ -791,6 +791,90 @@ def _cmd_usage(args: argparse.Namespace) -> int:
     return 0
 
 
+def _scout_week(session, args):
+    from sqlalchemy import func, select
+
+    from .matchups import next_week
+    from .models import Game
+
+    year = args.year or session.scalar(
+        select(func.max(Game.season_year)).where(Game.season_type == "regular"))
+    week = args.week or ((next_week(session, year) or 2) - 1)
+    return year, week
+
+
+def _cmd_scout_prompts(args: argparse.Namespace) -> int:
+    """Print the fan-style scouting question for each played game of a week."""
+    from .scout import game_pairs, scout_prompt
+
+    with _open_session(args) as session:
+        year, week = _scout_week(session, args)
+        pairs = game_pairs(session, year, week)
+        if args.game:
+            want = {x.strip().upper() for x in args.game.replace("-", ",").split(",")}
+            pairs = [p for p in pairs if p["a"] in want or p["b"] in want]
+        if not pairs:
+            print(f"No played games for {year} week {week}")
+            return 1
+        for p in pairs:
+            print(f"### {p['b']} @ {p['a']}  ({p['score']})  next: {p['a']} {p['a_next']}, {p['b']} {p['b_next']}\n")
+            print(scout_prompt(session, year, week, p["a"], p["b"], a_next=p["a_next"],
+                               b_next=p["b_next"], with_lines=not args.no_lines))
+            print()
+    return 0
+
+
+def _cmd_scout_verify(args: argparse.Namespace) -> int:
+    """Print the box-score lines a defense faced, to check a paste against."""
+    from .scout import box_lines
+
+    with _open_session(args) as session:
+        year, week = _scout_week(session, args)
+        for team in [t.strip().upper() for t in args.team.split(",")]:
+            lines = box_lines(session, year, week, team)
+            print(f"\n{team} defense faced, {year} week {week}:")
+            print("\n".join("  " + x for x in lines) if lines else "  (no game / no stats loaded)")
+    return 0
+
+
+def _cmd_scout_run(args: argparse.Namespace) -> int:
+    """Fully automated notes via the Gemini API (GEMINI_API_KEY), one game per call."""
+    import datetime as dt
+    import os
+
+    from .scout import (_team_names, append_notes, game_pairs, gemini_scout, noted_teams,
+                        parse_sections, scout_prompt)
+
+    key = os.environ.get("GEMINI_API_KEY")
+    if not key:
+        print("GEMINI_API_KEY is not set - nothing to do (paste-and-verify path still works)")
+        return 1
+    date = dt.date.today().isoformat()
+    with _open_session(args) as session:
+        year, week = _scout_week(session, args)
+        names = _team_names(session)
+        done = noted_teams(args.notes, args.since) if args.since else set()
+        pairs = [p for p in game_pairs(session, year, week)
+                 if not (p["a"] in done and p["b"] in done)]
+        written = 0
+        for p in pairs[: args.limit]:
+            prompt = scout_prompt(session, year, week, p["a"], p["b"],
+                                  a_next=p["a_next"], b_next=p["b_next"])
+            try:
+                text = gemini_scout(prompt, key, model=args.model)
+            except Exception as exc:  # noqa: BLE001 - one bad game must not kill the run
+                print(f"{p['b']} @ {p['a']}: Gemini call failed: {exc}")
+                continue
+            notes = parse_sections(text, p["a"], p["b"], names)
+            notes = {k: f"Wk{week} auto (Gemini, unverified): " + v for k, v in notes.items()
+                     if k not in done}
+            n = append_notes(args.notes, notes, date)
+            written += n
+            print(f"{p['b']} @ {p['a']}: {n} note(s)")
+        print(f"wrote {written} notes to {args.notes}")
+    return 0
+
+
 def _cmd_dvp(args: argparse.Namespace) -> int:
     from sqlalchemy import func, select
 
@@ -1301,6 +1385,31 @@ def build_parser() -> argparse.ArgumentParser:
     p_dvp.add_argument("--no-snaps", action="store_true", dest="no_snaps",
                        help="Skip fetching snap counts (no personnel out/back flags)")
     p_dvp.set_defaults(func=_cmd_dvp)
+
+    p_sp = sub.add_parser("scout-prompts",
+                          help="Print the two-defense scouting question for each game of a week")
+    p_sp.add_argument("--year", type=int, default=None)
+    p_sp.add_argument("--week", type=int, default=None, help="Default: the last completed week")
+    p_sp.add_argument("--game", default=None, help="Only games involving these teams, e.g. DEN-JAX or DEN,BUF")
+    p_sp.add_argument("--no-lines", action="store_true", dest="no_lines",
+                      help="Omit the verified box-score lines from the prompt")
+    p_sp.set_defaults(func=_cmd_scout_prompts)
+
+    p_sv = sub.add_parser("scout-verify", help="Box-score lines a defense faced (check a paste)")
+    p_sv.add_argument("--team", required=True, help="Defense abbreviation(s), comma-separated")
+    p_sv.add_argument("--year", type=int, default=None)
+    p_sv.add_argument("--week", type=int, default=None)
+    p_sv.set_defaults(func=_cmd_scout_verify)
+
+    p_sr = sub.add_parser("scout-run", help="Write notes for a week via the Gemini API (GEMINI_API_KEY)")
+    p_sr.add_argument("--year", type=int, default=None)
+    p_sr.add_argument("--week", type=int, default=None)
+    p_sr.add_argument("--notes", default="defense_notes.csv")
+    p_sr.add_argument("--since", default=None,
+                      help="Skip teams already noted on/after this date (YYYY-MM-DD)")
+    p_sr.add_argument("--limit", type=int, default=16, help="Max games per run")
+    p_sr.add_argument("--model", default="gemini-2.5-flash")
+    p_sr.set_defaults(func=_cmd_scout_run)
 
     p_byes = sub.add_parser("load-byes", help="Set team bye weeks from the schedule")
     p_byes.add_argument("--year", type=int, default=None, help="Season year (default: current year)")

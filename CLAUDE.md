@@ -287,6 +287,19 @@ scheduled session Routine runs the sweep Tuesday (waiver prep) and Friday
 Defensive players matter too: a star edge/safety out or back is what
 moves the personnel flags and the scheme notes.
 
+**Defense notes loop** (`scout.py`, skill `.claude/skills/defense-notes`).
+`defense_notes.csv` gets one note per defense per week; notes are appended,
+newest wins. `cli scout-prompts --game DEN-JAX` prints the fan-style
+two-defense question that gets full answers out of Gemini (a terse
+"scout X" prompt came back thin) with the verified box-score lines
+appended; `cli scout-verify --team DEN,JAX` prints the lines a paste must
+be checked against before filing (file the number and the correction when
+the paste's story contradicts it); `cli scout-run` is the automated path
+via the Gemini API with search grounding (`GEMINI_API_KEY` secret,
+`scout.yml` Tuesday 13:00 UTC, notes prefixed "auto (Gemini, unverified)").
+Cap is 900 chars (`cap_note`). Always hand the user the NEXT game's prompt
+in a fenced block at the end of a reply.
+
 ## Data sources
 
 All from nflverse's GitHub-published files (no scraping): teams from
