@@ -67,3 +67,17 @@ def test_append_and_noted(tmp_path):
     assert rows[-1]["team"] == "DEN" and rows[-1]["date"] == "2026-09-23"
     assert noted_teams(str(path), "2026-09-22") == {"DEN"}
     assert noted_teams(str(path), "2026-09-24") == set()
+
+
+def test_prompt_template_file(tmp_path):
+    from fantasy_football.scout import PROMPT_FILE, _PROMPT_FALLBACK, prompt_template
+
+    # The committed file is the source of truth and carries every placeholder.
+    text = prompt_template()
+    for ph in ("{a}", "{b}", "{a_short}", "{b_short}", "{a_next}", "{b_next}", "{week}", "{prev}", "{year}"):
+        assert ph in text
+    assert PROMPT_FILE.endswith("prompts/defense_scout.txt")
+    # Missing / empty file -> fallback, never a crash.
+    assert prompt_template(str(tmp_path / "nope.txt")) == _PROMPT_FALLBACK
+    (tmp_path / "empty.txt").write_text("")
+    assert prompt_template(str(tmp_path / "empty.txt")) == _PROMPT_FALLBACK

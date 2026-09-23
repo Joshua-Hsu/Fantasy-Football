@@ -20,13 +20,17 @@ Notes are **appended, never edited**: a corrected note supersedes the old one.
    first (roster = My Team keys on `#/dvp`).
 2. **Hand the user one prompt per game**, both defenses in one question:
    `python -m fantasy_football.cli scout-prompts --game DEN-JAX`.
-   The wording matters. A terse "scout X for fantasy" prompt came back as one
-   thin paragraph; the fan-style question in `scout._PROMPT` came back with
-   scheme, personnel percentages, injuries and a fantasy translation for both
-   teams. Always give the NEXT prompt at the end of every reply, in a fenced
-   block, ready to copy, in EXACTLY that format - the user asked that the
-   copy-paste prompt not carry extra stats (the box lines are appended only
-   on the Gemini API path, `--lines` opt-in).
+   The wording matters and it lives in **`prompts/defense_scout.txt`** (the
+   source of truth; `scout.py` reads it at run time). A terse "scout X for
+   fantasy" prompt came back as one thin paragraph; the fan-style question
+   in that file came back with scheme, personnel percentages, injuries and
+   a fantasy translation for both teams. Always give the NEXT prompt at the
+   end of every reply, in a fenced block, ready to copy, in EXACTLY that
+   format - the user asked that the copy-paste prompt not carry extra stats
+   (the box lines are appended only on the Gemini API path, `--lines`
+   opt-in). **Tweaking the prompt**: edit the file, and log the change and
+   its result in `prompts/README.md` (what came back better or worse), so
+   the prompt improves week over week instead of drifting.
 3. **Verify every paste before filing.** Run
    `python -m fantasy_football.cli scout-verify --team DEN,JAX` and check each
    named line (carries, targets, yards, TDs). Where the paste's *story*
