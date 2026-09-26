@@ -722,6 +722,23 @@
   // ---- matchups: defense-vs-position (#/dvp) ----
   // Reads the dvp.js sidecar (regenerated weekly, independent of the master
   // rebuild); the page simply doesn't render when the file is missing.
+  // A scouting note is one dense paragraph in the CSV. Break it into the
+  // pieces a reader scans for: the scheme/what-happened body, the
+  // "Fantasy read" sentence, and the next-opponent line ("Wk3 vNE: ...").
+  function fmtNote(date, text) {
+    var body = String(text || ""), read = "", next = "";
+    var i = body.search(/\bFantasy read:/);
+    if (i >= 0) { read = body.slice(i).replace(/^Fantasy read:\s*/, ""); body = body.slice(0, i); }
+    var src = read || body;
+    var j = src.search(/\bWk\s?\d+\s+[v@][A-Z]{2,3}\b/);
+    if (j > 0) { next = src.slice(j); if (read) read = src.slice(0, j); else body = src.slice(0, j); }
+    var out = "<div class='dvp-note'><div class='dvp-note-h'>" + esc(date || "") + "</div>" +
+      "<p>" + esc(body.trim()) + "</p>" +
+      (read ? "<p><b>Fantasy read</b> " + esc(read.trim()) + "</p>" : "") +
+      (next ? "<p><b>Next</b> " + esc(next.trim()) + "</p>" : "") + "</div>";
+    return out;
+  }
+
   function dvpPage(pos) {
     var V = window.FF_DVP;
     if (!V || !V.teams || !Object.keys(V.teams).length) {
@@ -968,18 +985,19 @@
         (expandable ? " onclick='FF.dvpToggle(this)'" : "") +
         "><td>" + t.rk[pos] + "</td><td>" + esc(d) +
         (scout.length ? " <span class='dvp-i'>&#9432;</span>" : "") + "</td><td>" +
-        t[pos].toFixed(1) + "</td><td>" + t.g + "</td>" +
+        t[pos].toFixed(1) + "</td><td class='mob-hide'>" + t.g + "</td>" +
         (baseHdr ? "<td>" + base + "</td>" : "") +
-        (hasPace ? "<td>" + (curPace ? curPace.opl.toFixed(0) : "") + "</td>" : "") +
+        // Games and opponent plays fold into the expanded "auto" line on
+        // phones so the table fits the screen and the header can stick.
+        (hasPace ? "<td class='mob-hide'>" + (curPace ? curPace.opl.toFixed(0) : "") + "</td>" : "") +
         (V.week ? "<td>" + esc(opp) + "</td>" : "") +
         (V.vegas ? "<td>" + offIT + "</td>" : "") +
         "<td class='note-col'>" + notes.join(" ") + "</td></tr>";
       if (expandable) {
         row += "<tr class='dvp-noterow' hidden><td colspan='9' class='note-col'>" +
-          (mline ? "<div class='dvp-scout'><b>auto</b> " + mline + "</div>" : "") +
-          scout.map(function (s) {
-            return "<div class='dvp-scout'><b>" + esc(s.d || "") + "</b> " + esc(s.t) + "</div>";
-          }).join("") + "</td></tr>";
+          (mline ? "<div class='dvp-scout'><b>auto</b> " + mline +
+            (t.g ? " &middot; " + t.g + " g" : "") + "</div>" : "") +
+          scout.map(function (s) { return fmtNote(s.d, s.t); }).join("") + "</td></tr>";
       }
       return row;
     }).join("");
@@ -997,13 +1015,18 @@
       mySection + injSection +
       "<h2 class='dvp-h2'>All defenses</h2>" +
       "<div class='dvp-tabs'>" + tabs + "</div>" +
-      "<div class='table-wrap'><table class='pk'><thead><tr><th>Rk</th><th>Def</th>" +
-      "<th>FP/g</th><th>G</th>" + (baseHdr ? "<th>" + baseHdr + "</th>" : "") +
-      (hasPace ? "<th>OpPl</th>" : "") +
+      "<div class='table-wrap dvp-fit'><table class='pk'><thead><tr><th title='rank, 32 = softest'>Rk</th><th>Def</th>" +
+      "<th title='fantasy points allowed per game'>FP/g</th><th class='mob-hide'>G</th>" +
+      (baseHdr ? "<th title='last season rank'>" + baseHdr + "</th>" : "") +
+      (hasPace ? "<th class='mob-hide' title='opponent plays per game'>OpPl</th>" : "") +
       (V.week ? "<th>Wk " + V.week + "</th>" : "") +
       (V.vegas ? "<th>OppIT</th>" : "") +
       "<th class='note-col'>Notes</th></tr></thead><tbody>" + rows +
       "</tbody></table></div>";
+    // The sticky column header sits just under the nav, whose height depends
+    // on whether the pill wrapped to a second line - measure it.
+    var nv = document.querySelector(".nav");
+    if (nv) document.documentElement.style.setProperty("--nav-h", nv.offsetHeight + "px");
   }
 
 

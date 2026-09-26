@@ -361,8 +361,32 @@
   tr.dvp-hasnote { cursor:pointer; }
   .dvp-i { color:var(--accent-ink); font-size:.8rem; }
   tr.dvp-noterow td { background:var(--surface-2); font-size:.8rem; }
-  .dvp-scout { text-align:left; max-width:none; padding:.15rem 0; }
+  /* Expanded notes live inside a sideways-scrolling table: pin each block to
+     the left edge and cap it at the viewport so the text wraps instead of
+     running off the screen. */
+  table.pk tr.dvp-noterow td.note-col { max-width:none; padding:.2rem 0; }
+  .dvp-scout, .dvp-note {
+    position:sticky; left:0; box-sizing:border-box; text-align:left;
+    max-width:calc(100vw - 2rem - 2px); white-space:normal; padding:.15rem .5rem;
+  }
   .dvp-scout b { color:var(--muted); font-weight:600; margin-right:.35rem; }
+  .dvp-note { padding:.35rem .5rem .45rem; border-top:1px solid var(--line); line-height:1.45; }
+  .dvp-note-h { font-size:.7rem; font-weight:700; letter-spacing:.04em; text-transform:uppercase; color:var(--muted); margin-bottom:.15rem; }
+  .dvp-note p { margin:.2rem 0; color:var(--ink); }
+  .dvp-note p b { color:var(--accent-ink); font-weight:700; margin-right:.3rem; }
+  /* The All-defenses table is trimmed to fit a phone, so it need not scroll
+     sideways and its header can stick under the nav. */
+  @media (max-width: 640px) {
+    .dvp-fit { overflow:visible; }
+    .dvp-fit table.pk { font-size:.78rem; table-layout:auto; }
+    .dvp-fit table.pk th, .dvp-fit table.pk td { padding:.32rem .3rem; }
+    /* Badges may wrap inside a narrow Notes column so the table fits 390px. */
+    .dvp-fit table.pk td.note-col { max-width:7.5rem; white-space:normal; line-height:1.35; }
+    .dvp-fit td.note-col .badge, .dvp-fit td.note-col .dvp-out, .dvp-fit td.note-col .dvp-back,
+    .dvp-fit td.note-col .dvp-slow, .dvp-fit td.note-col .dvp-fast { white-space:normal; display:inline-block; margin:.05rem 0; }
+    .dvp-fit thead th { position:sticky; top:var(--nav-h, 5.4rem); z-index:2; }
+    .dvp-fit .dvp-scout, .dvp-fit .dvp-note { position:static; max-width:none; }
+  }
   .dvp-h2 { font-size:1.15rem; letter-spacing:-.01em; margin:1.4rem 0 .6rem; }
   /* Wide tables scroll sideways on phones; the first column stays pinned. */
   .dvp-stick { position:sticky; left:0; z-index:1; background:var(--surface); }
@@ -396,6 +420,6 @@
 </script>
 <script src="data.js?v=2026091718"></script>
 <script src="dvp.js?v=2026092501"></script>
-<script src="app.js?v=2026092320"></script>
+<script src="app.js?v=2026092601"></script>
 </body>
 </html>
