@@ -44,9 +44,12 @@ luck, they were skipped steps.
    RB. *(A $22 bid on Bryce Young off two games was drafted and withdrawn
    after the user called it - correctly - poor process.)*
 4c. **Check the injury sheet for every candidate and his backup.**
-   `injuries.csv` (rendered as the Injuries table on `#/dvp`, with an
-   OUT/EXEMPT chip on My Team rows) is refreshed by the scheduled sweep
-   (Tuesday waiver prep, Friday designations). A candidate's value is his
+   The Injuries table on `#/dvp` is the league's official report (status,
+   injury, practice participation - tokenless, refreshed Tue/Wed/Sat/Sun by
+   the Action) joined to `injuries.csv`, the analysis sheet the scheduled
+   sweep fills (Tuesday waiver prep, Friday designations); My Team rows carry
+   the official designation as a chip, and a core defender ruled Out shows
+   as "▼ out (report)" on his defense's row before the game. A candidate's value is his
    role *given* who is hurt around him: who absorbs the work, whether it
    is one beneficiary or a split, and what the offense's scheme does with
    it. Quote the sheet's timeline; if the sheet is silent, run the sweep

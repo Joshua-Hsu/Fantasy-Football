@@ -16,6 +16,12 @@ on:
     # lands before Wednesday-morning waivers process (~3:30am ET).
     - cron: "0 12 * * 2"
     - cron: "0 6 * * 3"
+    # Saturday 06:00 UTC: Friday's official game designations (Out /
+    # Doubtful / Questionable) have landed in nflverse's injuries file.
+    # Sunday 14:00 UTC (10am ET): last pass for Saturday downgrades before
+    # the early kickoffs. Both are tokenless - the report is a plain CSV.
+    - cron: "0 6 * * 6"
+    - cron: "0 14 * * 0"
   workflow_dispatch: {}
 
 permissions:

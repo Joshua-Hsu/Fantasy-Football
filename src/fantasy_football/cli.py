@@ -910,6 +910,7 @@ def _cmd_dvp(args: argparse.Namespace) -> int:
         if args.out:
             flags = None
             metrics: dict[str, dict] = {}
+            snaps: list[dict] = []
             if not args.no_snaps:
                 cur = defense_vs_position(session, year, rules=rules)
                 wk = cur["through_week"]
@@ -928,6 +929,22 @@ def _cmd_dvp(args: argparse.Namespace) -> int:
                         metrics.setdefault(a, {}).update(m)
                 except Exception as exc:  # noqa: BLE001 - metrics are optional
                     print(f"warning: pressure metrics skipped: {exc}")
+            # Official injury report (tokenless): designations for the coming
+            # week, and pre-game flags for core defenders listed Out/Doubtful.
+            official = None
+            if not args.no_official:
+                try:
+                    from .matchups import (fetch_injuries, merge_flags, next_week,
+                                           official_flags, official_injuries)
+                    wk_inj = next_week(session, year)
+                    if wk_inj:
+                        official = official_injuries(fetch_injuries(year), week=wk_inj) or None
+                    if official and snaps:
+                        cur2 = defense_vs_position(session, year, rules=rules)
+                        rpt = official_flags(official, snaps, through_week=cur2["through_week"])
+                        flags = merge_flags(flags, rpt) or None
+                except Exception as exc:  # noqa: BLE001 - the report is optional
+                    print(f"warning: official injury report skipped: {exc}")
             vegas = None
             vweeks = None
             try:
@@ -947,7 +964,8 @@ def _cmd_dvp(args: argparse.Namespace) -> int:
                                 metrics=metrics or None, vegas=vegas,
                                 vegas_weeks_payload=vweeks,
                                 decisions=read_decisions(args.decisions),
-                                injuries=read_injuries(args.injuries))
+                                injuries=read_injuries(args.injuries),
+                                official=official)
             print(f"Wrote {path}")
     return 0
 
@@ -1384,6 +1402,8 @@ def build_parser() -> argparse.ArgumentParser:
                        help="Pre-registered decision log CSV rendered on the app's Log page")
     p_dvp.add_argument("--no-snaps", action="store_true", dest="no_snaps",
                        help="Skip fetching snap counts (no personnel out/back flags)")
+    p_dvp.add_argument("--no-official", action="store_true", dest="no_official",
+                       help="Skip the official nflverse injury report (designations + pre-game flags)")
     p_dvp.set_defaults(func=_cmd_dvp)
 
     p_sp = sub.add_parser("scout-prompts",

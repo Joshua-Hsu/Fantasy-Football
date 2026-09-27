@@ -289,3 +289,49 @@ def test_read_decisions(tmp_path):
     assert log[1]["ovr"] is True and log[1]["v"] == "miss"
     assert log[0]["ovr"] is False and log[0]["v"] == "pending"
     assert read_decisions(str(tmp_path / "missing.csv")) == []
+
+
+def test_official_injuries_and_flags():
+    from fantasy_football.matchups import merge_flags, official_flags, official_injuries
+
+    rows = [
+        {"week": 3, "team": "SF", "position": "DE", "full_name": "Nick Bosa",
+         "report_status": "Out", "practice_status": "Did Not Participate In Practice",
+         "report_primary_injury": "Knee", "practice_primary_injury": "Knee"},
+        {"week": 3, "team": "SF", "position": "WR", "full_name": "Mike Evans",
+         "report_status": "Questionable", "practice_status": "Limited Participation in Practice",
+         "report_primary_injury": "Hip", "practice_primary_injury": "Hip"},
+        {"week": 3, "team": "LA", "position": "WR", "full_name": "Puka Nacua",
+         "report_status": float("nan"), "practice_status": "Did Not Participate In Practice",
+         "report_primary_injury": float("nan"), "practice_primary_injury": "Hip"},
+        {"week": 3, "team": "NO", "position": "RB", "full_name": "Travis Etienne",
+         "report_status": float("nan"), "practice_status": "Full Participation in Practice",
+         "report_primary_injury": float("nan"), "practice_primary_injury": "Hamstring"},
+        {"week": 3, "team": "SF", "position": "LB", "full_name": "Backup Guy",
+         "report_status": "Out", "practice_status": "Did Not Participate In Practice",
+         "report_primary_injury": "Toe", "practice_primary_injury": "Toe"},
+        {"week": 2, "team": "SF", "position": "WR", "full_name": "Old Row",
+         "report_status": "Out", "practice_status": "Did Not Participate In Practice",
+         "report_primary_injury": "X", "practice_primary_injury": "X"},
+    ]
+    off = official_injuries(rows, week=3)
+    assert [r["n"] for r in off] == ["Backup Guy", "Nick Bosa", "Mike Evans", "Puka Nacua"]  # worst first
+    nacua = off[-1]
+    assert nacua["st"] == "DNP" and nacua["inj"] == "Hip" and nacua["prac"] == "DNP"  # no designation yet
+    assert off[2]["st"] == "QUESTIONABLE" and off[2]["prac"] == "LP"
+    assert not any(r["n"] in ("Travis Etienne", "Old Row") for r in off)  # full practice / other week
+
+    snaps = [
+        {"week": 1, "team": "SF", "player": "Nick Bosa", "position": "DE", "defense_pct": 0.9},
+        {"week": 2, "team": "SF", "player": "Nick Bosa", "position": "DE", "defense_pct": 0.8},
+        {"week": 1, "team": "SF", "player": "Backup Guy", "position": "LB", "defense_pct": 0.2},
+        {"week": 2, "team": "SF", "player": "Backup Guy", "position": "LB", "defense_pct": 0.3},
+    ]
+    rpt = official_flags(off, snaps, through_week=2)
+    assert rpt == {"SF": [{"n": "Nick Bosa", "p": "DE", "w": "out", "src": "rpt"}]}  # core only, no WRs
+    assert official_flags(off, [], through_week=2) == {}  # can't tell core without snaps
+
+    snap_flags = {"SF": [{"n": "Nick Bosa", "p": "DE", "w": "out"}], "LA": [{"n": "X", "p": "S", "w": "out"}]}
+    merged = merge_flags(snap_flags, rpt)
+    assert len(merged["SF"]) == 1 and merged["SF"][0].get("src") is None  # first occurrence wins
+    assert merged["LA"][0]["n"] == "X"

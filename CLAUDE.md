@@ -280,12 +280,21 @@ UTC for the lagging snap counts, before Wednesday waivers).
 injury,timeline,replacement,note`: the timeline, who absorbs the work (one
 beneficiary vs a split) and the scheme read (what the offense's philosophy
 does with the absence). Newest row per player wins, so append rather than
-edit. It is NOT filled by Actions - the research needs the web (WebSearch
-works in the session; WebFetch to news sites is egress-blocked), so a
-scheduled session Routine runs the sweep Tuesday (waiver prep) and Friday
-(final designations), appends rows, regenerates `docs/dvp.js` and ships it.
-Defensive players matter too: a star edge/safety out or back is what
-moves the personnel flags and the scheme notes.
+edit. Two layers: the **official report** is tokenless - nflverse
+republishes the league's practice reports and Friday designations as
+`injuries_{year}.csv` (`INJURIES_URL`, GitHub-hosted, reachable everywhere);
+`fetch_injuries` + `official_injuries` put the coming week's Out / Doubtful /
+Questionable / DNP rows in the payload (`FF_DVP.official`), the page joins
+them to the analysis sheet by name, the My Team chip prefers the official
+designation, and `official_flags` raises a pre-game "▼ X out (report)"
+flag for a core defender (>=60% snaps) listed Out/Doubtful - so Bosa ruled
+out on Friday shows on Arizona's row before kickoff instead of after the
+snap file lands. `dvp.yml` runs it Tue/Wed/Sat/Sun. The **analysis layer**
+(timeline, who absorbs the work, scheme) needs judgment: the session
+Routines (Tuesday waiver prep, Friday designations) do it with WebSearch
+(WebFetch to news sites is egress-blocked), append rows and ship; that path
+costs tokens, the official layer does not. Defensive players matter too: a
+star edge/safety out or back is what moves the flags and the scheme notes.
 
 **Defense notes loop** (`scout.py`, skill `.claude/skills/defense-notes`).
 `defense_notes.csv` gets one note per defense per week; notes are appended,
