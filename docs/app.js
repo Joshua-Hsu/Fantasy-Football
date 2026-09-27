@@ -824,7 +824,19 @@
       var pF = (p && avgOpl) ? clamp(p.opl / avgOpl, 0.85, 1.15) : 1;
       return e.ppg * Math.pow(vF, 0.45) * Math.pow(dvpF, 0.35) * Math.pow(pF, 0.2);
     };
+    // Two injury layers: the official report (V.official - designation,
+    // injury, practice; tokenless, refreshed by the Action) and the analysis
+    // sheet (V.injuries - timeline, who absorbs the work, scheme). The chip
+    // on a My Team row prefers the official designation when there is one.
+    var officialFor = function (name) {
+      var L = V.official || [];
+      for (var i = 0; i < L.length; i++) if (L[i].n.toLowerCase() === name.toLowerCase()) return L[i];
+      return null;
+    };
     var injuryFor = function (name) {
+      var o = officialFor(name);
+      if (o) return { n: o.n, st: o.st, inj: o.inj + (o.prac ? " (" + o.prac + " in practice)" : ""),
+                      tl: "official report, week " + (V.week || "?"), official: true };
       var L = V.injuries || [];
       for (var i = 0; i < L.length; i++) if (L[i].n.toLowerCase() === name.toLowerCase()) return L[i];
       return null;
@@ -893,30 +905,60 @@
         // matchup (green), one BACK hardens it (red).
         ((V.flags && V.flags[d]) || []).forEach(function (f) {
           notes.push("<span class='dvp-" + (f.w === "out" ? "back'>&#9660;" : "out'>&#9650;") +
-            " " + esc(f.n) + " " + f.w + "</span>");
+            " " + esc(f.n) + " " + f.w + (f.src === "rpt" ? " (report)" : "") + "</span>");
         });
         return "<tr" + cls + ">" + cells + "<td>" + cur + "</td><td>" + (b != null ? b : "") +
           "</td><td class='note-col'>" + notes.join(" ") + "</td></tr>";
       }).join("");
     }
     var injSection = "";
-    if (V.injuries && V.injuries.length) {
-      var irows = V.injuries.map(function (r) {
-        return "<tr class='dvp-hasnote' onclick='FF.dvpToggle(this)'><td class='pk-name dvp-stick'>" + esc(r.n) +
-          "</td><td>" + esc(r.tm) + "</td><td>" + esc(r.pos) + "</td><td>" + esc(r.st) +
-          "</td><td class='note-col'>" + esc(r.tl) + "</td></tr>" +
-          "<tr class='dvp-noterow' hidden><td colspan='5' class='note-col'>" +
-          "<div class='dvp-scout'><b>injury</b> " + esc(r.inj) + "</div>" +
-          (r.rep ? "<div class='dvp-scout'><b>replacement</b> " + esc(r.rep) + "</div>" : "") +
-          (r.note ? "<div class='dvp-scout'><b>scheme</b> " + esc(r.note) + "</div>" : "") +
-          "<div class='dvp-scout muted'>as of " + esc(r.d) + "</div></td></tr>";
+    var analysisFor = function (name) {
+      var L = V.injuries || [];
+      for (var i = 0; i < L.length; i++) if (L[i].n.toLowerCase() === name.toLowerCase()) return L[i];
+      return null;
+    };
+    var rosterNames = {};
+    (loadRoster() || []).forEach(function (k) { var e = BYKEY[k]; if (e) rosterNames[e.name.toLowerCase()] = 1; });
+    // Official rows: fantasy positions only (defenders feed the flags), all
+    // designations; then any analysis-sheet player the report does not list
+    // (exempt list, IR, long-term) so nothing tracked disappears.
+    var FPOS = { QB: 1, RB: 1, WR: 1, TE: 1, K: 1 };
+    var merged = [], seen = {};
+    (V.official || []).forEach(function (o) {
+      if (!FPOS[o.pos] && !rosterNames[o.n.toLowerCase()]) return;
+      seen[o.n.toLowerCase()] = 1;
+      merged.push({ n: o.n, tm: o.tm, pos: o.pos, st: o.st, inj: o.inj, prac: o.prac, a: analysisFor(o.n), official: true });
+    });
+    (V.injuries || []).forEach(function (r) {
+      if (seen[r.n.toLowerCase()]) return;
+      merged.push({ n: r.n, tm: r.tm, pos: r.pos, st: r.st, inj: r.inj, prac: "", a: r, official: false });
+    });
+    if (merged.length) {
+      var stCls = function (st) {
+        st = String(st || "").toUpperCase();
+        return /OUT|IR|EXEMPT|DOUBTFUL/.test(st) ? "dvp-out" : /QUEST|DNP|WEEK/.test(st) ? "dvp-slow" : "dvp-back";
+      };
+      var irows = merged.map(function (r) {
+        var a = r.a, mine = rosterNames[r.n.toLowerCase()];
+        var det = (a ? "<div class='dvp-scout'><b>timeline</b> " + esc(a.tl) + "</div>" +
+              (a.rep ? "<div class='dvp-scout'><b>replacement</b> " + esc(a.rep) + "</div>" : "") +
+              (a.note ? "<div class='dvp-scout'><b>scheme</b> " + esc(a.note) + "</div>" : "") +
+              "<div class='dvp-scout muted'>analysis as of " + esc(a.d) + "</div>"
+            : "<div class='dvp-scout muted'>official report only - no analysis row yet</div>");
+        return "<tr class='dvp-hasnote" + (mine ? " dvp-easy" : "") + "' onclick='FF.dvpToggle(this)'><td class='pk-name dvp-stick'>" + esc(r.n) +
+          (mine ? " <span class='badge'>mine</span>" : "") +
+          "</td><td>" + esc(r.tm) + "</td><td>" + esc(r.pos) +
+          "</td><td><span class='" + stCls(r.st) + "'>" + esc(r.st) + "</span>" + (r.prac ? " <span class='muted'>" + esc(r.prac) + "</span>" : "") +
+          "</td><td class='note-col'>" + esc(r.inj) + (r.official ? "" : " <span class='muted'>(sheet)</span>") + "</td></tr>" +
+          "<tr class='dvp-noterow' hidden><td colspan='5' class='note-col'>" + det + "</td></tr>";
       }).join("");
-      injSection = "<h2 class='dvp-h2'>Injuries &middot; " + V.injuries.length + " tracked</h2>" +
+      injSection = "<h2 class='dvp-h2'>Injuries &middot; week " + (V.week || "?") + " report &middot; " + merged.length + "</h2>" +
         "<div class='table-wrap'><table class='pk'><thead><tr><th class='note-col dvp-stick'>Player</th>" +
-        "<th>Tm</th><th>Pos</th><th>Status</th><th class='note-col'>Timeline</th></tr></thead><tbody>" +
+        "<th>Tm</th><th>Pos</th><th>Status</th><th class='note-col'>Injury</th></tr></thead><tbody>" +
         irows + "</tbody></table></div>" +
-        "<p class='muted'>Tap a row for the injury, who absorbs the work, and the scheme read. " +
-        "Refreshed by the Tuesday/Friday injury sweep (<code>injuries.csv</code>).</p>";
+        "<p class='muted'>Status and practice (DNP / LP / FP) come from the league's official report via nflverse - no model involved, " +
+        "refreshed Tue, Wed, Sat and Sun morning. Tap a row for the timeline, who absorbs the work and the scheme read where the analysis sheet has one. " +
+        "Rows marked (sheet) are tracked on the analysis sheet but not on this week's report (exempt list, IR).</p>";
     }
     var mySection = rosterKeys.length
       ? "<h2 class='dvp-h2'>My team &middot; week " + (V.week || "?") + "</h2>" +
@@ -952,7 +994,7 @@
       // (green), BACK = tougher (red).
       ((V.flags && V.flags[d]) || []).forEach(function (f) {
         notes.push("<span class='dvp-" + (f.w === "out" ? "back'>&#9660;" : "out'>&#9650;") +
-          " " + esc(f.n) + " (" + esc(f.p) + ") " + f.w + "</span>");
+          " " + esc(f.n) + " (" + esc(f.p) + ") " + f.w + (f.src === "rpt" ? " (report)" : "") + "</span>");
       });
       var curPace = (t.pace || pace);
       var offIT = "";

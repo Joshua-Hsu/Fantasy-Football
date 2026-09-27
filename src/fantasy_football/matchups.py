@@ -239,6 +239,125 @@ def personnel_flags(rows, *, through_week: int) -> dict[str, list[dict]]:
 _DB_POS = {"CB", "DB", "S", "FS", "SS"}
 _LB_POS = {"LB", "ILB", "OLB", "MLB"}
 
+# ---- Official injury reports (tokenless) -------------------------------
+# nflverse republishes the league's Wed/Thu/Fri practice reports and Friday
+# game designations as one CSV per season. GitHub-hosted, so it is reachable
+# from Actions and the web sandbox alike, and it needs no model: status,
+# injury and practice participation come straight from the report. The
+# analysis layer (timeline, who absorbs the work, scheme) stays in
+# injuries.csv; the two are joined by player name on the page.
+INJURIES_URL = ("https://github.com/nflverse/nflverse-data/releases/download/"
+                "injuries/injuries_{year}.csv")
+_DEF_POS = {"DE", "DT", "NT", "DL", "EDGE", "LB", "ILB", "OLB", "MLB",
+            "CB", "DB", "S", "FS", "SS"}
+_FANTASY_POS = {"QB", "RB", "WR", "TE", "K"}
+_STATUS_ORDER = {"OUT": 0, "DOUBTFUL": 1, "QUESTIONABLE": 2, "DNP": 3}
+
+
+def fetch_injuries(year: int) -> list[dict]:
+    """Regular-season official injury-report rows from nflverse (network)."""
+    import pandas as pd
+
+    df = pd.read_csv(INJURIES_URL.format(year=year))
+    df = df[df["game_type"] == "REG"]
+    cols = ["week", "team", "position", "full_name", "report_status",
+            "practice_status", "report_primary_injury", "practice_primary_injury"]
+    return df[cols].to_dict("records")
+
+
+def _s(v) -> str:
+    return "" if v is None or (isinstance(v, float) and v != v) else str(v).strip()
+
+
+def official_injuries(rows, *, week: int) -> list[dict]:
+    """The official report for one week, reduced to what a lineup needs.
+
+    Keeps a player when he carries a game designation (Out / Doubtful /
+    Questionable) or did not practice (``DNP`` - no designation yet, the
+    Wednesday/Thursday state). Returns ``[{"n", "tm", "pos", "st", "inj",
+    "prac"}]`` sorted worst-first, then by team. Every position is kept -
+    the page filters fantasy positions for the table and ``official_flags``
+    uses the defenders.
+    """
+    out = []
+    for r in rows:
+        if int(r.get("week") or 0) != week:
+            continue
+        status = _s(r.get("report_status")).upper()
+        prac_raw = _s(r.get("practice_status")).lower()
+        prac = ("DNP" if prac_raw.startswith("did not") else
+                "LP" if prac_raw.startswith("limited") else
+                "FP" if prac_raw.startswith("full") else "")
+        if not status:
+            if prac != "DNP":
+                continue
+            status = "DNP"
+        if status not in _STATUS_ORDER:
+            continue
+        inj = _s(r.get("report_primary_injury")) or _s(r.get("practice_primary_injury"))
+        out.append({"n": _s(r.get("full_name"))[:60], "tm": _s(r.get("team")).upper()[:3],
+                    "pos": _s(r.get("position")).upper()[:5], "st": status,
+                    "inj": inj[:60], "prac": prac})
+    out.sort(key=lambda x: (_STATUS_ORDER[x["st"]], x["tm"], x["n"]))
+    return out
+
+
+def core_defenders(snap_rows, *, through_week: int) -> dict[str, dict[str, float]]:
+    """``{team: {player: avg defense_pct}}`` over games played so far."""
+    acc: dict[tuple[str, str], list[float]] = {}
+    for r in snap_rows:
+        wk = int(r["week"])
+        if wk > through_week:
+            continue
+        pct = float(r.get("defense_pct") or 0)
+        if pct > ABSENT_PCT:
+            acc.setdefault((str(r["team"]), str(r["player"])), []).append(pct)
+    out: dict[str, dict[str, float]] = {}
+    for (team, player), pcts in acc.items():
+        out.setdefault(team, {})[player] = sum(pcts) / len(pcts)
+    return out
+
+
+def official_flags(official, snap_rows, *, through_week: int) -> dict[str, list[dict]]:
+    """Pre-game personnel flags from the official report.
+
+    The snap-count flags only know a defender is missing after he has
+    missed a game; the Friday report knows it before kickoff. A core
+    defender (avg >= 60% of snaps this season) listed Out or Doubtful is
+    flagged ``out`` with ``src: "rpt"`` so the page can say it came from the
+    report. Needs snap rows to know who is core - without them nothing is
+    flagged (a backup linebacker being out is noise, not a matchup).
+    """
+    core = core_defenders(snap_rows, through_week=through_week) if snap_rows else {}
+    if not core:
+        return {}
+    out: dict[str, list[dict]] = {}
+    for r in official:
+        if r["pos"] not in _DEF_POS or r["st"] not in ("OUT", "DOUBTFUL"):
+            continue
+        avg = core.get(r["tm"], {}).get(r["n"])
+        if avg is None or avg < CORE_PCT:
+            continue
+        out.setdefault(r["tm"], []).append(
+            {"n": r["n"], "p": r["pos"], "w": "out", "src": "rpt", "_avg": avg})
+    for team in out:
+        out[team].sort(key=lambda f: -f["_avg"])
+        out[team] = [{k: v for k, v in f.items() if k != "_avg"} for f in out[team][:4]]
+    return out
+
+
+def merge_flags(*flag_maps) -> dict[str, list[dict]]:
+    """Union per team, first occurrence of a name wins, at most five flags."""
+    out: dict[str, list[dict]] = {}
+    for fm in flag_maps:
+        for team, flags in (fm or {}).items():
+            seen = {f["n"] for f in out.get(team, [])}
+            for f in flags:
+                if f["n"] not in seen:
+                    out.setdefault(team, []).append(f)
+                    seen.add(f["n"])
+    return {t: fl[:5] for t, fl in out.items()}
+
 
 def package_rates(rows, *, through_week: int) -> dict[str, dict]:
     """Average defensive backs on the field per snap, from snap counts.
@@ -514,6 +633,7 @@ def write_dvp_js(
     vegas_weeks_payload: dict[int, list[dict]] | None = None,
     decisions: list[dict] | None = None,
     injuries: list[dict] | None = None,
+    official: list[dict] | None = None,
 ) -> str:
     """Write ``docs/dvp.js`` (``window.FF_DVP``) for the Tier Builder app."""
     cur = defense_vs_position(session, year, rules=rules)
@@ -552,6 +672,8 @@ def write_dvp_js(
         payload["decisions"] = decisions
     if injuries:
         payload["injuries"] = injuries
+    if official:
+        payload["official"] = official
     with open(path, "w") as fh:
         fh.write("// Generated by `fantasy_football dvp` - do not edit by hand.\n")
         fh.write("window.FF_DVP = ")
