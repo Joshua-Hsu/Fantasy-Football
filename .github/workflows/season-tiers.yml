@@ -64,8 +64,8 @@ jobs:
           YEAR=$(date -u +%Y)
           OUT="master_tiers.$(date -u +%F).csv"
           # Tiers, ratings and prices all from in-season PPG (k-means per position).
-          python -m fantasy_football.cli values --year "$YEAR" --basis ppg --export "$OUT" --limit 200
-          python -m fantasy_football.cli build-webapp --out docs/data.js --year "$YEAR" --basis ppg --tiers-file "$OUT"
+          python -m fantasy_football.cli values --year "$YEAR" --basis ppg --min-games 2 --export "$OUT" --limit 200
+          python -m fantasy_football.cli build-webapp --out docs/data.js --year "$YEAR" --basis ppg --min-games 2 --tiers-file "$OUT"
           V=$(date -u +%Y%m%d%H%M)
           sed -i -E "s/(data\.js\?v=)[0-9]+/\1$V/" docs/index.html || true
           echo "### Season tiers refresh" >> "$GITHUB_STEP_SUMMARY"

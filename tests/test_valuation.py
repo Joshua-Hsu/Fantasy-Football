@@ -155,3 +155,11 @@ def test_tiers_capped_at_max_size():
     sizes = collections.Counter(assign_sized_tiers(keys, vals, k=8).values())
     top_tiers = sorted(sizes)[:-2]  # all but the bottom two
     assert all(sizes[t] <= MAX_TIER_SIZE for t in top_tiers)
+
+
+def test_min_games_drops_one_game_spikes(session):
+    _seed(session)
+    # Every seeded player has exactly one 2025 game, so min_games=2 empties the
+    # pool while min_games=1 keeps it - the in-season refresh uses 2.
+    assert compute_values(session, year=2025, config=LeagueConfig(teams=1), min_games=1)["RB"]
+    assert not compute_values(session, year=2025, config=LeagueConfig(teams=1), min_games=2)["RB"]
