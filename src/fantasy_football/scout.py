@@ -263,6 +263,27 @@ def noted_teams(path: str, since: str) -> set[str]:
 
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 
+# The check a pasted note gets by hand (see the defense-notes skill): does the
+# story contradict the box score? On the API path a second call does it.
+_CHECK_PROMPT = (
+    "Below is a fantasy scouting note about the {team} defense from NFL week {week} "
+    "({year}), followed by the verified box-score lines of the players that defense "
+    "faced in that game. Check every claim in the note against the lines. If the "
+    "note says a defense shut something down that the numbers contradict (for "
+    "example 'erased the run' when the back scored twice, or 'locked down the "
+    "boundary' when the outside receiver went 5-101), rewrite that sentence to "
+    "state the number and the correction. If a named stat line is wrong, fix it. "
+    "If the note is consistent with the lines, return it unchanged. Keep the note "
+    "under 900 characters, keep its structure (scheme, injuries, what the offense "
+    "did, 'Fantasy read:' sentence, next-opponent line), and return ONLY the note "
+    "text with no preamble.\n\nNOTE:\n{note}\n\nVERIFIED LINES:\n{lines}"
+)
+
+
+def check_prompt(team: str, week: int, year: int, note: str, lines: list[str]) -> str:
+    return _CHECK_PROMPT.format(team=team, week=week, year=year, note=note,
+                                lines="\n".join("- " + x for x in lines) or "(none)")
+
 
 def gemini_scout(prompt: str, api_key: str, *, model: str = "gemini-2.5-flash",
                  timeout: int = 120) -> str:

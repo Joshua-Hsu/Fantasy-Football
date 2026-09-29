@@ -28,6 +28,12 @@ Rams", `{week}`, `{prev}`, `{year}`. Printed by
   McCaffrey 2 TD, Schultz 12-140), and it credits a defense for an injury
   (Saquon's stinger). It is reliable on snap shares, package rates and
   named pressure players.
+- **API path check pass (2026-09-29)** - `cli scout-run` makes a second
+  call per note handing Gemini its own note plus the verified box-score
+  lines and asking it to correct any claim the numbers contradict (the
+  same check a paste gets by hand). Auto notes are labeled "box-checked";
+  `--no-check` restores the single call ("unverified"). Not yet measured
+  against the hand check - compare on the first week the key is live.
 - Tweak ideas not yet tried: ask for "the three plays that decided it" to
   surface scheme detail; ask for "who covered the slot" by name; ask
   whether the box count changed by down and distance.
