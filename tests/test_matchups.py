@@ -335,3 +335,21 @@ def test_official_injuries_and_flags():
     merged = merge_flags(snap_flags, rpt)
     assert len(merged["SF"]) == 1 and merged["SF"][0].get("src") is None  # first occurrence wins
     assert merged["LA"][0]["n"] == "X"
+
+
+def test_read_injuries_ages_out_short_term_rows(tmp_path):
+    import datetime as dt
+
+    from fantasy_football.matchups import read_injuries
+
+    path = tmp_path / "injuries.csv"
+    path.write_text(
+        "date,player,team,pos,status,injury,timeline,replacement,note\n"
+        "2026-09-01,Old Guy,PIT,RB,questionable,toe,unknown,,\n"
+        "2026-09-01,Stash Guy,GB,RB,IR,knee,season,,\n"
+        "2026-09-20,Fresh Guy,SF,WR,OUT,hip,wk4,,\n"
+    )
+    today = dt.date(2026, 9, 29)
+    names = [r["n"] for r in read_injuries(str(path), today=today)]
+    assert names == ["Fresh Guy", "Stash Guy"]  # 28-day-old questionable dropped, IR kept
+    assert len(read_injuries(str(path), max_age_days=None, today=today)) == 3

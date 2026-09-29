@@ -361,19 +361,33 @@
       "<div class='pos-grid'>" + g + "</div>" +
       "<div class='actions'>" +
       "<button class='btn btn-primary' onclick='FF.commitPicks()'>&#128640; Commit to GitHub</button>" +
-      "<button class='btn' onclick=\"location.hash='#/packet'\">&#128424; My draft packet</button>" +
-      "<button class='btn' onclick=\"location.hash='#/cost'\">&#128176; Roster cost</button>" +
       (window.FF_DVP ? "<button class='btn' onclick=\"location.hash='#/dvp'\">&#127919; Matchups</button>" : "") +
+      ((window.FF_DVP || {}).official || (window.FF_DVP || {}).injuries ? "<button class='btn' onclick=\"location.hash='#/injuries'\">&#129657; Injuries</button>" : "") +
       ((window.FF_DVP || {}).vegasWeeks ? "<button class='btn' onclick=\"location.hash='#/vegas'\">&#128200; Vegas</button>" : "") +
       ((window.FF_DVP || {}).decisions ? "<button class='btn' onclick=\"location.hash='#/log'\">&#128211; Log</button>" : "") +
+      "<button class='btn' onclick=\"location.hash='#/cost'\">&#128176; Roster cost</button>" +
+      "<button class='btn' onclick=\"location.hash='#/preseason'\">&#128295; Pre-season tools</button>" +
+      "</div><p class='muted foot'>Commit sends your rankings to the shared database. " +
+      // Build stamp: which master this browser is actually looking at -
+      // instantly settles "is my view stale or is the data wrong".
+      "Tiers build: <code>" +
+      esc(String((window.FF_DATA || {}).base || "unstamped")) + "</code></p>";
+  }
+
+  // ---- pre-season tools: draft packet + tiers CSV round-trip (#/preseason) ----
+  function preseasonPage() {
+    app.innerHTML = nav(" &middot; <span class='muted'>pre-season</span>") +
+      "<h1>Pre-season tools</h1>" +
+      "<p class='lead'>The draft-day kit: your printable packet and the tiers CSV round-trip.</p>" +
+      "<div class='actions'>" +
+      "<button class='btn btn-primary' onclick=\"location.hash='#/packet'\">&#128424; My draft packet</button>" +
       "<button class='btn' onclick='FF.exportTiers()'>&#11015; Export tiers CSV</button>" +
       "<label class='btn' style='cursor:pointer'>&#11014; Import tiers CSV" +
       "<input type='file' accept='.csv' style='display:none' onchange='FF.importTiers(this)'></label>" +
-      "</div><p class='muted'>Commit sends your rankings to the shared database. " +
-      "You can also download a draft packet of your tiers." +
-      // Build stamp: which master this browser is actually looking at -
-      // instantly settles "is my view stale or is the data wrong".
-      "<br>Tiers build: <code>" +
+      "<button class='btn' onclick=\"location.hash='#/cost'\">&#128176; Roster cost</button>" +
+      "</div>" +
+      "<p class='muted foot'>Export saves your picks and tier notes; import restores them on another device. " +
+      "The packet prints to PDF from the browser. Tiers build: <code>" +
       esc(String((window.FF_DATA || {}).base || "unstamped")) + "</code></p>";
   }
 
@@ -719,6 +733,68 @@
       "<div class='tr-grid'>" + trophies + "</div>";
   }
 
+  // ---- injuries: official report joined to the analysis sheet (#/injuries) ----
+  function buildInjuries(V) {
+    var analysisFor = function (name) {
+      var L = V.injuries || [];
+      for (var i = 0; i < L.length; i++) if (L[i].n.toLowerCase() === name.toLowerCase()) return L[i];
+      return null;
+    };
+    var rosterNames = {};
+    (loadRoster() || []).forEach(function (k) { var e = BYKEY[k]; if (e) rosterNames[e.name.toLowerCase()] = 1; });
+    // Official rows: fantasy positions only (defenders feed the flags), all
+    // designations; then any analysis-sheet player the report does not list
+    // (exempt list, IR, long-term) so nothing tracked disappears.
+    var FPOS = { QB: 1, RB: 1, WR: 1, TE: 1, K: 1 };
+    var merged = [], seen = {};
+    (V.official || []).forEach(function (o) {
+      if (!FPOS[o.pos] && !rosterNames[o.n.toLowerCase()]) return;
+      seen[o.n.toLowerCase()] = 1;
+      merged.push({ n: o.n, tm: o.tm, pos: o.pos, st: o.st, inj: o.inj, prac: o.prac, a: analysisFor(o.n), official: true });
+    });
+    (V.injuries || []).forEach(function (r) {
+      if (seen[r.n.toLowerCase()]) return;
+      merged.push({ n: r.n, tm: r.tm, pos: r.pos, st: r.st, inj: r.inj, prac: "", a: r, official: false });
+    });
+    if (merged.length) {
+      var stCls = function (st) {
+        st = String(st || "").toUpperCase();
+        return /OUT|IR|EXEMPT|DOUBTFUL/.test(st) ? "dvp-out" : /QUEST|DNP|WEEK/.test(st) ? "dvp-slow" : "dvp-back";
+      };
+      var irows = merged.map(function (r) {
+        var a = r.a, mine = rosterNames[r.n.toLowerCase()];
+        var det = (a ? "<div class='dvp-scout'><b>timeline</b> " + esc(a.tl) + "</div>" +
+              (a.rep ? "<div class='dvp-scout'><b>replacement</b> " + esc(a.rep) + "</div>" : "") +
+              (a.note ? "<div class='dvp-scout'><b>scheme</b> " + esc(a.note) + "</div>" : "") +
+              "<div class='dvp-scout muted'>analysis as of " + esc(a.d) + "</div>"
+            : "<div class='dvp-scout muted'>official report only - no analysis row yet</div>");
+        return "<tr class='dvp-hasnote" + (mine ? " dvp-easy" : "") + "' onclick='FF.dvpToggle(this)'><td class='pk-name dvp-stick'>" + esc(r.n) +
+          (mine ? " <span class='badge'>mine</span>" : "") +
+          "</td><td>" + esc(r.tm) + "</td><td>" + esc(r.pos) +
+          "</td><td><span class='" + stCls(r.st) + "'>" + esc(r.st) + "</span>" + (r.prac ? " <span class='muted'>" + esc(r.prac) + "</span>" : "") +
+          "</td><td class='note-col'>" + esc(r.inj) + (r.official ? "" : " <span class='muted'>(sheet)</span>") + "</td></tr>" +
+          "<tr class='dvp-noterow' hidden><td colspan='5' class='note-col'>" + det + "</td></tr>";
+      }).join("");
+      return "<h2 class='dvp-h2'>Injuries &middot; week " + (V.week || "?") + " report &middot; " + merged.length + "</h2>" +
+        "<div class='table-wrap'><table class='pk'><thead><tr><th class='note-col dvp-stick'>Player</th>" +
+        "<th>Tm</th><th>Pos</th><th>Status</th><th class='note-col'>Injury</th></tr></thead><tbody>" +
+        irows + "</tbody></table></div>" +
+        "<p class='muted foot'>Status and practice (DNP / LP / FP) are the league's official report via nflverse, refreshed Tue, Wed, Sat and Sun. " +
+        "Tap a row for the timeline, who absorbs the work and the scheme read. (sheet) = tracked on the analysis sheet only, e.g. exempt list or IR. " +
+        "Short-term rows age off after three weeks; IR and exempt-list rows stay.</p>";
+    }
+    return "<p class='muted'>No injury report loaded yet.</p>";
+  }
+
+  function injuriesPage() {
+    var V = window.FF_DVP;
+    if (!V) { app.innerHTML = nav() + "<h1>Injuries</h1><p class='lead'>No data yet.</p>"; return; }
+    app.innerHTML = nav(" &middot; <span class='muted'>injuries</span>") +
+      "<h1>Injuries &middot; week " + (V.week || "?") + "</h1>" +
+      "<p class='lead'>Who is out, doubtful or questionable this week, and what it means for the work behind them.</p>" +
+      buildInjuries(V);
+  }
+
   // ---- matchups: defense-vs-position (#/dvp) ----
   // Reads the dvp.js sidecar (regenerated weekly, independent of the master
   // rebuild); the page simply doesn't render when the file is missing.
@@ -911,55 +987,6 @@
           "</td><td class='note-col'>" + notes.join(" ") + "</td></tr>";
       }).join("");
     }
-    var injSection = "";
-    var analysisFor = function (name) {
-      var L = V.injuries || [];
-      for (var i = 0; i < L.length; i++) if (L[i].n.toLowerCase() === name.toLowerCase()) return L[i];
-      return null;
-    };
-    var rosterNames = {};
-    (loadRoster() || []).forEach(function (k) { var e = BYKEY[k]; if (e) rosterNames[e.name.toLowerCase()] = 1; });
-    // Official rows: fantasy positions only (defenders feed the flags), all
-    // designations; then any analysis-sheet player the report does not list
-    // (exempt list, IR, long-term) so nothing tracked disappears.
-    var FPOS = { QB: 1, RB: 1, WR: 1, TE: 1, K: 1 };
-    var merged = [], seen = {};
-    (V.official || []).forEach(function (o) {
-      if (!FPOS[o.pos] && !rosterNames[o.n.toLowerCase()]) return;
-      seen[o.n.toLowerCase()] = 1;
-      merged.push({ n: o.n, tm: o.tm, pos: o.pos, st: o.st, inj: o.inj, prac: o.prac, a: analysisFor(o.n), official: true });
-    });
-    (V.injuries || []).forEach(function (r) {
-      if (seen[r.n.toLowerCase()]) return;
-      merged.push({ n: r.n, tm: r.tm, pos: r.pos, st: r.st, inj: r.inj, prac: "", a: r, official: false });
-    });
-    if (merged.length) {
-      var stCls = function (st) {
-        st = String(st || "").toUpperCase();
-        return /OUT|IR|EXEMPT|DOUBTFUL/.test(st) ? "dvp-out" : /QUEST|DNP|WEEK/.test(st) ? "dvp-slow" : "dvp-back";
-      };
-      var irows = merged.map(function (r) {
-        var a = r.a, mine = rosterNames[r.n.toLowerCase()];
-        var det = (a ? "<div class='dvp-scout'><b>timeline</b> " + esc(a.tl) + "</div>" +
-              (a.rep ? "<div class='dvp-scout'><b>replacement</b> " + esc(a.rep) + "</div>" : "") +
-              (a.note ? "<div class='dvp-scout'><b>scheme</b> " + esc(a.note) + "</div>" : "") +
-              "<div class='dvp-scout muted'>analysis as of " + esc(a.d) + "</div>"
-            : "<div class='dvp-scout muted'>official report only - no analysis row yet</div>");
-        return "<tr class='dvp-hasnote" + (mine ? " dvp-easy" : "") + "' onclick='FF.dvpToggle(this)'><td class='pk-name dvp-stick'>" + esc(r.n) +
-          (mine ? " <span class='badge'>mine</span>" : "") +
-          "</td><td>" + esc(r.tm) + "</td><td>" + esc(r.pos) +
-          "</td><td><span class='" + stCls(r.st) + "'>" + esc(r.st) + "</span>" + (r.prac ? " <span class='muted'>" + esc(r.prac) + "</span>" : "") +
-          "</td><td class='note-col'>" + esc(r.inj) + (r.official ? "" : " <span class='muted'>(sheet)</span>") + "</td></tr>" +
-          "<tr class='dvp-noterow' hidden><td colspan='5' class='note-col'>" + det + "</td></tr>";
-      }).join("");
-      injSection = "<h2 class='dvp-h2'>Injuries &middot; week " + (V.week || "?") + " report &middot; " + merged.length + "</h2>" +
-        "<div class='table-wrap'><table class='pk'><thead><tr><th class='note-col dvp-stick'>Player</th>" +
-        "<th>Tm</th><th>Pos</th><th>Status</th><th class='note-col'>Injury</th></tr></thead><tbody>" +
-        irows + "</tbody></table></div>" +
-        "<p class='muted'>Status and practice (DNP / LP / FP) come from the league's official report via nflverse - no model involved, " +
-        "refreshed Tue, Wed, Sat and Sun morning. Tap a row for the timeline, who absorbs the work and the scheme read where the analysis sheet has one. " +
-        "Rows marked (sheet) are tracked on the analysis sheet but not on this week's report (exempt list, IR).</p>";
-    }
     var mySection = rosterKeys.length
       ? "<h2 class='dvp-h2'>My team &middot; week " + (V.week || "?") + "</h2>" +
         "<div class='table-wrap'><table class='pk'><thead><tr><th class='note-col dvp-stick'>Player</th>" +
@@ -972,11 +999,8 @@
         "last-season-weighted early) and pace (.2); the arrow is the edge vs " +
         "the player's own average. ImpTot = Vegas implied points for the player's offense " +
         "(green 26+, red 17.5-); hover for the game total. " +
-        "Rank = opponent defense vs that position (32 = softest). " +
-        "Green = soft matchup by both this season and last; red = tough by both; " +
-        "no color = the two seasons disagree, so read the badges and tap the " +
-        "defense's row below for the scouting note. " +
-        "<a href='#/cost'>Edit roster</a></p>"
+        "Green = soft by both seasons, red = tough by both, no color = they disagree. " +
+        "<a href='#/cost'>Edit roster</a> &middot; <a href='#/injuries'>Injuries</a></p>"
       : "<p class='muted'>Add your roster on the <a href='#/cost'>Roster cost</a> page " +
         "and your players' weekly matchups will appear here.</p>";
     var rows = teams.map(function (d, i) {
@@ -1046,15 +1070,9 @@
     app.innerHTML = nav(" &middot; <span class='muted'>matchups</span>") +
       "<h1>Defense vs " + esc(pos) + "</h1>" +
       "<p class='lead'>Fantasy points allowed per game to " + esc(pos) + "s, " + V.year +
-      " through week " + V.through_week + ". Softest defenses first (rank 32 gives up the most) - " +
-      "start players facing the green rows, think twice into the red." +
-      (baseHdr ? " " + baseHdr + " is last season's full-sample rank; trust it more in the early weeks." : "") +
-      (V.week ? " Wk " + V.week + " shows who that defense faces next (v home, @ away)." : "") +
-      " Funnel badges mark defenses with big rank splits - they choose what they stop, and scheme repeats: run/pass funnels compare the RB rank to the passing ranks, WR/TE funnels split the pass game." +
-      " <span class='dvp-back'>&#9660; out</span> / <span class='dvp-out'>&#9650; back</span> mark a core defender who sat out (softer than the rank says) or returned (tougher) in the latest game - the rank was earned with different personnel." +
-      (hasPace ? " OpPl is how many plays this team's opponents get to run per game - clock-milking teams (&#8987;) shrink everyone's chances, fast games (&#9889;) inflate them." : "") +
-      (V.vegas ? " OppIT is the Vegas implied total of the offense this defense faces next - the books' own forecast of how many points they give up." : "") + "</p>" +
-      mySection + injSection +
+      " through week " + V.through_week + ". Green rows are soft matchups, red are tough. " +
+      "<a href='#/injuries'>Injuries &rsaquo;</a></p>" +
+      mySection +
       "<h2 class='dvp-h2'>All defenses</h2>" +
       "<div class='dvp-tabs'>" + tabs + "</div>" +
       "<div class='table-wrap dvp-fit'><table class='pk'><thead><tr><th title='rank, 32 = softest'>Rk</th><th>Def</th>" +
@@ -1064,7 +1082,15 @@
       (V.week ? "<th>Wk " + V.week + "</th>" : "") +
       (V.vegas ? "<th>OppIT</th>" : "") +
       "<th class='note-col'>Notes</th></tr></thead><tbody>" + rows +
-      "</tbody></table></div>";
+      "</tbody></table></div>" +
+      "<p class='muted foot'><b>Legend.</b> Rk 32 = gives up the most. " +
+      (baseHdr ? baseHdr + " = last season's rank (trust it more early). " : "") +
+      (V.week ? "Wk " + V.week + " = next opponent (v home, @ away). " : "") +
+      "Funnel badge = big split between run and pass ranks. " +
+      "<span class='dvp-back'>&#9660; out</span> / <span class='dvp-out'>&#9650; back</span> = a core defender missing or returning last game (report = ruled out before this one). " +
+      (hasPace ? "OpPl = opponent plays per game, &#8987; slow / &#9889; fast. " : "") +
+      (V.vegas ? "OppIT = Vegas implied total of the next opponent. " : "") +
+      "Tap a row for the auto metrics and scouting notes.</p>";
     // The sticky column header sits just under the nav, whose height depends
     // on whether the pill wrapped to a second line - measure it.
     var nv = document.querySelector(".nav");
@@ -1109,8 +1135,7 @@
     }).join("");
     app.innerHTML = nav(" &middot; <span class='muted'>vegas</span>") +
       "<h1>Implied totals &middot; week " + wk + "</h1>" +
-      "<p class='lead'>What the betting market expects each offense to score (game total halved, shifted by half the spread), " +
-      "and once the week is played, what actually happened. Green rows beat their number by 7+, red rows fell 7+ short.</p>" +
+      "<p class='lead'>What the books expected each offense to score, and what happened.</p>" +
       "<div class='dvp-tabs'>" +
       (prev ? "<a class='pill dvp-tab' href='#/vegas/" + prev + "'>&lsaquo; wk " + prev + "</a>" : "") +
       "<span class='pill dvp-tab dvp-on'>week " + wk + "</span>" +
@@ -1118,7 +1143,8 @@
       "</div>" + summary +
       "<div class='table-wrap'><table class='pk'><thead><tr><th class='note-col'>Team</th><th>Opp</th>" +
       "<th>Total</th><th>Implied</th><th>Actual</th><th>+/-</th></tr></thead><tbody>" + body +
-      "</tbody></table></div>";
+      "</tbody></table></div>" +
+      "<p class='muted foot'>Implied = game total halved, shifted by half the spread. Green beat the number by 7+, red fell 7+ short.</p>";
   }
 
 
@@ -1157,14 +1183,12 @@
     }).join("");
     app.innerHTML = nav(" &middot; <span class='muted'>log</span>") +
       "<h1>Decision log</h1>" +
-      "<p class='lead'>Every roster call, written down BEFORE the games with what the matchup board " +
-      "said at the time. OVERRIDE marks a call that went against the board - treat those as suspect. " +
-      "Tap a row for the reasoning and the outcome. The hit rate is the partnership's report card.</p>" +
+      "<p class='lead'>Every roster call, logged before the games and graded after.</p>" +
       summary +
       "<div class='table-wrap'><table class='pk'><thead><tr><th>Date</th><th class='note-col'>Decision</th>" +
       "<th>Who</th><th>Result</th></tr></thead><tbody>" + rows + "</tbody></table></div>" +
-      "<p class='muted'>Source: <code>decisions.csv</code> in the repo - add a row when a decision is made, " +
-      "fill in the outcome when the games are played.</p>";
+      "<p class='muted foot'>OVERRIDE = a call that went against the matchup board. Tap a row for the reasoning and outcome. " +
+      "Source: <code>decisions.csv</code>.</p>";
   }
 
   // ---- commissioner: master tier editor (#/admin) ----
@@ -1755,6 +1779,8 @@
     m = h.match(/^#\/dvp(?:\/(\w+))?/); if (m) return dvpPage(m[1]);
     m = h.match(/^#\/vegas(?:\/(\d+))?/); if (m) return vegasPage(m[1]);
     if (h.indexOf("#/log") === 0) return logPage();
+    if (h.indexOf("#/injuries") === 0) return injuriesPage();
+    if (h.indexOf("#/preseason") === 0) return preseasonPage();
     m = h.match(/^#\/admin(?:\/(\w+))?/); if (m) return adminPage(m[1]);
     home();
   }

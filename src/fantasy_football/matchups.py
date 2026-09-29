@@ -500,19 +500,33 @@ def fetch_vegas(year: int) -> list[dict]:
                "home_score", "away_score"]].to_dict("records")
 
 
-def read_injuries(path: str) -> list[dict]:
+#: Analysis rows older than this many days drop off the page unless the
+#: status says the absence is long-term (IR, exempt list, season-ending).
+INJURY_MAX_AGE_DAYS = 21
+_LONG_TERM = ("IR", "EXEMPT", "SEASON", "PUP", "NFI", "SUSP")
+
+
+def read_injuries(path: str, *, max_age_days: int | None = INJURY_MAX_AGE_DAYS,
+                  today: "dt.date | None" = None) -> list[dict]:
     """Read the weekly injury sweep (``injuries.csv``).
 
     Columns ``date,player,team,pos,status,injury,timeline,replacement,note``
     - who is hurt, how long, who absorbs the work and what the offense's
     scheme does with it. Written by the scheduled sweep (web research runs
     in the session, not in Actions). Newest first per player; hardened.
+
+    The sheet only grows (rows are appended, never edited), so the page
+    would list every player ever hurt. Rows older than ``max_age_days``
+    are dropped unless the status is long-term (IR / exempt / season / PUP),
+    so a week-2 "questionable" ages out while an IR stash stays visible.
     """
     import csv
+    import datetime as dt
     import os
 
     if not path or not os.path.exists(path):
         return []
+    today = today or dt.date.today()
     seen: set[str] = set()
     out: list[dict] = []
     rows = list(csv.DictReader(open(path, newline="")))[:3000]
@@ -522,6 +536,14 @@ def read_injuries(path: str) -> list[dict]:
         if not name or name.lower() in seen:
             continue
         seen.add(name.lower())
+        if max_age_days is not None:
+            try:
+                age = (today - dt.date.fromisoformat((r.get("date") or "")[:10])).days
+            except ValueError:
+                age = 0
+            status = (r.get("status") or "").upper()
+            if age > max_age_days and not any(t in status for t in _LONG_TERM):
+                continue
         out.append({
             "d": (r.get("date") or "").strip()[:10], "n": name[:60],
             "tm": (r.get("team") or "").strip().upper()[:3],
