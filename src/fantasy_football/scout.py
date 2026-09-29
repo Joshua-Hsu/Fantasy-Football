@@ -217,17 +217,22 @@ def parse_sections(text: str, a: str, b: str, names: dict[str, tuple[str, str]] 
     """
     names = names or {}
     nick = {code: (names.get(code, (code, code))[0].split(" ")[-1]) for code in (a, b)}
-    lines = clean_text(text).splitlines()
     cur, buckets = None, {a: [], b: []}
-    for ln in lines:
-        s = ln.strip()
+    for raw in str(text or "").splitlines():
+        # Heading detection happens on the RAW line: a markdown heading of any
+        # length ("### Miami Dolphins Defense: Schematic Breakdown & Fantasy
+        # Outlook") or a short bold/plain title naming the team. Then the
+        # line is cleaned like the body.
+        is_md_head = bool(re.match(r"^\s{0,3}#{1,6}\s", raw)) or bool(re.match(r"^\s*\*\*[^*]{3,90}\*\*\s*:?\s*$", raw))
+        s = clean_text(raw).strip()
         if not s:
             continue
         head = None
-        if len(s) < 60:
+        if is_md_head or len(s) < 60:
             for code, nk in nick.items():
-                if nk.lower() in s.lower() and ("defense" in s.lower() or s.lower().endswith(nk.lower())
-                                                or s.lower() == names.get(code, (code,))[0].lower()):
+                low = s.lower()
+                if nk.lower() in low and (is_md_head or "defense" in low or low.endswith(nk.lower())
+                                          or low == names.get(code, (code,))[0].lower()):
                     head = code
         if head:
             cur = head
@@ -239,6 +244,29 @@ def parse_sections(text: str, a: str, b: str, names: dict[str, tuple[str, str]] 
             buckets[cur].append(s)
     joined = {code: re.sub(r"\s+", " ", " ".join(parts)).strip() for code, parts in buckets.items() if parts}
     return {code: (cap_note(v) if cap else v) for code, v in joined.items()}
+
+
+_READ_RE = re.compile(r"Fantasy read:", re.I)
+_NEXT_RE = re.compile(r"\b(?:Wk|Week)\s?\d+\b[^.]*", re.I)
+
+
+def ensure_structure(checked: str, raw: str, cap: int = NOTE_CAP) -> str:
+    """Guarantee the checked note keeps the 'Fantasy read:' sentence (and the
+    next-opponent line when the raw section had one). The lite check pass
+    sometimes rewrites them away; if so, take them from the raw section and
+    append, trimming the body to fit the cap.
+    """
+    out = re.sub(r"\s+", " ", checked or "").strip()
+    raw = re.sub(r"\s+", " ", raw or "")
+    tail = ""
+    if not _READ_RE.search(out):
+        m = _READ_RE.search(raw)
+        if m:
+            tail = raw[m.start():].strip()
+    if tail:
+        tail = tail[:320].rsplit(".", 1)[0] + "." if len(tail) > 320 else tail
+        out = cap_note(out, max(cap - len(tail) - 1, 200)) + " " + tail
+    return cap_note(out, cap)
 
 
 def append_notes(path: str, notes: dict[str, str], date: str | None = None) -> int:

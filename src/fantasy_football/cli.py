@@ -852,7 +852,7 @@ def _cmd_scout_run(args: argparse.Namespace) -> int:
     import time
 
     from .scout import (NOTE_CAP, GeminiQuota, _team_names, append_notes, box_lines, cap_note,
-                        check_prompt, clean_text, estimate_cost, game_pairs, gemini_call,
+                        check_prompt, clean_text, ensure_structure, estimate_cost, game_pairs, gemini_call,
                         gemini_models, gemini_probe, noted_teams, parse_sections,
                         pick_lite_model, pick_models, scout_prompt)
 
@@ -959,10 +959,10 @@ def _cmd_scout_run(args: argparse.Namespace) -> int:
                     lines = box_lines(session, year, week, k)
                     nxt = p["a_next"] if k == p["a"] else p["b_next"]
                     try:
-                        fixed = cap_note(clean_text(call(check_prompt(k, week, year, v, lines, nxt),
-                                                         grounded=False, lite_ok=True,
-                                                         think=0, max_out=700)))
-                        notes[k] = fixed if len(fixed) > 200 else cap_note(v)
+                        fixed = clean_text(call(check_prompt(k, week, year, v, lines, nxt),
+                                                grounded=False, lite_ok=True,
+                                                think=0, max_out=700))
+                        notes[k] = ensure_structure(fixed, v) if len(fixed) > 200 else cap_note(v)
                     except Exception as exc:  # noqa: BLE001 - keep the unchecked note
                         print(f"{k}: check pass failed ({exc}); filing unchecked")
                         notes[k] = cap_note(v)

@@ -80,6 +80,17 @@ Rams", `{week}`, `{prev}`, `{year}`. Printed by
   sections at all). Fixes: `gemini_call` drops a rejected generation option
   and retries; an ungrounded scouting answer is retried once with a search
   nudge; empty parses are logged. The 28 degraded rows were removed.
+- **Run 8 (fixes for lite 400 + ungrounded)**: 8 minutes; every scouting
+  answer grounded (7 needed the nudge); lite check pass working; cost line
+  `flash in 14k / out+think 26k; lite in 23k / out 6k; grounded 16 of 46;
+  est. $0.34` (about $0.12 of that is tokens, the rest is grounding priced
+  as if metered - the real bill is between). Two leftovers: 4 games parsed
+  to nothing because Gemini used long markdown headings ("### Miami
+  Dolphins Defense: Schematic Breakdown & Fantasy Outlook") that the
+  60-char heading rule rejected, and the lite rewrite dropped the 'Fantasy
+  read' on 5 of 24 notes. Fixes: headings detected on the raw markdown
+  line at any length; `ensure_structure` re-attaches the fantasy read from
+  the raw section when the rewrite loses it.
 - Tweak ideas not yet tried: ask for "the three plays that decided it" to
   surface scheme detail; ask for "who covered the slot" by name; ask
   whether the box count changed by down and distance.
