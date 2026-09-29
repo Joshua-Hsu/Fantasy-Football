@@ -294,13 +294,15 @@ flag for a core defender (>=60% snaps) listed Out/Doubtful - so Bosa ruled
 out on Friday shows on Arizona's row before kickoff instead of after the
 snap file lands. `dvp.yml` runs it Tue/Wed/Sat/Sun. The **analysis layer**
 (timeline, who absorbs the work, scheme) needs judgment: a Tuesday
-Routine fires a FRESH session (cheap - no conversation context) that reads
-CLAUDE.md, PLAYBOOK.md and `roster.csv` (the user's current roster + slots,
-keep it current after every waiver move), grades last week's decisions,
-sweeps with WebSearch (WebFetch to news sites is egress-blocked), appends
-rows, ships, and writes the waiver sheet; that path costs tokens, the
-official layer does not. The Friday designations run was retired once the
-official layer covered it. Defensive players matter too: a
+14:00 UTC Routine fires into the MAIN session (`roster.csv` holds the
+user's current roster + slots - keep it current after every waiver move),
+grades last week's decisions, sweeps with WebSearch (WebFetch to news
+sites is egress-blocked), appends rows, ships via PR, and writes the
+waiver sheet; that path costs tokens, the official layer does not. A
+fresh-session variant was tried (2026-09-29) and retired: it ran, cost
+about the same, and could not push - fresh Routine sessions carry no
+GitHub credentials or connectors. The Friday designations run was retired
+once the official layer covered it. Defensive players matter too: a
 star edge/safety out or back is what moves the flags and the scheme notes.
 
 **Defense notes loop** (`scout.py`, skill `.claude/skills/defense-notes`).
