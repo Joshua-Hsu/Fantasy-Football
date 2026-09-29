@@ -55,7 +55,7 @@ jobs:
       - name: Build docs/dvp.js
         run: |
           python -m fantasy_football.cli dvp --out docs/dvp.js
-          V=$(date -u +%Y%m%d)
+          V=$(date -u +%Y%m%d%H%M)
           sed -i -E "s/(dvp\.js\?v=)[0-9]+/\1$V/" docs/index.html
 
       - name: Commit

@@ -72,7 +72,7 @@ jobs:
           if [ "${{ github.event.inputs.force }}" = "true" ]; then SINCE_ARG=""; fi
           python -m fantasy_football.cli scout-run $SINCE_ARG --pace 4 $WEEK_ARG
           python -m fantasy_football.cli dvp --out docs/dvp.js
-          V=$(date -u +%Y%m%d)
+          V=$(date -u +%Y%m%d%H%M)
           sed -i -E "s/(dvp\.js\?v=)[0-9]+/\1$V/" docs/index.html
 
       - name: Commit
