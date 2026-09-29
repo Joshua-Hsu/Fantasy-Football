@@ -62,6 +62,15 @@ Rams", `{week}`, `{prev}`, `{year}`. Printed by
   discrepancies. Remaining nit: the label pushed a few past 900 chars -
   the body is now capped to what the label leaves. Automated path is the
   weekly default from here; pastes stay welcome as overrides (newest wins).
+- **Cost (2026-09-29)**: the AI Studio project showed $1.45 after the
+  day's runs - about 97 successful calls, ~1.5c each. Cause: every weekly
+  run made 48 calls, not 16 - the 32 check-pass calls were grounded and on
+  the thinking model with no budget, and the probe added a grounded call.
+  Now: 16 grounded scouting calls with a 1024-token thinking budget, 32
+  ungrounded check-pass calls on flash-lite with thinking off, a plain
+  probe, and every run prints tokens + an estimated cost (grounding priced
+  as if metered, so the real bill is at or below the line). Expected
+  ~$0.10-0.20 per run; the first cheap run's AI Studio delta goes here.
 - Tweak ideas not yet tried: ask for "the three plays that decided it" to
   surface scheme detail; ask for "who covered the slot" by name; ask
   whether the box count changed by down and distance.

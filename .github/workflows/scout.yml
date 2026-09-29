@@ -64,7 +64,7 @@ jobs:
           SINCE=$(date -u -d "3 days ago" +%F)
           WEEK_ARG=""
           if [ -n "${{ github.event.inputs.week }}" ]; then WEEK_ARG="--week ${{ github.event.inputs.week }}"; fi
-          python -m fantasy_football.cli scout-run --since "$SINCE" $WEEK_ARG
+          python -m fantasy_football.cli scout-run --since "$SINCE" --pace 4 $WEEK_ARG
           python -m fantasy_football.cli dvp --out docs/dvp.js
           V=$(date -u +%Y%m%d)
           sed -i -E "s/(dvp\.js\?v=)[0-9]+/\1$V/" docs/index.html

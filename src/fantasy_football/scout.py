@@ -359,41 +359,90 @@ class GeminiQuota(RuntimeError):
 
 
 def gemini_probe(api_key: str, model: str) -> dict:
-    """One tiny call each way (grounded / plain) to tell a rate limit from a
-    zero-quota key. Returns ``{"grounded": "ok"|"quota"|"<error>", "plain": ...}``.
-    A key whose grounded call is out of quota while the plain one works needs
-    billing enabled for Google Search grounding; a key where both fail has
-    no quota on that model at all.
+    """One tiny PLAIN call to confirm the key and model work at all.
+
+    Deliberately ungrounded: a grounded probe costs a billable grounded
+    prompt every run. Grounded quota is diagnosed lazily instead - the first
+    real scouting call that stays 429 after its retries prints the billing
+    diagnosis (see ``scout-run``).
     """
-    out = {}
-    for label, grounded in (("grounded", True), ("plain", False)):
-        try:
-            gemini_scout("Reply with the single word OK.", api_key, model=model,
-                         grounded=grounded, retries=0, timeout=60)
-            out[label] = "ok"
-        except GeminiQuota:
-            out[label] = "quota"
-        except Exception as exc:  # noqa: BLE001
-            out[label] = str(exc)[:160]
-    return out
+    try:
+        gemini_scout("Reply with the single word OK.", api_key, model=model,
+                     grounded=False, retries=0, timeout=60, thinking_budget=0, max_output=8)
+        return {"plain": "ok"}
+    except GeminiQuota:
+        return {"plain": "quota"}
+    except Exception as exc:  # noqa: BLE001
+        return {"plain": str(exc)[:160]}
 
 
-def gemini_scout(prompt: str, api_key: str, *, model: str = "auto",
-                 timeout: int = 120, grounded: bool = True,
-                 retries: int = 3, backoff: float = 20.0) -> str:
-    """One Gemini call (Google Search grounding on by default). Returns the text.
+# Published list prices (USD per 1M tokens) used only for the per-run
+# estimate printed by ``scout-run``. Update here when Google changes them.
+PRICES = {
+    "flash": {"in": 0.75, "out": 3.75},        # 3.x Flash; thinking tokens bill as output
+    "lite": {"in": 0.10, "out": 0.40},         # 3.x Flash-Lite
+    "grounding_per_call": 0.014,               # $14 / 1k grounded prompts beyond the free 5k/month
+}
 
-    A 429 is retried with a growing pause (free-tier limits are per minute);
-    if it never clears, ``GeminiQuota`` is raised so the caller can fall back
-    to the next model. Other errors carry the API's message body so a 404
-    says *why* (retired model, grounding not supported).
+
+def pick_lite_model(models: list[dict]) -> str | None:
+    """Newest generally-available flash-lite model, for the cheap check pass."""
+    def ok(m):
+        name = m.get("name", "").split("/")[-1]
+        methods = m.get("supportedGenerationMethods") or []
+        bad = ("preview", "exp", "image", "tts", "embed", "audio", "live", "thinking")
+        return ("flash" in name and "lite" in name and "generateContent" in methods
+                and not any(b in name for b in bad))
+
+    def version(name: str) -> tuple:
+        m = re.search(r"(\d+)\.(\d+)", name)
+        return (int(m.group(1)), int(m.group(2))) if m else (0, 0)
+
+    names = sorted((m.get("name", "").split("/")[-1] for m in models if ok(m)),
+                   key=lambda n: (version(n), len(n)), reverse=True)
+    return names[0] if names else None
+
+
+def estimate_cost(usage: dict) -> float:
+    """Dollar estimate from an accumulated usage dict (see ``gemini_call``).
+
+    Keys: ``flash_in``, ``flash_out`` (output + thinking), ``lite_in``,
+    ``lite_out`` (token counts) and ``grounded`` (grounded call count).
+    Grounding is priced as if metered - the free monthly allowance, when it
+    applies, makes the real bill lower.
+    """
+    f, l = PRICES["flash"], PRICES["lite"]
+    return (usage.get("flash_in", 0) * f["in"] + usage.get("flash_out", 0) * f["out"]
+            + usage.get("lite_in", 0) * l["in"] + usage.get("lite_out", 0) * l["out"]) / 1e6 \
+        + usage.get("grounded", 0) * PRICES["grounding_per_call"]
+
+
+def gemini_call(prompt: str, api_key: str, *, model: str = "auto",
+                timeout: int = 120, grounded: bool = True,
+                retries: int = 3, backoff: float = 20.0,
+                thinking_budget: int | None = None,
+                max_output: int | None = None) -> tuple[str, dict]:
+    """One Gemini call. Returns ``(text, usage)``.
+
+    ``usage`` is ``{"in", "out", "thinking", "grounded"}`` from the response's
+    usageMetadata (grounded = 1 when grounding metadata came back, i.e. the
+    call is billable as a grounded prompt). ``thinking_budget`` caps the
+    model's hidden reasoning tokens (0 = off) - they bill at the output rate
+    and the check pass needs none. A 429 is retried with a growing pause; if
+    it never clears ``GeminiQuota`` is raised so the caller can fall back to
+    the next model. Other errors carry the API's message body.
     """
     import time
 
     model = resolve_model(model, api_key)
+    gen: dict = {"temperature": 0.3}
+    if thinking_budget is not None:
+        gen["thinkingConfig"] = {"thinkingBudget": int(thinking_budget)}
+    if max_output:
+        gen["maxOutputTokens"] = int(max_output)
     body: dict = {
         "contents": [{"role": "user", "parts": [{"text": prompt}]}],
-        "generationConfig": {"temperature": 0.3},
+        "generationConfig": gen,
     }
     if grounded:
         body["tools"] = [{"google_search": {}}]
@@ -421,5 +470,16 @@ def gemini_scout(prompt: str, api_key: str, *, model: str = "auto",
             if exc.code == 429:
                 raise GeminiQuota(f"{model}: HTTP 429 {detail}") from exc
             raise RuntimeError(f"{model}: HTTP {exc.code} {detail}") from exc
-    parts = data.get("candidates", [{}])[0].get("content", {}).get("parts", [])
-    return "\n".join(p.get("text", "") for p in parts if p.get("text"))
+    cand = data.get("candidates", [{}])[0]
+    parts = cand.get("content", {}).get("parts", [])
+    um = data.get("usageMetadata", {}) or {}
+    usage = {"in": int(um.get("promptTokenCount", 0) or 0),
+             "out": int(um.get("candidatesTokenCount", 0) or 0),
+             "thinking": int(um.get("thoughtsTokenCount", 0) or 0),
+             "grounded": 1 if cand.get("groundingMetadata") else 0}
+    return "\n".join(p.get("text", "") for p in parts if p.get("text")), usage
+
+
+def gemini_scout(prompt: str, api_key: str, **kw) -> str:
+    """Text-only wrapper around ``gemini_call`` (kept for callers and tests)."""
+    return gemini_call(prompt, api_key, **kw)[0]
