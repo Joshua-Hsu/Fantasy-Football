@@ -27,6 +27,7 @@ import datetime as dt
 import json
 import os
 import re
+import urllib.error
 import urllib.request
 
 from sqlalchemy import select
@@ -285,18 +286,72 @@ def check_prompt(team: str, week: int, year: int, note: str, lines: list[str]) -
                                 lines="\n".join("- " + x for x in lines) or "(none)")
 
 
-def gemini_scout(prompt: str, api_key: str, *, model: str = "gemini-2.5-flash",
-                 timeout: int = 120) -> str:
-    """One grounded Gemini call (Google Search tool on). Returns the text."""
-    body = {
+GEMINI_LIST_URL = "https://generativelanguage.googleapis.com/v1beta/models?key={key}&pageSize=200"
+
+
+def pick_model(models: list[dict], prefer: str = "flash") -> str | None:
+    """Choose the newest generally-available model whose name contains ``prefer``
+    and that supports generateContent. Model names rotate ("gemini-2.5-flash"
+    404s once retired), so the run asks the API instead of hard-coding one.
+    Skips preview / experimental / lite / image / tts / embedding variants.
+    """
+    def ok(m):
+        name = m.get("name", "").split("/")[-1]
+        methods = m.get("supportedGenerationMethods") or []
+        bad = ("preview", "exp", "lite", "image", "tts", "embed", "audio", "live", "thinking")
+        return (prefer in name and "generateContent" in methods
+                and not any(b in name for b in bad))
+
+    def version(name: str) -> tuple:
+        m = re.search(r"(\d+)\.(\d+)", name)
+        return (int(m.group(1)), int(m.group(2))) if m else (0, 0)
+
+    names = sorted((m.get("name", "").split("/")[-1] for m in models if ok(m)),
+                   key=lambda n: (version(n), len(n)), reverse=True)
+    return names[0] if names else None
+
+
+def gemini_models(api_key: str, timeout: int = 30) -> list[dict]:
+    with urllib.request.urlopen(GEMINI_LIST_URL.format(key=api_key), timeout=timeout) as resp:
+        return json.loads(resp.read().decode()).get("models", [])
+
+
+def resolve_model(model: str, api_key: str) -> str:
+    """``auto`` -> newest flash model the key can see; else the name as given."""
+    if model != "auto":
+        return model
+    chosen = pick_model(gemini_models(api_key))
+    if not chosen:
+        raise RuntimeError("no Gemini flash model with generateContent is visible to this key")
+    return chosen
+
+
+def gemini_scout(prompt: str, api_key: str, *, model: str = "auto",
+                 timeout: int = 120, grounded: bool = True) -> str:
+    """One Gemini call (Google Search grounding on by default). Returns the text.
+
+    Errors carry the API's message body so a 404 says *why* (retired model,
+    grounding not supported) instead of just "Not Found".
+    """
+    model = resolve_model(model, api_key)
+    body: dict = {
         "contents": [{"role": "user", "parts": [{"text": prompt}]}],
-        "tools": [{"google_search": {}}],
         "generationConfig": {"temperature": 0.3},
     }
+    if grounded:
+        body["tools"] = [{"google_search": {}}]
     req = urllib.request.Request(
         GEMINI_URL.format(model=model) + f"?key={api_key}",
         data=json.dumps(body).encode(), headers={"Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
-        data = json.loads(resp.read().decode())
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            data = json.loads(resp.read().decode())
+    except urllib.error.HTTPError as exc:
+        detail = ""
+        try:
+            detail = exc.read().decode()[:300]
+        except Exception:  # noqa: BLE001
+            pass
+        raise RuntimeError(f"{model}: HTTP {exc.code} {detail}") from exc
     parts = data.get("candidates", [{}])[0].get("content", {}).get("parts", [])
     return "\n".join(p.get("text", "") for p in parts if p.get("text"))

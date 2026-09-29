@@ -92,3 +92,19 @@ def test_check_prompt_carries_note_and_lines():
     assert "- Parker Washington (WR) 12 tgt" in p
     assert "return ONLY the note" in p
     assert "(none)" in check_prompt("DEN", 2, 2026, "x", [])
+
+
+def test_pick_model_prefers_newest_ga_flash():
+    from fantasy_football.scout import pick_model, resolve_model
+
+    models = [
+        {"name": "models/gemini-2.5-flash", "supportedGenerationMethods": ["generateContent"]},
+        {"name": "models/gemini-3.0-flash", "supportedGenerationMethods": ["generateContent"]},
+        {"name": "models/gemini-3.1-flash-preview", "supportedGenerationMethods": ["generateContent"]},
+        {"name": "models/gemini-3.0-flash-lite", "supportedGenerationMethods": ["generateContent"]},
+        {"name": "models/gemini-3.0-pro", "supportedGenerationMethods": ["generateContent"]},
+        {"name": "models/gemini-3.5-flash", "supportedGenerationMethods": ["embedContent"]},
+    ]
+    assert pick_model(models) == "gemini-3.0-flash"
+    assert pick_model([]) is None
+    assert resolve_model("gemini-2.5-flash", "k") == "gemini-2.5-flash"  # explicit name passes through
