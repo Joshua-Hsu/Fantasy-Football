@@ -350,6 +350,26 @@ class GeminiQuota(RuntimeError):
     """HTTP 429 that did not clear after the retries: try another model."""
 
 
+def gemini_probe(api_key: str, model: str) -> dict:
+    """One tiny call each way (grounded / plain) to tell a rate limit from a
+    zero-quota key. Returns ``{"grounded": "ok"|"quota"|"<error>", "plain": ...}``.
+    A key whose grounded call is out of quota while the plain one works needs
+    billing enabled for Google Search grounding; a key where both fail has
+    no quota on that model at all.
+    """
+    out = {}
+    for label, grounded in (("grounded", True), ("plain", False)):
+        try:
+            gemini_scout("Reply with the single word OK.", api_key, model=model,
+                         grounded=grounded, retries=0, timeout=60)
+            out[label] = "ok"
+        except GeminiQuota:
+            out[label] = "quota"
+        except Exception as exc:  # noqa: BLE001
+            out[label] = str(exc)[:160]
+    return out
+
+
 def gemini_scout(prompt: str, api_key: str, *, model: str = "auto",
                  timeout: int = 120, grounded: bool = True,
                  retries: int = 3, backoff: float = 20.0) -> str:

@@ -34,6 +34,16 @@ Rams", `{week}`, `{prev}`, `{year}`. Printed by
   same check a paste gets by hand). Auto notes are labeled "box-checked";
   `--no-check` restores the single call ("unverified"). Not yet measured
   against the hand check - compare on the first week the key is live.
+- **First live runs (2026-09-29)**: run 1 404'd on the retired hard-coded
+  `gemini-2.5-flash` (fixed: model resolved from the API); run 2/3 got HTTP
+  429 "check your plan and billing" on `gemini-3.8-flash` even with pacing
+  and retries, and the fallback `gemini-2.5-flash` is "no longer available
+  to new users". Cause: in 2026 Google Search grounding on 3.x models needs
+  a billing-enabled project (Tier 1: 5,000 grounded prompts/month free,
+  then $14/1k; tokens ~$0.75/M in, $3.75/M out on 3.8 Flash - about a
+  quarter per week for 32 calls). The free tier keeps grounding only on the
+  2.5 models, which new keys cannot use. `scout-run` now probes the key
+  first and stops with that diagnosis instead of burning the paced retries.
 - Tweak ideas not yet tried: ask for "the three plays that decided it" to
   surface scheme detail; ask for "who covered the slot" by name; ask
   whether the box count changed by down and distance.
