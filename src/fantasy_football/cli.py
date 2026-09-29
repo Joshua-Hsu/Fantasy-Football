@@ -849,7 +849,7 @@ def _cmd_scout_run(args: argparse.Namespace) -> int:
     import os
     import time
 
-    from .scout import (GeminiQuota, _team_names, append_notes, box_lines, cap_note,
+    from .scout import (NOTE_CAP, GeminiQuota, _team_names, append_notes, box_lines, cap_note,
                         check_prompt, clean_text, game_pairs, gemini_models, gemini_scout,
                         noted_teams, parse_sections, pick_models, scout_prompt)
 
@@ -943,8 +943,10 @@ def _cmd_scout_run(args: argparse.Namespace) -> int:
             else:
                 notes = {k: cap_note(v) for k, v in notes.items()}
             label = "box-checked" if not args.no_check else "unverified"
-            notes = {k: f"Wk{week} auto (Gemini {models[min(mi, len(models)-1)]}, {label}): " + v
-                     for k, v in notes.items()}
+            prefix = f"Wk{week} auto (Gemini {models[min(mi, len(models)-1)]}, {label}): "
+            # The page cuts at NOTE_CAP including the label, so cap the body
+            # to what is left - otherwise the Wk+1 line is what gets lost.
+            notes = {k: prefix + cap_note(v, NOTE_CAP - len(prefix)) for k, v in notes.items()}
             n = append_notes(args.notes, notes, date)
             written += n
             print(f"{p['b']} @ {p['a']}: {n} note(s)")

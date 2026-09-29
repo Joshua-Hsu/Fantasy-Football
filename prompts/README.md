@@ -56,6 +56,12 @@ Rams", `{week}`, `{prev}`, `{year}`. Printed by
   told to compress to <850 chars ending with the 'Fantasy read:' sentence
   and a 'Wk<N> <opp>:' line. The 30 wk2 auto rows were removed after
   grading (the verified hand notes stay); week 3 is the first real run.
+- **Run 5 (2026-09-29, week 3 - first real weekly run)**: 32/32 notes in
+  21 minutes, all ending with 'Fantasy read:' and a 'Wk4 <opp>:' line;
+  DEN and IND spot-checked line by line against the DB with zero
+  discrepancies. Remaining nit: the label pushed a few past 900 chars -
+  the body is now capped to what the label leaves. Automated path is the
+  weekly default from here; pastes stay welcome as overrides (newest wins).
 - Tweak ideas not yet tried: ask for "the three plays that decided it" to
   surface scheme detail; ask for "who covered the slot" by name; ask
   whether the box count changed by down and distance.
