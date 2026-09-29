@@ -838,71 +838,87 @@ def _cmd_scout_verify(args: argparse.Namespace) -> int:
 
 
 def _cmd_scout_run(args: argparse.Namespace) -> int:
-    """Fully automated notes via the Gemini API (GEMINI_API_KEY), one game per call.
+    """Fully automated notes via the Gemini API (GEMINI_API_KEY).
 
-    Free-tier keys are rate-limited per minute and the newest model may have
-    no free quota at all, so calls are paced (``--pace`` seconds apart), 429s
-    are retried with backoff, and a model whose quota never clears is
-    swapped for the next-newest flash model.
+    Per game: ONE grounded scouting call (the only calls that need web
+    search; thinking capped by ``--think``), then per team ONE ungrounded
+    check pass on the flash-lite model with thinking off - it rewrites the
+    note against box-score lines we supply, so it needs neither search nor
+    reasoning. Calls are paced, 429s retried, a dead model swapped for the
+    next one, and the run ends with a token + estimated-cost line.
     """
     import datetime as dt
     import os
     import time
 
     from .scout import (NOTE_CAP, GeminiQuota, _team_names, append_notes, box_lines, cap_note,
-                        check_prompt, clean_text, game_pairs, gemini_models, gemini_scout,
-                        noted_teams, parse_sections, pick_models, scout_prompt)
+                        check_prompt, clean_text, estimate_cost, game_pairs, gemini_call,
+                        gemini_models, gemini_probe, noted_teams, parse_sections,
+                        pick_lite_model, pick_models, scout_prompt)
 
     key = os.environ.get("GEMINI_API_KEY")
     if not key:
         print("GEMINI_API_KEY is not set - nothing to do (paste-and-verify path still works)")
         return 1
+    lite = None
     if args.model == "auto":
         try:
-            models = pick_models(gemini_models(key))
+            listing = gemini_models(key)
         except Exception as exc:  # noqa: BLE001
             print(f"could not list Gemini models: {exc}")
             return 1
+        models = pick_models(listing)
         if not models:
             print("no Gemini flash model with generateContent is visible to this key")
             return 1
+        lite = None if args.no_lite else pick_lite_model(listing)
     else:
         models = [args.model]
-    print(f"Gemini models (in order): {', '.join(models[:6])}")
-    # Probe before spending the paced retries: a zero-quota key should fail
-    # fast with a diagnosis, not after 16 games of 20/40/60-second waits.
-    from .scout import gemini_probe
+    print(f"Gemini models (in order): {', '.join(models[:6])}; check pass: {lite or models[0]}")
     probe = gemini_probe(key, models[0])
-    print(f"probe {models[0]}: grounded={probe['grounded']} plain={probe['plain']}")
-    if probe["grounded"] != "ok":
-        if probe["plain"] == "ok":
-            print("Google Search grounding has no quota on this key - the API project needs "
-                  "billing enabled (pay-as-you-go) for grounded calls; ungrounded notes would "
-                  "not know last week's games, so stopping here.")
-            return 2
-        for alt in models[1:3]:
-            probe = gemini_probe(key, alt)
-            print(f"probe {alt}: grounded={probe['grounded']} plain={probe['plain']}")
-            if probe["grounded"] == "ok":
-                models = [alt] + [m for m in models if m != alt]
-                break
-        else:
-            print("No model with grounded quota on this key - check the plan/billing on the "
-                  "Google AI Studio project.")
-            return 2
+    print(f"probe {models[0]}: plain={probe['plain']}")
+    if probe["plain"] != "ok":
+        print("The key cannot complete a plain call on this model - check the key / project.")
+        return 2
     mi = 0
+    usage = {"flash_in": 0, "flash_out": 0, "lite_in": 0, "lite_out": 0, "grounded": 0, "calls": 0}
 
-    def call(prompt: str) -> str:
+    def call(prompt: str, *, grounded: bool, lite_ok: bool = False,
+             think: int | None = None, max_out: int | None = None) -> str:
         nonlocal mi
+        model = lite if (lite_ok and lite) else None
         while mi < len(models):
+            m = model or models[mi]
             try:
-                text = gemini_scout(prompt, key, model=models[mi])
+                text, u = gemini_call(prompt, key, model=m, grounded=grounded,
+                                      thinking_budget=think, max_output=max_out)
+                bucket = "lite" if m == lite else "flash"
+                usage[bucket + "_in"] += u["in"]
+                usage[bucket + "_out"] += u["out"] + u["thinking"]
+                usage["grounded"] += u["grounded"]
+                usage["calls"] += 1
                 time.sleep(args.pace)
                 return text
             except GeminiQuota as exc:
-                print(f"quota exhausted on {models[mi]} ({str(exc)[:120]}); trying the next model")
+                if model:  # the lite model is out of quota - fall back to the main one
+                    print(f"lite model {model} out of quota; check pass on {models[mi]}")
+                    model = None
+                    continue
+                if mi == 0 and grounded:
+                    print(f"grounded call stayed 429 on {models[mi]} ({str(exc)[:100]}) - if the "
+                          "plain probe passed, Google Search grounding needs a billing-enabled "
+                          "project; trying the next model")
+                else:
+                    print(f"quota exhausted on {models[mi]} ({str(exc)[:100]}); trying the next model")
                 mi += 1
         raise RuntimeError("every candidate model is out of quota")
+
+    def cost_line() -> str:
+        est = estimate_cost(usage)
+        return (f"tokens: flash in {usage['flash_in']/1e3:.0f}k / out+think {usage['flash_out']/1e3:.0f}k; "
+                f"lite in {usage['lite_in']/1e3:.0f}k / out {usage['lite_out']/1e3:.0f}k; "
+                f"grounded calls {usage['grounded']} of {usage['calls']}; "
+                f"est. ${est:.2f} (grounding priced as if metered)")
 
     date = dt.date.today().isoformat()
     with _open_session(args) as session:
@@ -916,7 +932,7 @@ def _cmd_scout_run(args: argparse.Namespace) -> int:
             prompt = scout_prompt(session, year, week, p["a"], p["b"],
                                   a_next=p["a_next"], b_next=p["b_next"])
             try:
-                text = call(prompt)
+                text = call(prompt, grounded=True, think=args.think, max_out=2200)
             except Exception as exc:  # noqa: BLE001 - one bad game must not kill the run
                 print(f"{p['b']} @ {p['a']}: Gemini call failed: {exc}")
                 if "out of quota" in str(exc):
@@ -925,18 +941,17 @@ def _cmd_scout_run(args: argparse.Namespace) -> int:
             # Full sections first: the check pass must see the whole answer
             # (the fantasy read sits at the END of a long section and a blind
             # 900-char cut would drop it - the first live run did exactly that).
-            notes = parse_sections(text, p["a"], p["b"], names, cap=not args.no_check and False)
+            notes = parse_sections(text, p["a"], p["b"], names, cap=False)
             notes = {k: v for k, v in notes.items() if k not in done}
             if not args.no_check:
                 for k, v in list(notes.items()):
                     lines = box_lines(session, year, week, k)
                     nxt = p["a_next"] if k == p["a"] else p["b_next"]
                     try:
-                        fixed = cap_note(clean_text(call(check_prompt(k, week, year, v, lines, nxt))))
-                        if len(fixed) > 200:
-                            notes[k] = fixed
-                        else:
-                            notes[k] = cap_note(v)
+                        fixed = cap_note(clean_text(call(check_prompt(k, week, year, v, lines, nxt),
+                                                         grounded=False, lite_ok=True,
+                                                         think=0, max_out=700)))
+                        notes[k] = fixed if len(fixed) > 200 else cap_note(v)
                     except Exception as exc:  # noqa: BLE001 - keep the unchecked note
                         print(f"{k}: check pass failed ({exc}); filing unchecked")
                         notes[k] = cap_note(v)
@@ -951,6 +966,11 @@ def _cmd_scout_run(args: argparse.Namespace) -> int:
             written += n
             print(f"{p['b']} @ {p['a']}: {n} note(s)")
         print(f"wrote {written} notes to {args.notes}")
+        print(cost_line())
+        summary = os.environ.get("GITHUB_STEP_SUMMARY")
+        if summary:
+            with open(summary, "a") as fh:
+                fh.write(f"### Defense scouting, week {week}\n\n{written} notes. {cost_line()}\n")
     return 0
 
 
@@ -1512,8 +1532,12 @@ def build_parser() -> argparse.ArgumentParser:
                       help="Gemini model name, or 'auto' = newest flash model the key can see")
     p_sr.add_argument("--no-check", action="store_true", dest="no_check",
                       help="Skip the second call that checks each note against the box score")
-    p_sr.add_argument("--pace", type=float, default=7.0,
-                      help="Seconds to wait after each Gemini call (free tier is limited per minute)")
+    p_sr.add_argument("--pace", type=float, default=4.0,
+                      help="Seconds to wait after each Gemini call (limits are per minute)")
+    p_sr.add_argument("--think", type=int, default=1024,
+                      help="Thinking-token budget for the grounded scouting calls (0 = off)")
+    p_sr.add_argument("--no-lite", action="store_true", dest="no_lite",
+                      help="Run the check pass on the main model instead of flash-lite")
     p_sr.set_defaults(func=_cmd_scout_run)
 
     p_byes = sub.add_parser("load-byes", help="Set team bye weeks from the schedule")

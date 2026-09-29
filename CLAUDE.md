@@ -311,7 +311,12 @@ by default for copy-paste); `cli scout-verify --team DEN,JAX` prints the lines a
 be checked against before filing (file the number and the correction when
 the paste's story contradicts it); `cli scout-run` is the automated path
 via the Gemini API with search grounding (`GEMINI_API_KEY` secret,
-`scout.yml` Tuesday 13:00 UTC, notes prefixed "auto (Gemini, unverified)").
+`scout.yml` Tuesday 13:00 UTC, notes labeled "auto (Gemini <model>,
+box-checked)"). Cost discipline: only the 16 per-game scouting calls are
+grounded (with a thinking budget); the per-team check pass runs ungrounded
+on flash-lite with thinking off; the run prints tokens + an estimated
+cost into the Actions job summary - a week should cost cents, and
+`prompts/README.md` logs each run's grade and cost.
 Cap is 900 chars (`cap_note`). Always hand the user the NEXT game's prompt
 in a fenced block at the end of a reply.
 
