@@ -207,7 +207,8 @@ def cap_note(text: str, cap: int = NOTE_CAP) -> str:
     return cut.rstrip() + "..."
 
 
-def parse_sections(text: str, a: str, b: str, names: dict[str, tuple[str, str]] | None = None) -> dict[str, str]:
+def parse_sections(text: str, a: str, b: str, names: dict[str, tuple[str, str]] | None = None,
+                   *, cap: bool = True) -> dict[str, str]:
     """Split a two-team answer into ``{abbr: note}`` by team headings.
 
     Headings are matched on the team's nickname (``Broncos``) or full name;
@@ -236,7 +237,8 @@ def parse_sections(text: str, a: str, b: str, names: dict[str, tuple[str, str]] 
             continue
         if cur:
             buckets[cur].append(s)
-    return {code: cap_note(" ".join(parts)) for code, parts in buckets.items() if parts}
+    joined = {code: re.sub(r"\s+", " ", " ".join(parts)).strip() for code, parts in buckets.items() if parts}
+    return {code: (cap_note(v) if cap else v) for code, v in joined.items()}
 
 
 def append_notes(path: str, notes: dict[str, str], date: str | None = None) -> int:
@@ -274,15 +276,21 @@ _CHECK_PROMPT = (
     "example 'erased the run' when the back scored twice, or 'locked down the "
     "boundary' when the outside receiver went 5-101), rewrite that sentence to "
     "state the number and the correction. If a named stat line is wrong, fix it. "
-    "If the note is consistent with the lines, return it unchanged. Keep the note "
-    "under 900 characters, keep its structure (scheme, injuries, what the offense "
-    "did, 'Fantasy read:' sentence, next-opponent line), and return ONLY the note "
-    "text with no preamble.\n\nNOTE:\n{note}\n\nVERIFIED LINES:\n{lines}"
+    "Then rewrite the note to UNDER 850 characters total, in this order: scheme and "
+    "personnel (package rates, blitz/pressure, who covered whom), what changed and "
+    "why (injuries, fill-ins), what the offense did against them with the verified "
+    "numbers, then one sentence starting exactly 'Fantasy read:' naming the positions "
+    "this defense funnels production to and takes away, then one sentence starting "
+    "'Wk{next_week} {next_opp}:' applying it to that opponent. Drop headings, "
+    "citations and filler. Return ONLY the note text with no preamble."
+    "\n\nNOTE:\n{note}\n\nVERIFIED LINES:\n{lines}"
 )
 
 
-def check_prompt(team: str, week: int, year: int, note: str, lines: list[str]) -> str:
+def check_prompt(team: str, week: int, year: int, note: str, lines: list[str],
+                 next_opp: str = "") -> str:
     return _CHECK_PROMPT.format(team=team, week=week, year=year, note=note,
+                                next_week=week + 1, next_opp=next_opp or "(bye)",
                                 lines="\n".join("- " + x for x in lines) or "(none)")
 
 
@@ -406,6 +414,9 @@ def gemini_scout(prompt: str, api_key: str, *, model: str = "auto",
                 pass
             if exc.code == 429 and attempt < retries:
                 time.sleep(backoff * (attempt + 1))
+                continue
+            if exc.code in (500, 502, 503, 504) and attempt < retries:
+                time.sleep(5 * (attempt + 1))  # transient - short pause, then again
                 continue
             if exc.code == 429:
                 raise GeminiQuota(f"{model}: HTTP 429 {detail}") from exc
