@@ -868,7 +868,28 @@ def _cmd_scout_run(args: argparse.Namespace) -> int:
             return 1
     else:
         models = [args.model]
-    print(f"Gemini models (in order): {', '.join(models[:4])}")
+    print(f"Gemini models (in order): {', '.join(models[:6])}")
+    # Probe before spending the paced retries: a zero-quota key should fail
+    # fast with a diagnosis, not after 16 games of 20/40/60-second waits.
+    from .scout import gemini_probe
+    probe = gemini_probe(key, models[0])
+    print(f"probe {models[0]}: grounded={probe['grounded']} plain={probe['plain']}")
+    if probe["grounded"] != "ok":
+        if probe["plain"] == "ok":
+            print("Google Search grounding has no quota on this key - the API project needs "
+                  "billing enabled (pay-as-you-go) for grounded calls; ungrounded notes would "
+                  "not know last week's games, so stopping here.")
+            return 2
+        for alt in models[1:3]:
+            probe = gemini_probe(key, alt)
+            print(f"probe {alt}: grounded={probe['grounded']} plain={probe['plain']}")
+            if probe["grounded"] == "ok":
+                models = [alt] + [m for m in models if m != alt]
+                break
+        else:
+            print("No model with grounded quota on this key - check the plan/billing on the "
+                  "Google AI Studio project.")
+            return 2
     mi = 0
 
     def call(prompt: str) -> str:
