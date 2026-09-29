@@ -922,18 +922,26 @@ def _cmd_scout_run(args: argparse.Namespace) -> int:
                 if "out of quota" in str(exc):
                     break
                 continue
-            notes = parse_sections(text, p["a"], p["b"], names)
+            # Full sections first: the check pass must see the whole answer
+            # (the fantasy read sits at the END of a long section and a blind
+            # 900-char cut would drop it - the first live run did exactly that).
+            notes = parse_sections(text, p["a"], p["b"], names, cap=not args.no_check and False)
             notes = {k: v for k, v in notes.items() if k not in done}
-            # Second pass: the box-score check a pasted note gets by hand.
             if not args.no_check:
                 for k, v in list(notes.items()):
                     lines = box_lines(session, year, week, k)
+                    nxt = p["a_next"] if k == p["a"] else p["b_next"]
                     try:
-                        fixed = cap_note(clean_text(call(check_prompt(k, week, year, v, lines))))
+                        fixed = cap_note(clean_text(call(check_prompt(k, week, year, v, lines, nxt))))
                         if len(fixed) > 200:
                             notes[k] = fixed
+                        else:
+                            notes[k] = cap_note(v)
                     except Exception as exc:  # noqa: BLE001 - keep the unchecked note
                         print(f"{k}: check pass failed ({exc}); filing unchecked")
+                        notes[k] = cap_note(v)
+            else:
+                notes = {k: cap_note(v) for k, v in notes.items()}
             label = "box-checked" if not args.no_check else "unverified"
             notes = {k: f"Wk{week} auto (Gemini {models[min(mi, len(models)-1)]}, {label}): " + v
                      for k, v in notes.items()}

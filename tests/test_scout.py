@@ -90,7 +90,7 @@ def test_check_prompt_carries_note_and_lines():
     assert "DEN defense from NFL week 2 (2026)" in p
     assert "NOTE:\nSurtain erased the outside." in p
     assert "- Parker Washington (WR) 12 tgt" in p
-    assert "return ONLY the note" in p
+    assert "Return ONLY the note" in p
     assert "(none)" in check_prompt("DEN", 2, 2026, "x", [])
 
 
@@ -108,3 +108,16 @@ def test_pick_model_prefers_newest_ga_flash():
     assert pick_model(models) == "gemini-3.0-flash"
     assert pick_model([]) is None
     assert resolve_model("gemini-2.5-flash", "k") == "gemini-2.5-flash"  # explicit name passes through
+
+
+def test_parse_sections_uncapped_and_check_prompt_next():
+    from fantasy_football.scout import check_prompt, parse_sections
+
+    names = {"DEN": ("Denver Broncos", "Denver"), "JAX": ("Jacksonville Jaguars", "Jacksonville")}
+    text = "## Denver Broncos\n" + ("Long sentence here. " * 60) + "\n## Jacksonville Jaguars\nShort.\n"
+    full = parse_sections(text, "DEN", "JAX", names, cap=False)
+    assert len(full["DEN"]) > 900 and full["JAX"] == "Short."
+    capped = parse_sections(text, "DEN", "JAX", names)
+    assert len(capped["DEN"]) <= 900
+    p = check_prompt("DEN", 2, 2026, "note", [], "vLA")
+    assert "'Wk3 vLA:'" in p and "UNDER 850" in p

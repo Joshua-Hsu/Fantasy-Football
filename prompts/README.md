@@ -44,6 +44,18 @@ Rams", `{week}`, `{prev}`, `{year}`. Printed by
   quarter per week for 32 calls). The free tier keeps grounding only on the
   2.5 models, which new keys cannot use. `scout-run` now probes the key
   first and stops with that diagnosis instead of burning the paced retries.
+- **Run 4 (2026-09-29, billing on, gemini-3.8-flash, box-checked)**: 30 of
+  32 notes in 18 minutes (CHI/MIN lost to a transient 503 - now retried).
+  Quality vs the hand-verified week-2 set: detail is richer (package %,
+  blitz %, who covered whom), every named stat line checked out against
+  the DB, and the check pass DID correct the McCaffrey claim ("held to 2.3
+  ypc, but failed to bottle up the run game as McCaffrey scored 2 TDs").
+  Failure: sections ran past 900 chars and the blind cap dropped the
+  'Fantasy read' and next-opponent lines on most teams - the parts that
+  matter for lineups. Fix: the check pass now sees the FULL section and is
+  told to compress to <850 chars ending with the 'Fantasy read:' sentence
+  and a 'Wk<N> <opp>:' line. The 30 wk2 auto rows were removed after
+  grading (the verified hand notes stay); week 3 is the first real run.
 - Tweak ideas not yet tried: ask for "the three plays that decided it" to
   surface scheme detail; ask for "who covered the slot" by name; ask
   whether the box count changed by down and distance.
