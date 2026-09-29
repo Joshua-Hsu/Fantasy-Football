@@ -850,6 +850,13 @@ def _cmd_scout_run(args: argparse.Namespace) -> int:
         print("GEMINI_API_KEY is not set - nothing to do (paste-and-verify path still works)")
         return 1
     date = dt.date.today().isoformat()
+    from .scout import resolve_model
+    try:
+        args.model = resolve_model(args.model, key)
+    except Exception as exc:  # noqa: BLE001
+        print(f"could not resolve a Gemini model: {exc}")
+        return 1
+    print(f"Gemini model: {args.model}")
     with _open_session(args) as session:
         year, week = _scout_week(session, args)
         names = _team_names(session)
@@ -1443,7 +1450,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_sr.add_argument("--since", default=None,
                       help="Skip teams already noted on/after this date (YYYY-MM-DD)")
     p_sr.add_argument("--limit", type=int, default=16, help="Max games per run")
-    p_sr.add_argument("--model", default="gemini-2.5-flash")
+    p_sr.add_argument("--model", default="auto",
+                      help="Gemini model name, or 'auto' = newest flash model the key can see")
     p_sr.add_argument("--no-check", action="store_true", dest="no_check",
                       help="Skip the second call that checks each note against the box score")
     p_sr.set_defaults(func=_cmd_scout_run)
