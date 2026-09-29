@@ -842,8 +842,8 @@ def _cmd_scout_run(args: argparse.Namespace) -> int:
     import datetime as dt
     import os
 
-    from .scout import (_team_names, append_notes, game_pairs, gemini_scout, noted_teams,
-                        parse_sections, scout_prompt)
+    from .scout import (_team_names, append_notes, clean_text, game_pairs, gemini_scout,
+                        noted_teams, parse_sections, scout_prompt)
 
     key = os.environ.get("GEMINI_API_KEY")
     if not key:
@@ -866,8 +866,22 @@ def _cmd_scout_run(args: argparse.Namespace) -> int:
                 print(f"{p['b']} @ {p['a']}: Gemini call failed: {exc}")
                 continue
             notes = parse_sections(text, p["a"], p["b"], names)
-            notes = {k: f"Wk{week} auto (Gemini, unverified): " + v for k, v in notes.items()
-                     if k not in done}
+            notes = {k: v for k, v in notes.items() if k not in done}
+            # Second pass: the box-score check a pasted note gets by hand.
+            if not args.no_check:
+                from .scout import box_lines, cap_note, check_prompt
+                for k, v in list(notes.items()):
+                    lines = box_lines(session, year, week, k)
+                    try:
+                        fixed = gemini_scout(check_prompt(k, week, year, v, lines), key,
+                                             model=args.model)
+                        fixed = cap_note(clean_text(fixed))
+                        if len(fixed) > 200:
+                            notes[k] = fixed
+                    except Exception as exc:  # noqa: BLE001 - keep the unchecked note
+                        print(f"{k}: check pass failed ({exc}); filing unchecked")
+            label = "box-checked" if not args.no_check else "unverified"
+            notes = {k: f"Wk{week} auto (Gemini, {label}): " + v for k, v in notes.items()}
             n = append_notes(args.notes, notes, date)
             written += n
             print(f"{p['b']} @ {p['a']}: {n} note(s)")
@@ -1430,6 +1444,8 @@ def build_parser() -> argparse.ArgumentParser:
                       help="Skip teams already noted on/after this date (YYYY-MM-DD)")
     p_sr.add_argument("--limit", type=int, default=16, help="Max games per run")
     p_sr.add_argument("--model", default="gemini-2.5-flash")
+    p_sr.add_argument("--no-check", action="store_true", dest="no_check",
+                      help="Skip the second call that checks each note against the box score")
     p_sr.set_defaults(func=_cmd_scout_run)
 
     p_byes = sub.add_parser("load-byes", help="Set team bye weeks from the schedule")

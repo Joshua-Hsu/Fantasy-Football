@@ -81,3 +81,14 @@ def test_prompt_template_file(tmp_path):
     assert prompt_template(str(tmp_path / "nope.txt")) == _PROMPT_FALLBACK
     (tmp_path / "empty.txt").write_text("")
     assert prompt_template(str(tmp_path / "empty.txt")) == _PROMPT_FALLBACK
+
+
+def test_check_prompt_carries_note_and_lines():
+    from fantasy_football.scout import check_prompt
+
+    p = check_prompt("DEN", 2, 2026, "Surtain erased the outside.", ["Parker Washington (WR) 12 tgt 7 rec 98 yds 0 TD"])
+    assert "DEN defense from NFL week 2 (2026)" in p
+    assert "NOTE:\nSurtain erased the outside." in p
+    assert "- Parker Washington (WR) 12 tgt" in p
+    assert "return ONLY the note" in p
+    assert "(none)" in check_prompt("DEN", 2, 2026, "x", [])
