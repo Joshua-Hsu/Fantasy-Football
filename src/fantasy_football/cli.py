@@ -932,7 +932,15 @@ def _cmd_scout_run(args: argparse.Namespace) -> int:
             prompt = scout_prompt(session, year, week, p["a"], p["b"],
                                   a_next=p["a_next"], b_next=p["b_next"])
             try:
+                before = usage["grounded"]
                 text = call(prompt, grounded=True, think=args.think, max_out=2200)
+                if usage["grounded"] == before:
+                    # The model answered without searching - that is memory,
+                    # not last week's game. One nudged retry.
+                    print(f"{p['b']} @ {p['a']}: answer was not grounded - retrying with a search nudge")
+                    text = call("Please look this up with web search rather than answering from "
+                                "memory; the game was played this week.\n\n" + prompt,
+                                grounded=True, think=args.think, max_out=2200)
             except Exception as exc:  # noqa: BLE001 - one bad game must not kill the run
                 print(f"{p['b']} @ {p['a']}: Gemini call failed: {exc}")
                 if "out of quota" in str(exc):
@@ -943,6 +951,9 @@ def _cmd_scout_run(args: argparse.Namespace) -> int:
             # 900-char cut would drop it - the first live run did exactly that).
             notes = parse_sections(text, p["a"], p["b"], names, cap=False)
             notes = {k: v for k, v in notes.items() if k not in done}
+            if not notes:
+                print(f"{p['b']} @ {p['a']}: no team sections found in the answer "
+                      f"({len(text)} chars): {text[:160]!r}")
             if not args.no_check:
                 for k, v in list(notes.items()):
                     lines = box_lines(session, year, week, k)

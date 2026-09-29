@@ -71,6 +71,15 @@ Rams", `{week}`, `{prev}`, `{year}`. Printed by
   probe, and every run prints tokens + an estimated cost (grounding priced
   as if metered, so the real bill is at or below the line). Expected
   ~$0.10-0.20 per run; the first cheap run's AI Studio delta goes here.
+- **Run 7 (cheap path, week 3 forced)**: 4 minutes, cost line `flash in
+  10k / out+think 19k; grounded 7 of 16; est. $0.18` - but every lite
+  check-pass call got HTTP 400 INVALID_ARGUMENT (flash-lite rejects the
+  thinking budget), so the raw truncated sections were filed without the
+  fantasy read, and only 7 of 16 scouting answers were actually grounded
+  (the model skipped search on the rest; two games came back with no team
+  sections at all). Fixes: `gemini_call` drops a rejected generation option
+  and retries; an ungrounded scouting answer is retried once with a search
+  nudge; empty parses are logged. The 28 degraded rows were removed.
 - Tweak ideas not yet tried: ask for "the three plays that decided it" to
   surface scheme detail; ask for "who covered the slot" by name; ask
   whether the box count changed by down and distance.
