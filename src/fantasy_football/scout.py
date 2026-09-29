@@ -306,9 +306,29 @@ def pick_model(models: list[dict], prefer: str = "flash") -> str | None:
         m = re.search(r"(\d+)\.(\d+)", name)
         return (int(m.group(1)), int(m.group(2))) if m else (0, 0)
 
-    names = sorted((m.get("name", "").split("/")[-1] for m in models if ok(m)),
-                   key=lambda n: (version(n), len(n)), reverse=True)
+    names = pick_models(models, prefer)
     return names[0] if names else None
+
+
+def pick_models(models: list[dict], prefer: str = "flash") -> list[str]:
+    """All acceptable models, newest first (``pick_model`` takes the head).
+
+    The runner walks this list: the newest model may have no free-tier
+    quota (a 429 that never clears), in which case the next one is tried.
+    """
+    def ok(m):
+        name = m.get("name", "").split("/")[-1]
+        methods = m.get("supportedGenerationMethods") or []
+        bad = ("preview", "exp", "lite", "image", "tts", "embed", "audio", "live", "thinking")
+        return (prefer in name and "generateContent" in methods
+                and not any(b in name for b in bad))
+
+    def version(name: str) -> tuple:
+        m = re.search(r"(\d+)\.(\d+)", name)
+        return (int(m.group(1)), int(m.group(2))) if m else (0, 0)
+
+    return sorted((m.get("name", "").split("/")[-1] for m in models if ok(m)),
+                  key=lambda n: (version(n), len(n)), reverse=True)
 
 
 def gemini_models(api_key: str, timeout: int = 30) -> list[dict]:
@@ -326,13 +346,22 @@ def resolve_model(model: str, api_key: str) -> str:
     return chosen
 
 
+class GeminiQuota(RuntimeError):
+    """HTTP 429 that did not clear after the retries: try another model."""
+
+
 def gemini_scout(prompt: str, api_key: str, *, model: str = "auto",
-                 timeout: int = 120, grounded: bool = True) -> str:
+                 timeout: int = 120, grounded: bool = True,
+                 retries: int = 3, backoff: float = 20.0) -> str:
     """One Gemini call (Google Search grounding on by default). Returns the text.
 
-    Errors carry the API's message body so a 404 says *why* (retired model,
-    grounding not supported) instead of just "Not Found".
+    A 429 is retried with a growing pause (free-tier limits are per minute);
+    if it never clears, ``GeminiQuota`` is raised so the caller can fall back
+    to the next model. Other errors carry the API's message body so a 404
+    says *why* (retired model, grounding not supported).
     """
+    import time
+
     model = resolve_model(model, api_key)
     body: dict = {
         "contents": [{"role": "user", "parts": [{"text": prompt}]}],
@@ -340,18 +369,26 @@ def gemini_scout(prompt: str, api_key: str, *, model: str = "auto",
     }
     if grounded:
         body["tools"] = [{"google_search": {}}]
-    req = urllib.request.Request(
-        GEMINI_URL.format(model=model) + f"?key={api_key}",
-        data=json.dumps(body).encode(), headers={"Content-Type": "application/json"})
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            data = json.loads(resp.read().decode())
-    except urllib.error.HTTPError as exc:
-        detail = ""
+    payload = json.dumps(body).encode()
+    for attempt in range(retries + 1):
+        req = urllib.request.Request(
+            GEMINI_URL.format(model=model) + f"?key={api_key}",
+            data=payload, headers={"Content-Type": "application/json"})
         try:
-            detail = exc.read().decode()[:300]
-        except Exception:  # noqa: BLE001
-            pass
-        raise RuntimeError(f"{model}: HTTP {exc.code} {detail}") from exc
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                data = json.loads(resp.read().decode())
+            break
+        except urllib.error.HTTPError as exc:
+            detail = ""
+            try:
+                detail = exc.read().decode()[:300]
+            except Exception:  # noqa: BLE001
+                pass
+            if exc.code == 429 and attempt < retries:
+                time.sleep(backoff * (attempt + 1))
+                continue
+            if exc.code == 429:
+                raise GeminiQuota(f"{model}: HTTP 429 {detail}") from exc
+            raise RuntimeError(f"{model}: HTTP {exc.code} {detail}") from exc
     parts = data.get("candidates", [{}])[0].get("content", {}).get("parts", [])
     return "\n".join(p.get("text", "") for p in parts if p.get("text"))

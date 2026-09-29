@@ -838,25 +838,52 @@ def _cmd_scout_verify(args: argparse.Namespace) -> int:
 
 
 def _cmd_scout_run(args: argparse.Namespace) -> int:
-    """Fully automated notes via the Gemini API (GEMINI_API_KEY), one game per call."""
+    """Fully automated notes via the Gemini API (GEMINI_API_KEY), one game per call.
+
+    Free-tier keys are rate-limited per minute and the newest model may have
+    no free quota at all, so calls are paced (``--pace`` seconds apart), 429s
+    are retried with backoff, and a model whose quota never clears is
+    swapped for the next-newest flash model.
+    """
     import datetime as dt
     import os
+    import time
 
-    from .scout import (_team_names, append_notes, clean_text, game_pairs, gemini_scout,
-                        noted_teams, parse_sections, scout_prompt)
+    from .scout import (GeminiQuota, _team_names, append_notes, box_lines, cap_note,
+                        check_prompt, clean_text, game_pairs, gemini_models, gemini_scout,
+                        noted_teams, parse_sections, pick_models, scout_prompt)
 
     key = os.environ.get("GEMINI_API_KEY")
     if not key:
         print("GEMINI_API_KEY is not set - nothing to do (paste-and-verify path still works)")
         return 1
+    if args.model == "auto":
+        try:
+            models = pick_models(gemini_models(key))
+        except Exception as exc:  # noqa: BLE001
+            print(f"could not list Gemini models: {exc}")
+            return 1
+        if not models:
+            print("no Gemini flash model with generateContent is visible to this key")
+            return 1
+    else:
+        models = [args.model]
+    print(f"Gemini models (in order): {', '.join(models[:4])}")
+    mi = 0
+
+    def call(prompt: str) -> str:
+        nonlocal mi
+        while mi < len(models):
+            try:
+                text = gemini_scout(prompt, key, model=models[mi])
+                time.sleep(args.pace)
+                return text
+            except GeminiQuota as exc:
+                print(f"quota exhausted on {models[mi]} ({str(exc)[:120]}); trying the next model")
+                mi += 1
+        raise RuntimeError("every candidate model is out of quota")
+
     date = dt.date.today().isoformat()
-    from .scout import resolve_model
-    try:
-        args.model = resolve_model(args.model, key)
-    except Exception as exc:  # noqa: BLE001
-        print(f"could not resolve a Gemini model: {exc}")
-        return 1
-    print(f"Gemini model: {args.model}")
     with _open_session(args) as session:
         year, week = _scout_week(session, args)
         names = _team_names(session)
@@ -868,27 +895,27 @@ def _cmd_scout_run(args: argparse.Namespace) -> int:
             prompt = scout_prompt(session, year, week, p["a"], p["b"],
                                   a_next=p["a_next"], b_next=p["b_next"])
             try:
-                text = gemini_scout(prompt, key, model=args.model)
+                text = call(prompt)
             except Exception as exc:  # noqa: BLE001 - one bad game must not kill the run
                 print(f"{p['b']} @ {p['a']}: Gemini call failed: {exc}")
+                if "out of quota" in str(exc):
+                    break
                 continue
             notes = parse_sections(text, p["a"], p["b"], names)
             notes = {k: v for k, v in notes.items() if k not in done}
             # Second pass: the box-score check a pasted note gets by hand.
             if not args.no_check:
-                from .scout import box_lines, cap_note, check_prompt
                 for k, v in list(notes.items()):
                     lines = box_lines(session, year, week, k)
                     try:
-                        fixed = gemini_scout(check_prompt(k, week, year, v, lines), key,
-                                             model=args.model)
-                        fixed = cap_note(clean_text(fixed))
+                        fixed = cap_note(clean_text(call(check_prompt(k, week, year, v, lines))))
                         if len(fixed) > 200:
                             notes[k] = fixed
                     except Exception as exc:  # noqa: BLE001 - keep the unchecked note
                         print(f"{k}: check pass failed ({exc}); filing unchecked")
             label = "box-checked" if not args.no_check else "unverified"
-            notes = {k: f"Wk{week} auto (Gemini, {label}): " + v for k, v in notes.items()}
+            notes = {k: f"Wk{week} auto (Gemini {models[min(mi, len(models)-1)]}, {label}): " + v
+                     for k, v in notes.items()}
             n = append_notes(args.notes, notes, date)
             written += n
             print(f"{p['b']} @ {p['a']}: {n} note(s)")
@@ -1454,6 +1481,8 @@ def build_parser() -> argparse.ArgumentParser:
                       help="Gemini model name, or 'auto' = newest flash model the key can see")
     p_sr.add_argument("--no-check", action="store_true", dest="no_check",
                       help="Skip the second call that checks each note against the box score")
+    p_sr.add_argument("--pace", type=float, default=7.0,
+                      help="Seconds to wait after each Gemini call (free tier is limited per minute)")
     p_sr.set_defaults(func=_cmd_scout_run)
 
     p_byes = sub.add_parser("load-byes", help="Set team bye weeks from the schedule")
