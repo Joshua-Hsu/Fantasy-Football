@@ -231,3 +231,21 @@ def test_parse_sections_long_markdown_headings_and_ensure_structure():
     assert "Fantasy read: slot WRs feast" in fixed and "Wk4 vNE" in fixed
     assert ensure_structure("Has it. Fantasy read: x.", raw) == "Has it. Fantasy read: x."
     assert len(ensure_structure("a" * 1200, raw)) <= 900
+
+
+def test_validate_next_neutralises_wrong_roster_names():
+    from fantasy_football.scout import validate_next
+
+    note = ("GB ran nickel. Fantasy read: RBs and alpha WRs feast. "
+            "Wk4 @TB: Bucky Irving, Rachaad White, and Mike Evans project for massive ceilings.")
+    tb = {"Bucky Irving", "Jalen McMillan", "Baker Mayfield"}
+    everyone = tb | {"Mike Evans", "Rachaad White"}
+    fixed, bad = validate_next(note, 3, "@TB", tb, everyone)
+    assert bad == ["Rachaad White", "Mike Evans"]
+    assert fixed.startswith("GB ran nickel. Fantasy read: RBs and alpha WRs feast. Wk4 @TB:")
+    assert "Mike Evans" not in fixed and "apply the fantasy read to the TB roster" in fixed
+    ok = "Body. Wk4 @TB: Bucky Irving eats."
+    assert validate_next(ok, 3, "@TB", tb, everyone) == (ok, [])
+    assert validate_next(ok, 3, "bye", tb, everyone) == (ok, [])
+    # unknown names (a coach) are ignored
+    assert validate_next("Body. Wk4 @TB: Todd Bowles blitzes.", 3, "@TB", tb, everyone)[1] == []

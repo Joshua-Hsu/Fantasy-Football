@@ -853,6 +853,7 @@ def _cmd_scout_run(args: argparse.Namespace) -> int:
 
     from .scout import (NOTE_CAP, GeminiQuota, _team_names, append_notes, box_lines, cap_note,
                         check_prompt, clean_text, ensure_structure, estimate_cost, game_pairs, gemini_call,
+                        roster_names, validate_next,
                         gemini_models, gemini_probe, noted_teams, parse_sections,
                         pick_lite_model, pick_models, scout_prompt)
 
@@ -924,6 +925,7 @@ def _cmd_scout_run(args: argparse.Namespace) -> int:
     with _open_session(args) as session:
         year, week = _scout_week(session, args)
         names = _team_names(session)
+        all_names = roster_names(session)
         done = noted_teams(args.notes, args.since) if args.since else set()
         pairs = [p for p in game_pairs(session, year, week)
                  if not (p["a"] in done and p["b"] in done)]
@@ -966,6 +968,13 @@ def _cmd_scout_run(args: argparse.Namespace) -> int:
                                                 grounded=False, lite_ok=True,
                                                 think=0, max_out=700))
                         notes[k] = ensure_structure(fixed, v) if len(fixed) > 200 else cap_note(v)
+                        # The next-opponent line must only name that opponent's players.
+                        notes[k], bad = validate_next(notes[k], week, nxt,
+                                                      roster_names(session, nxt.lstrip("@v")),
+                                                      all_names)
+                        if bad:
+                            print(f"{k}: next-opponent line named {', '.join(bad)} - not on "
+                                  f"{nxt.lstrip('@v')}; line neutralised")
                     except Exception as exc:  # noqa: BLE001 - keep the unchecked note
                         print(f"{k}: check pass failed ({exc}); filing unchecked")
                         notes[k] = cap_note(v)
@@ -986,6 +995,24 @@ def _cmd_scout_run(args: argparse.Namespace) -> int:
             with open(summary, "a") as fh:
                 fh.write(f"### Defense scouting, week {week}\n\n{written} notes. {cost_line()}\n")
     return 0
+
+
+def _cmd_season_tiers_due(args: argparse.Namespace) -> int:
+    """Exit 0 (and print 'due') when the last completed week is a multiple of
+    ``--every``; exit 3 otherwise. Lets a weekly cron run a job every N weeks.
+    """
+    from sqlalchemy import func, select
+
+    from .matchups import defense_vs_position
+    from .models import Game
+
+    with _open_session(args) as session:
+        year = args.year or session.scalar(
+            select(func.max(Game.season_year)).where(Game.season_type == "regular"))
+        wk = defense_vs_position(session, year)["through_week"] if year else 0
+    due = bool(wk) and wk % args.every == 0
+    print(f"{'due' if due else 'not due'}: {year} through week {wk} (every {args.every})")
+    return 0 if due else 3
 
 
 def _cmd_dvp(args: argparse.Namespace) -> int:
@@ -1518,6 +1545,12 @@ def build_parser() -> argparse.ArgumentParser:
     p_dvp.add_argument("--no-official", action="store_true", dest="no_official",
                        help="Skip the official nflverse injury report (designations + pre-game flags)")
     p_dvp.set_defaults(func=_cmd_dvp)
+
+    p_std = sub.add_parser("season-tiers-due",
+                           help="Exit 0 when the completed week count is a multiple of --every")
+    p_std.add_argument("--year", type=int, default=None)
+    p_std.add_argument("--every", type=int, default=3)
+    p_std.set_defaults(func=_cmd_season_tiers_due)
 
     p_sp = sub.add_parser("scout-prompts",
                           help="Print the two-defense scouting question for each game of a week")

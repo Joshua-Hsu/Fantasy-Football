@@ -1,0 +1,81 @@
+# In-season tier refresh for the pick game: every three completed weeks the
+# master tiers are rebuilt from THIS season's production (half-PPR points per
+# game, k-means clustered per position) and the app re-seeds from it, so the
+# tier game sorts and clusters players by how they are actually performing.
+# Runs weekly on Tuesday afternoon (box scores loaded at noon) and exits
+# early unless the completed-week count is a multiple of three.
+# Note: this replaces the crowd's carried ratings with production seeds -
+# picks made after a refresh refine the new order (Archive Week keeps the
+# old pick files).
+name: Season Tiers Refresh
+
+on:
+  schedule:
+    - cron: "0 15 * * 2"
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Rebuild even if not on a 3-week boundary (true/false)"
+        required: false
+        default: "false"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: tiers
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install (ingest + export extras)
+        run: pip install -e ".[ingest,export]"
+
+      - name: Build database from nflverse
+        run: |
+          python -m fantasy_football.cli init-db
+          python -m fantasy_football.cli load-seasons --start 2023
+          YEAR=$(date -u +%Y)
+          python -m fantasy_football.cli load-active --year "$YEAR"
+          python -m fantasy_football.cli load-byes --year "$YEAR"
+          python -m fantasy_football.cli load-redzone || echo "red-zone pass skipped"
+
+      - name: Is a refresh due?
+        id: due
+        run: |
+          if [ "${{ github.event.inputs.force }}" = "true" ]; then echo "ok=true" >> "$GITHUB_OUTPUT"; exit 0; fi
+          if python -m fantasy_football.cli season-tiers-due --every 3; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Rebuild tiers from this season's production
+        if: steps.due.outputs.ok == 'true'
+        run: |
+          YEAR=$(date -u +%Y)
+          OUT="master_tiers.$(date -u +%F).csv"
+          # Tiers, ratings and prices all from in-season PPG (k-means per position).
+          python -m fantasy_football.cli values --year "$YEAR" --basis ppg --export "$OUT" --limit 200
+          python -m fantasy_football.cli build-webapp --out docs/data.js --year "$YEAR" --basis ppg --tiers-file "$OUT"
+          V=$(date -u +%Y%m%d%H%M)
+          sed -i -E "s/(data\.js\?v=)[0-9]+/\1$V/" docs/index.html || true
+          echo "### Season tiers refresh" >> "$GITHUB_STEP_SUMMARY"
+          echo "Rebuilt $OUT from $YEAR production (basis ppg) and regenerated docs/data.js." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Commit
+        if: steps.due.outputs.ok == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add master_tiers.*.csv docs/data.js docs/index.html
+          git commit -m "Season tiers refresh $(date -u +%F): re-seeded from in-season production" || echo "no changes"
+          git push

@@ -274,9 +274,12 @@ totals graded vs actuals) and `#/log` all read the `docs/dvp.js` sidecar,
 refreshed by the `dvp.yml` Action (Tue 12:00 UTC for box scores, Wed 06:00
 UTC for the lagging snap counts, before Wednesday waivers).
 
-**Injury sweep** (`injuries.csv`, rendered as the Injuries table on
-`#/dvp` and as an OUT/EXEMPT chip on My Team rows; read by
-`read_injuries`, `dvp --injuries`). Columns `date,player,team,pos,status,
+**Injury sweep** (`injuries.csv`, rendered on its own page `#/injuries`
+(the official report joined to the sheet; `buildInjuries` in app.js) and as
+an OUT/EXEMPT chip on My Team rows; read by `read_injuries`, `dvp
+--injuries`; rows older than `INJURY_MAX_AGE_DAYS` (21) age off the page
+unless the status is IR/exempt/season/PUP, so the sheet can only grow while
+the page stays current). Columns `date,player,team,pos,status,
 injury,timeline,replacement,note`: the timeline, who absorbs the work (one
 beneficiary vs a split) and the scheme read (what the offense's philosophy
 does with the absence). Newest row per player wins, so append rather than
@@ -317,8 +320,25 @@ grounded (with a thinking budget); the per-team check pass runs ungrounded
 on flash-lite with thinking off; the run prints tokens + an estimated
 cost into the Actions job summary - a week should cost cents, and
 `prompts/README.md` logs each run's grade and cost.
-Cap is 900 chars (`cap_note`). Always hand the user the NEXT game's prompt
-in a fenced block at the end of a reply.
+Cap is 900 chars (`cap_note`). Every auto note's next-opponent line is
+checked by `validate_next` against the DB roster (`Player.current_team`):
+a named player who is not on that opponent (Gemini put Mike Evans on TB)
+gets the line neutralised and logged. Always hand the user the NEXT game's
+prompt in a fenced block at the end of a reply.
+
+**App pages.** Home = the pick game + in-season buttons (Matchups,
+Injuries, Vegas, Log, Roster cost) and a **Pre-season tools** page
+(`#/preseason`: draft packet, tiers CSV export/import, build stamp). Page
+leads are one or two sentences; legends live in a `.foot` paragraph at the
+bottom of the page - keep new pages to that shape.
+
+**Season tiers refresh** (`season-tiers.yml`, Tuesday 15:00 UTC, guarded
+by `cli season-tiers-due --every 3`): every three completed weeks the
+master is rebuilt from THIS season's production (`values --year <yr>
+--basis ppg --export`, k-means per position) and `build-webapp` re-seeds
+the pick game from it, so the tier game sorts and clusters by season
+performance. It replaces the crowd's carried ratings; `force=true` on the
+manual trigger skips the 3-week guard.
 
 ## Data sources
 

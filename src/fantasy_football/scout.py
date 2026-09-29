@@ -111,6 +111,14 @@ def game_pairs(session: Session, year: int, week: int) -> list[dict]:
     return out
 
 
+def roster_names(session: Session, team: str | None = None) -> set[str]:
+    """Full names of players on ``team`` (``current_team``), or everyone."""
+    q = select(Player.full_name).where(Player.current_team.is_not(None))
+    if team:
+        q = q.where(Player.current_team == team)
+    return {n for (n,) in session.execute(q) if n}
+
+
 def box_lines(session: Session, year: int, week: int, defense: str) -> list[str]:
     """The skill-player lines a defense faced in one week, from our box scores.
 
@@ -267,6 +275,43 @@ def ensure_structure(checked: str, raw: str, cap: int = NOTE_CAP) -> str:
         tail = tail[:320].rsplit(".", 1)[0] + "." if len(tail) > 320 else tail
         out = cap_note(out, max(cap - len(tail) - 1, 200)) + " " + tail
     return cap_note(out, cap)
+
+
+_NAME_RE = re.compile(r"\b([A-Z][a-z'’.-]+(?:\s(?:[A-Z][a-z'’.-]+|[A-Z]\.?))(?:\s(?:Jr\.?|Sr\.?|II|III|IV))?)")
+
+
+def _norm_name(n: str) -> str:
+    n = re.sub(r"\s+(Jr\.?|Sr\.?|II|III|IV)$", "", n.strip())
+    return re.sub(r"[^a-z ]", "", n.lower())
+
+
+def validate_next(note: str, week: int, next_code: str, roster: set[str],
+                  all_players: set[str]) -> tuple[str, list[str]]:
+    """Check the 'Wk<N> <opp>:' line names players who are actually on that
+    opponent. Gemini wrote "Wk4 @TB: ... Mike Evans" with Evans a 49er; the
+    page then contradicted the roster. Any named player known to the DB but
+    NOT on the next opponent gets the line replaced by a neutral one, and
+    the offending names are returned for the log. Unknown names (coaches,
+    defenders) are ignored.
+    """
+    if not next_code or next_code == "bye":
+        return note, []
+    m = re.search(r"(Wk\s?%d\s+%s\s*:)(.*)$" % (week + 1, re.escape(next_code)), note)
+    if not m:
+        return note, []
+    tail = m.group(2)
+    rn = {_norm_name(x) for x in roster}
+    an = {_norm_name(x) for x in all_players}
+    bad = []
+    for name in _NAME_RE.findall(tail):
+        k = _norm_name(name)
+        if k in an and k not in rn:
+            bad.append(name)
+    if not bad:
+        return note, []
+    fixed = note[:m.start(2)] + " apply the fantasy read to the " + next_code.lstrip("@v") + \
+        " roster (the auto note named players who are not on it)."
+    return fixed, bad
 
 
 def append_notes(path: str, notes: dict[str, str], date: str | None = None) -> int:
