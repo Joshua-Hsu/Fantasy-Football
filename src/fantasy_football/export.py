@@ -208,6 +208,7 @@ def build_webapp_data(
     backups: dict[str, tuple[str | None, str]] | None = None,
     backup_overrides: dict[str, str] | None = None,
     extra_rookies: set[str] | None = None,
+    min_games: int = 0,
 ) -> dict[str, list[dict]]:
     """Per-position player data for the static pick game (browser app).
 
@@ -446,6 +447,7 @@ def write_webapp_data(
     leaders: dict[str, int] | None = None,
     base: str | None = None,
     extra_rookies: set[str] | None = None,
+    min_games: int = 0,
 ) -> str:
     """Write the pick-game data as ``docs/data.js`` (``window.FF_DATA = {...}``).
 
@@ -463,7 +465,7 @@ def write_webapp_data(
         manual_tiers=manual_tiers, seed_overrides=seed_overrides,
         pinned_tiers=pinned_tiers,
         prices=prices, backups=backups, backup_overrides=backup_overrides,
-        extra_rookies=extra_rookies,
+        extra_rookies=extra_rookies, min_games=min_games,
     )
     starters = starters or {}
     last_year = year or _latest_season(session)
@@ -868,7 +870,8 @@ def write_tiers_csv(
 
     prices = prices or {}
     last_year = year or _latest_season(session)
-    values = compute_values(session, year=year, config=config, rules=rules, basis=basis)
+    values = compute_values(session, year=year, config=config, rules=rules, basis=basis,
+                            min_games=min_games)
     by_key = {r.key: r for rows in values.values() for r in rows}
 
     if ratings is not None or user_ratings or pinned_ratings:

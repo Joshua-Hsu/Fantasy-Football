@@ -442,8 +442,13 @@ def compute_values(
     tier_smoothing: float = 0.5,
     active_only: bool | None = None,
     fixed_prices: dict[str, float] | None = None,
+    min_games: int = 0,
 ) -> dict[str, list[ValueRow]]:
     """Compute tiers and auction values, grouped by position.
+
+    ``min_games`` drops entities with fewer games in the latest season - the
+    in-season tier refresh uses it so a one-game points-per-game spike
+    (a backup QB's lone start) cannot top a position.
 
     ``basis`` selects which value drives pricing (``total`` / ``ppg`` / ``w3yr``);
     all three are reported regardless. ``manual_tiers`` maps an entity ``key`` to
@@ -489,6 +494,8 @@ def compute_values(
         entities = kept
     else:
         entities = [e for e in entities if e["basis_value"] > 0 or e["total"] > 0]
+    if min_games:
+        entities = [e for e in entities if int(e.get("games") or 0) >= min_games]
         for e in entities:
             e["team"] = e["name"] if e["position"] == "DST" else ""
 

@@ -551,6 +551,7 @@ def _cmd_values(args: argparse.Namespace) -> int:
             rules=PRESETS[args.scoring],
             basis=args.basis,
             manual_tiers=manual_tiers,
+            min_games=args.min_games,
             active_only=False if args.all_players else None,
             fixed_prices=fixed_prices,
         )
@@ -1379,6 +1380,7 @@ def _cmd_build_webapp(args: argparse.Namespace) -> int:
             leaders=leaders,
             base=_master_base(getattr(args, "tiers_file", None)),
             extra_rookies=_read_pool_overrides(getattr(args, "pool_overrides", None)),
+            min_games=getattr(args, "min_games", 0),
         )
     print(f"Wrote pick-game data to {path}")
     return 0
@@ -1472,6 +1474,8 @@ def build_parser() -> argparse.ArgumentParser:
         "--use-user-ratings", action="store_true", dest="use_user_ratings",
         help="Draw tiers from the head-to-head user ratings",
     )
+    p_values.add_argument("--min-games", type=int, default=0, dest="min_games",
+                          help="Drop players with fewer games this season (in-season refresh: 2)")
     p_values.add_argument(
         "--all-players", action="store_true", dest="all_players",
         help="Don't restrict to active rosters (include anyone with recent stats)",
@@ -1630,6 +1634,8 @@ def build_parser() -> argparse.ArgumentParser:
         "--depth", type=int, default=None,
         help="Max players per position in the pick game (default: draftable depth per position)",
     )
+    p_webapp.add_argument("--min-games", type=int, default=0, dest="min_games",
+                          help="Drop players with fewer games this season from the pool")
     p_webapp.add_argument("--tiers-file", default=None, dest="tiers_file",
                          help="CSV of hard-set tiers (key,manual_tier) to pin in the game")
     p_webapp.add_argument("--depth-overrides", default="depth_overrides.csv", dest="depth_overrides",
