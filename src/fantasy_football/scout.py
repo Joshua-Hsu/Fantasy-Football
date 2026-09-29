@@ -469,6 +469,17 @@ def gemini_call(prompt: str, api_key: str, *, model: str = "auto",
                 continue
             if exc.code == 429:
                 raise GeminiQuota(f"{model}: HTTP 429 {detail}") from exc
+            # 400 INVALID_ARGUMENT: some models reject a thinking budget (lite
+            # models, or budget 0) or an output cap. Drop them and try again -
+            # the call is still cheap, and a filed note beats a failed one.
+            if exc.code == 400 and attempt < retries and (
+                    "thinkingConfig" in gen or "maxOutputTokens" in gen):
+                if "thinkingConfig" in gen:
+                    gen.pop("thinkingConfig")
+                else:
+                    gen.pop("maxOutputTokens")
+                payload = json.dumps(body).encode()
+                continue
             raise RuntimeError(f"{model}: HTTP {exc.code} {detail}") from exc
     cand = data.get("candidates", [{}])[0]
     parts = cand.get("content", {}).get("parts", [])

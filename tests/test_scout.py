@@ -184,3 +184,33 @@ def test_gemini_call_builds_generation_config(monkeypatch):
     assert "tools" not in captured["body"] and captured["body"]["generationConfig"]["thinkingConfig"] == {"thinkingBudget": 0}
     assert usage["grounded"] == 0 and usage["thinking"] == 0
     assert scout.gemini_scout("hi", "k", model="gemini-x", grounded=False) == "ok"
+
+
+def test_gemini_call_drops_rejected_generation_options(monkeypatch):
+    import json
+    import urllib.error
+
+    from fantasy_football import scout
+
+    seen = []
+
+    class _Resp:
+        def __init__(self, body): self._b = json.dumps(body).encode()
+        def read(self): return self._b
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+
+    def fake_urlopen(req, timeout=0):
+        body = json.loads(req.data.decode())
+        seen.append(body["generationConfig"])
+        if "thinkingConfig" in body["generationConfig"]:
+            raise urllib.error.HTTPError(req.full_url, 400, "Bad Request", {}, None)
+        return _Resp({"candidates": [{"content": {"parts": [{"text": "fixed"}]}}],
+                      "usageMetadata": {"promptTokenCount": 5, "candidatesTokenCount": 2}})
+
+    monkeypatch.setattr(scout.urllib.request, "urlopen", fake_urlopen)
+    text, usage = scout.gemini_call("hi", "k", model="lite-x", grounded=False,
+                                    thinking_budget=0, max_output=700)
+    assert text == "fixed" and len(seen) == 2
+    assert "thinkingConfig" in seen[0] and "thinkingConfig" not in seen[1]
+    assert seen[1]["maxOutputTokens"] == 700  # only the rejected option is dropped
