@@ -257,7 +257,8 @@ def build_webapp_data(
     elif pinned_tiers:
         tier_map = {**tier_map, **pinned_tiers}
     values = compute_values(
-        session, year=year, config=config, rules=rules, basis=basis, manual_tiers=tier_map
+        session, year=year, config=config, rules=rules, basis=basis, manual_tiers=tier_map,
+        min_games=min_games,
     )
     coaching = {
         t.abbreviation: (t.head_coach or "", t.offensive_coordinator or "",
@@ -842,6 +843,7 @@ def write_tiers_csv(
     config: LeagueConfig = DEFAULT_LEAGUE,
     rules: ScoringRules = DEFAULT_RULES,
     basis: str = "w3yr",
+    min_games: int = 0,
 ) -> str:
     """Write an enriched master/tiers CSV (rating + tiers + stats + prices).
 
