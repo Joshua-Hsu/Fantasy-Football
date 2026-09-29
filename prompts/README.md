@@ -91,6 +91,15 @@ Rams", `{week}`, `{prev}`, `{year}`. Printed by
   read' on 5 of 24 notes. Fixes: headings detected on the raw markdown
   line at any length; `ensure_structure` re-attaches the fantasy read from
   the raw section when the rewrite loses it.
+- **Run 9 (validation, 2026-09-29)**: 32/32 notes in 9 minutes, all 16
+  scouting answers grounded (8 needed the nudge - now folded into the first
+  call), 29/32 carry the 'Fantasy read', MIA and DEN spot-checked line by
+  line against the DB with no discrepancies, and the check pass again
+  corrected a claim ("contradicting the note that the run was shut down").
+  Cost line: `flash in 16k / out+think 28k; lite in 29k / out 8k; grounded
+  16 of 56; est. $0.35` - about $0.13 is tokens and $0.22 is grounding priced
+  as metered; the AI Studio delta will show which applies. Down from ~$0.70
+  per run. This is the weekly default from here.
 - Tweak ideas not yet tried: ask for "the three plays that decided it" to
   surface scheme detail; ask for "who covered the slot" by name; ask
   whether the box count changed by down and distance.
