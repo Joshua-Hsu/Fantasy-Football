@@ -214,3 +214,20 @@ def test_gemini_call_drops_rejected_generation_options(monkeypatch):
     assert text == "fixed" and len(seen) == 2
     assert "thinkingConfig" in seen[0] and "thinkingConfig" not in seen[1]
     assert seen[1]["maxOutputTokens"] == 700  # only the rejected option is dropped
+
+
+def test_parse_sections_long_markdown_headings_and_ensure_structure():
+    from fantasy_football.scout import ensure_structure, parse_sections
+
+    names = {"KC": ("Kansas City Chiefs", "Kansas City"), "MIA": ("Miami Dolphins", "Miami")}
+    text = ("### Miami Dolphins Defense: Schematic Breakdown & Fantasy Outlook\n\n"
+            "**Scheme, Personnel & Week 3 Execution:**\nMiami sat in nickel. Fantasy read: TEs feast.\n\n"
+            "### Kansas City Chiefs Defensive Breakdown\nKC blitzed. Fantasy read: RBs eat.\n")
+    out = parse_sections(text, "KC", "MIA", names, cap=False)
+    assert out["MIA"].startswith("Scheme, Personnel & Week 3 Execution: Miami sat in nickel.")
+    assert out["KC"] == "KC blitzed. Fantasy read: RBs eat."
+    raw = "Long body here. Fantasy read: slot WRs feast while TEs starve. Wk4 vNE: start the slot."
+    fixed = ensure_structure("Rewritten body without the read.", raw)
+    assert "Fantasy read: slot WRs feast" in fixed and "Wk4 vNE" in fixed
+    assert ensure_structure("Has it. Fantasy read: x.", raw) == "Has it. Fantasy read: x."
+    assert len(ensure_structure("a" * 1200, raw)) <= 900
