@@ -1,5 +1,5 @@
 player,pos,team,slot
-Drake Maye,QB,NE,QB
+Drake Maye,QB,NE,bench
 Omarion Hampton,RB,LAC,RB1
 Blake Corum,RB,LA,RB2
 Rashee Rice,WR,KC,WR1
@@ -12,5 +12,5 @@ Rhamondre Stevenson,RB,NE,bench
 Alvin Kamara,RB,NO,bench
 Jameson Williams,WR,DET,bench
 Mike Evans,WR,SF,bench
-Marvin Harrison Jr.,WR,ARI,bench
+Bo Nix,QB,DEN,QB (added as FA for MHJ)
 Josh Jacobs,RB,GB,bench (exempt list)
