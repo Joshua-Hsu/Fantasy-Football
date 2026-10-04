@@ -1,0 +1,41 @@
+<!-- @dsCard group="Components" -->
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Buttons</title>
+<style>
+  :root{color-scheme:light dark;
+    --bg:#fff;--surface:#fff;--surface-2:#f5f6f8;--ink:#0b0c0e;--muted:#6b7280;--line:#e7e9ec;
+    --accent:#00c805;--accent-ink:#009e22;--accent-soft:#e9faec;}
+  @media (prefers-color-scheme:dark){:root{
+    --bg:#000;--surface:#0c0e0f;--surface-2:#15181a;--ink:#f4f6f7;--muted:#98a2ad;--line:#23272b;
+    --accent:#00c805;--accent-ink:#27e068;--accent-soft:#0f2417;}}
+  *{box-sizing:border-box}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,Roboto,sans-serif;margin:0;padding:28px;background:var(--bg);color:var(--ink);-webkit-font-smoothing:antialiased}
+  h2{font-size:.7rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700;margin:0 0 14px}
+  .row{display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-bottom:22px}
+  .btn{display:inline-flex;align-items:center;gap:.45rem;font:inherit;font-weight:600;cursor:pointer;
+    border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:999px;padding:.62rem 1.05rem;
+    transition:border-color .12s,background .12s,transform .08s,filter .12s}
+  .btn:hover{border-color:var(--accent)}
+  .btn:active{transform:scale(.98)}
+  .btn-primary{background:var(--accent);border-color:var(--accent);color:#fff;
+    box-shadow:0 6px 18px color-mix(in srgb,var(--accent) 38%,transparent)}
+  .btn-primary:hover{filter:brightness(1.04);border-color:var(--accent)}
+  .note{font-size:.78rem;color:var(--muted);margin:0 0 20px}
+</style></head>
+<body>
+  <h2>Primary — one per view</h2>
+  <div class="row">
+    <button class="btn btn-primary">🚀 Commit picks to GitHub</button>
+    <button class="btn btn-primary">Trade</button>
+  </div>
+
+  <h2>Secondary — outlined pill</h2>
+  <div class="row">
+    <button class="btn">⬇ Export tiers CSV</button>
+    <button class="btn">⬆ Import tiers CSV</button>
+    <button class="btn">↻ different pair</button>
+    <button class="btn">⊘ no pick</button>
+  </div>
+  <p class="note">Pill radius (999px). Hover lifts the border to <code>--accent</code>; press scales to .98. White text on green is the Robinhood brand CTA treatment.</p>
+</body></html>

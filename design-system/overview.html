@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FF Tier Builder — Design System</title>
+<style>
+  :root{color-scheme:light dark;
+    --bg:#fff;--surface:#fff;--surface-2:#f5f6f8;--ink:#0b0c0e;--muted:#6b7280;--line:#e7e9ec;
+    --accent:#00c805;--accent-ink:#009e22;--accent-soft:#e9faec;--down:#ff5000;--radius:18px;
+    --shadow:0 1px 2px rgba(16,24,40,.04),0 8px 20px rgba(16,24,40,.06);--shadow-press:0 0 0 3px var(--accent-soft);}
+  @media (prefers-color-scheme:dark){:root{
+    --bg:#000;--surface:#0c0e0f;--surface-2:#15181a;--ink:#f4f6f7;--muted:#98a2ad;--line:#23272b;
+    --accent:#00c805;--accent-ink:#27e068;--accent-soft:#0f2417;--shadow:0 1px 2px rgba(0,0,0,.5),0 8px 24px rgba(0,0,0,.5);--shadow-press:0 0 0 3px var(--accent-soft);}}
+  *{box-sizing:border-box}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,Roboto,sans-serif;margin:0;background:var(--bg);color:var(--ink);-webkit-font-smoothing:antialiased;max-width:980px;margin-inline:auto;padding:0 20px 80px}
+  header.top{position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:.6rem;padding:1rem 0;margin-bottom:8px;
+    background:color-mix(in srgb,var(--bg) 86%,transparent);backdrop-filter:saturate(180%) blur(12px);border-bottom:1px solid var(--line)}
+  header.top .brand{display:inline-flex;align-items:center;gap:.45rem;font-weight:800;letter-spacing:-.01em}
+  header.top .ball{font-size:1.15rem}
+  header.top .spacer{flex:1}
+  .pill{font-size:.78rem;font-weight:700;color:var(--muted);background:var(--surface-2);border:1px solid var(--line);padding:.32rem .72rem;border-radius:999px}
+  h1{font-size:2.1rem;line-height:1.08;letter-spacing:-.025em;font-weight:800;margin:1.2rem 0 .3rem}
+  .lead{color:var(--muted);font-size:1.02rem;max-width:52ch;margin:0 0 1.8rem}
+  h2{font-size:.72rem;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);font-weight:800;margin:40px 0 16px;padding-bottom:8px;border-bottom:1px solid var(--line)}
+  .muted{color:var(--muted);font-size:.9rem;line-height:1.32}
+
+  .swatches{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:12px}
+  .sw{border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--surface)}
+  .sw .c{height:52px}.sw .m{padding:7px 9px;font-size:.7rem}.sw .m b{display:block;font-size:.76rem}.sw .m span{color:var(--muted)}
+
+  .row{display:flex;flex-wrap:wrap;gap:12px;align-items:center}
+  .btn{display:inline-flex;align-items:center;gap:.45rem;font:inherit;font-weight:600;cursor:pointer;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:999px;padding:.62rem 1.05rem;transition:border-color .12s,transform .08s,filter .12s}
+  .btn:hover{border-color:var(--accent)}.btn:active{transform:scale(.98)}
+  .btn-primary{background:var(--accent);border-color:var(--accent);color:#fff;box-shadow:0 6px 18px color-mix(in srgb,var(--accent) 38%,transparent)}
+
+  .tier{display:inline-block;min-width:1.7rem;text-align:center;font-weight:800;font-size:.78rem;padding:.16rem .5rem;border-radius:999px;background:var(--accent-soft);color:var(--accent-ink)}
+  .badge{font-size:.68rem;font-weight:800;padding:.08rem .4rem;border-radius:6px;background:var(--accent-soft);color:var(--accent-ink)}
+
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+  @media (max-width:680px){.grid2{grid-template-columns:1fr}}
+  .pos-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:.8rem}
+  .pos-card{display:flex;flex-direction:column;align-items:flex-start;gap:.3rem;border:1px solid var(--line);border-radius:var(--radius);padding:1.15rem 1rem;background:var(--surface);box-shadow:var(--shadow);transition:border-color .12s}
+  .pos-card:hover{border-color:var(--accent)}
+  .pos-card .pos{font-size:1.55rem;font-weight:800;color:var(--accent-ink)}
+  .pos-card .sub{font-size:.82rem;color:var(--muted)}
+
+  .card{border:1px solid var(--line);border-radius:var(--radius);padding:1rem 1.1rem;background:var(--surface);box-shadow:var(--shadow)}
+  .card .name{font-size:1.14rem;font-weight:800;letter-spacing:-.01em;display:flex;align-items:center;gap:.4rem;margin-bottom:.05rem}
+  .statgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:.6rem;margin-top:.7rem;padding-top:.7rem;border-top:1px solid var(--line)}
+  .stat{display:flex;flex-direction:column;gap:.12rem}
+  .statval{font-size:1.34rem;font-weight:800;letter-spacing:-.02em;line-height:1.05;font-variant-numeric:tabular-nums}
+  .statlabel{font-size:.66rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
+  .statline{margin-top:.6rem;font-size:.84rem;line-height:1.4;color:var(--muted)}
+
+  .table-wrap{border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow)}
+  table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums;font-size:.92rem}
+  thead th{font-size:.7rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:700;background:var(--surface-2)}
+  th,td{text-align:right;padding:.7rem .8rem;border-bottom:1px solid var(--line)}
+  th:nth-child(2),td:nth-child(2){text-align:left}
+  tbody tr:last-child td{border-bottom:0}td:nth-child(2){font-weight:600}
+</style></head>
+<body>
+  <header class="top"><span class="brand"><span class="ball">🏈</span> Tier Builder</span><span class="spacer"></span><span class="pill">Design System</span></header>
+
+  <h1>FF Tier Builder</h1>
+  <p class="lead">A Robinhood-inspired system: one green accent, bold tight headlines, numbers as the hero, soft rounded cards, and pill-shaped controls — in light and true-black dark.</p>
+
+  <h2>Color</h2>
+  <div class="swatches">
+    <div class="sw"><div class="c" style="background:#00c805"></div><div class="m"><b>accent</b><span>#00C805</span></div></div>
+    <div class="sw"><div class="c" style="background:#009e22"></div><div class="m"><b>accent-ink</b><span>#009E22</span></div></div>
+    <div class="sw"><div class="c" style="background:#e9faec"></div><div class="m"><b>accent-soft</b><span>#E9FAEC</span></div></div>
+    <div class="sw"><div class="c" style="background:#0b0c0e"></div><div class="m"><b>ink</b><span>#0B0C0E</span></div></div>
+    <div class="sw"><div class="c" style="background:#6b7280"></div><div class="m"><b>muted</b><span>#6B7280</span></div></div>
+    <div class="sw"><div class="c" style="background:#f5f6f8"></div><div class="m"><b>surface-2</b><span>#F5F6F8</span></div></div>
+    <div class="sw"><div class="c" style="background:#e7e9ec"></div><div class="m"><b>line</b><span>#E7E9EC</span></div></div>
+    <div class="sw"><div class="c" style="background:#ff5000"></div><div class="m"><b>down</b><span>#FF5000</span></div></div>
+  </div>
+
+  <h2>Buttons</h2>
+  <div class="row">
+    <button class="btn btn-primary">🚀 Commit picks to GitHub</button>
+    <button class="btn">⬇ Export tiers CSV</button>
+    <button class="btn">⬆ Import tiers CSV</button>
+    <button class="btn">↻ different pair</button>
+    <button class="btn">⊘ no pick</button>
+  </div>
+
+  <h2>Chips &amp; badges</h2>
+  <div class="row">
+    <span class="tier">1</span><span class="tier">2</span><span class="tier">3</span><span class="tier">7</span>
+    <span style="font-weight:800;margin-left:10px">Ashton Jeanty <span class="badge">R</span></span>
+    <span class="pill" style="margin-left:10px">9 picks</span>
+  </div>
+
+  <h2>Position cards — home</h2>
+  <div class="pos-grid">
+    <div class="pos-card"><span class="pos">QB</span><span class="sub">3 picks · play »</span></div>
+    <div class="pos-card"><span class="pos">RB</span><span class="sub">8 picks · play »</span></div>
+    <div class="pos-card"><span class="pos">WR</span><span class="sub">5 picks · play »</span></div>
+    <div class="pos-card"><span class="pos">TE</span><span class="sub">2 picks · play »</span></div>
+    <div class="pos-card"><span class="pos">K</span><span class="sub">0 picks · play »</span></div>
+    <div class="pos-card"><span class="pos">DST</span><span class="sub">1 pick · play »</span></div>
+  </div>
+
+  <h2>Head-to-head cards — stat tiles</h2>
+  <div class="grid2">
+    <div class="card">
+      <div class="name">Daniel Jones</div>
+      <div class="muted">QB · IND · Pos #36 · Ovr #228</div>
+      <div class="muted">HC Shane Steichen · OC Jim Bob Cooter</div>
+      <div class="statgrid">
+        <div class="stat"><span class="statval">232.4</span><span class="statlabel">Last-yr total</span></div>
+        <div class="stat"><span class="statval">17.9</span><span class="statlabel">Last-yr PPG</span></div>
+        <div class="stat"><span class="statval">174.1</span><span class="statlabel">3-yr weighted</span></div>
+      </div>
+      <div class="statline">3101yd 19td 8int, 45car 164ryd</div>
+      <div class="statline">off yds#9 pass#8 rush#17</div>
+    </div>
+    <div class="card">
+      <div class="name">Malik Willis</div>
+      <div class="muted">QB · MIA · Pos #38 · Ovr #245</div>
+      <div class="muted">HC Jeff Hafley · OC Bobby Slowik</div>
+      <div class="statgrid">
+        <div class="stat"><span class="statval">51.2</span><span class="statlabel">Last-yr total</span></div>
+        <div class="stat"><span class="statval">12.8</span><span class="statlabel">Last-yr PPG</span></div>
+        <div class="stat"><span class="statval">43.4</span><span class="statlabel">3-yr weighted</span></div>
+      </div>
+      <div class="statline">422yd 3td 0int, 22car 123ryd</div>
+      <div class="statline">off yds#26 pass#25 rush#13</div>
+    </div>
+  </div>
+
+  <h2>Ranking table</h2>
+  <div class="table-wrap"><table>
+    <thead><tr><th>#</th><th>Player</th><th>Tm</th><th>Rating</th><th>Tier</th><th>Picks</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td>Josh Allen</td><td>BUF</td><td>381</td><td><span class="tier">1</span></td><td>6</td></tr>
+      <tr><td>2</td><td>Lamar Jackson</td><td>BAL</td><td>372</td><td><span class="tier">1</span></td><td>5</td></tr>
+      <tr><td>3</td><td>Jayden Daniels</td><td>WAS</td><td>344</td><td><span class="tier">2</span></td><td>4</td></tr>
+      <tr><td>4</td><td>Ashton Jeanty <span class="badge">R</span></td><td>LV</td><td>331</td><td><span class="tier">2</span></td><td>3</td></tr>
+      <tr><td>5</td><td>Jalen Hurts</td><td>PHI</td><td>318</td><td><span class="tier">3</span></td><td>4</td></tr>
+    </tbody>
+  </table></div>
+</body></html>

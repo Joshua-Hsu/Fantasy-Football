@@ -1,0 +1,59 @@
+<!-- @dsCard group="Components" -->
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cards</title>
+<style>
+  :root{color-scheme:light dark;
+    --bg:#fff;--surface:#fff;--surface-2:#f5f6f8;--ink:#0b0c0e;--muted:#6b7280;--line:#e7e9ec;
+    --accent:#00c805;--accent-ink:#009e22;--accent-soft:#e9faec;--radius:18px;
+    --shadow:0 1px 2px rgba(16,24,40,.04),0 8px 20px rgba(16,24,40,.06);--shadow-press:0 0 0 3px var(--accent-soft);}
+  @media (prefers-color-scheme:dark){:root{
+    --bg:#000;--surface:#0c0e0f;--surface-2:#15181a;--ink:#f4f6f7;--muted:#98a2ad;--line:#23272b;
+    --accent:#00c805;--accent-ink:#27e068;--accent-soft:#0f2417;--shadow:0 1px 2px rgba(0,0,0,.5),0 8px 24px rgba(0,0,0,.5);--shadow-press:0 0 0 3px var(--accent-soft);}}
+  *{box-sizing:border-box}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,Roboto,sans-serif;margin:0;padding:28px;background:var(--bg);color:var(--ink);-webkit-font-smoothing:antialiased}
+  h2{font-size:.7rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700;margin:0 0 14px}
+  .muted{color:var(--muted);font-size:.9rem;line-height:1.32}
+
+  /* position grid (home) */
+  .pos-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:.8rem;max-width:460px;margin-bottom:30px}
+  .pos-card{display:flex;flex-direction:column;align-items:flex-start;gap:.3rem;text-align:left;cursor:pointer;
+    border:1px solid var(--line);border-radius:var(--radius);padding:1.15rem 1rem;background:var(--surface);color:var(--ink);
+    box-shadow:var(--shadow);transition:border-color .12s,transform .08s}
+  .pos-card:hover{border-color:var(--accent)}
+  .pos-card .pos{font-size:1.55rem;font-weight:800;letter-spacing:-.01em;color:var(--accent-ink)}
+  .pos-card .sub{font-size:.82rem;color:var(--muted);font-weight:500}
+
+  /* head-to-head card */
+  .card{max-width:360px;text-align:left;border:1px solid var(--line);border-radius:var(--radius);
+    padding:1rem 1.1rem;background:var(--surface);color:var(--ink);box-shadow:var(--shadow)}
+  .card .name{font-size:1.14rem;font-weight:800;letter-spacing:-.01em;display:flex;align-items:center;gap:.4rem;margin-bottom:.05rem}
+  .card .name+.muted{margin-top:.1rem}
+  .statgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:.6rem;margin-top:.7rem;padding-top:.7rem;border-top:1px solid var(--line)}
+  .stat{display:flex;flex-direction:column;gap:.12rem;min-width:0}
+  .statval{font-size:1.34rem;font-weight:800;letter-spacing:-.02em;line-height:1.05;font-variant-numeric:tabular-nums}
+  .statlabel{font-size:.66rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
+  .statline{margin-top:.6rem;font-size:.84rem;line-height:1.4;color:var(--muted)}
+</style></head>
+<body>
+  <h2>Position cards — home grid</h2>
+  <div class="pos-grid">
+    <div class="pos-card"><span class="pos">QB</span><span class="sub">3 picks · play »</span></div>
+    <div class="pos-card"><span class="pos">RB</span><span class="sub">8 picks · play »</span></div>
+    <div class="pos-card"><span class="pos">WR</span><span class="sub">5 picks · play »</span></div>
+  </div>
+
+  <h2>Head-to-head card — stat tiles</h2>
+  <div class="card">
+    <div class="name">Daniel Jones</div>
+    <div class="muted">QB · IND · Pos #36 · Ovr #228</div>
+    <div class="muted">HC Shane Steichen · OC Jim Bob Cooter</div>
+    <div class="statgrid">
+      <div class="stat"><span class="statval">232.4</span><span class="statlabel">Last-yr total</span></div>
+      <div class="stat"><span class="statval">17.9</span><span class="statlabel">Last-yr PPG</span></div>
+      <div class="stat"><span class="statval">174.1</span><span class="statlabel">3-yr weighted</span></div>
+    </div>
+    <div class="statline">3101yd 19td 8int, 45car 164ryd</div>
+    <div class="statline">off yds#9 pass#8 rush#17</div>
+  </div>
+</body></html>

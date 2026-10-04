@@ -1,0 +1,22 @@
+/* FF Tier Builder — design tokens
+   Robinhood-inspired: signature green accent, soft cards, bold type.
+   Light + true-black dark. Mirrors docs/index.html. */
+:root {
+  color-scheme: light dark;
+  --bg:#ffffff; --surface:#ffffff; --surface-2:#f5f6f8;
+  --ink:#0b0c0e; --muted:#6b7280; --line:#e7e9ec;
+  --accent:#00c805; --accent-ink:#009e22; --accent-soft:#e9faec;
+  --down:#ff5000;
+  --radius:18px; --radius-sm:12px;
+  --shadow:0 1px 2px rgba(16,24,40,.04), 0 8px 20px rgba(16,24,40,.06);
+  --shadow-press:0 0 0 3px var(--accent-soft);
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --bg:#000000; --surface:#0c0e0f; --surface-2:#15181a;
+    --ink:#f4f6f7; --muted:#98a2ad; --line:#23272b;
+    --accent:#00c805; --accent-ink:#27e068; --accent-soft:#0f2417;
+    --shadow:0 1px 2px rgba(0,0,0,.5), 0 8px 24px rgba(0,0,0,.5);
+    --shadow-press:0 0 0 3px var(--accent-soft);
+  }
+}
