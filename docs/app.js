@@ -546,6 +546,8 @@
     var m = matchup(pos, lastPair);
     if (!m) { app.innerHTML = nav() + "<h1>" + pos + "</h1><p>Not enough " + pos + " players.</p>"; return; }
     var a = m[0], b = m[1];
+    // Always show the better current rank (higher rating = smaller rank #) on top.
+    if (S.ratings[b.key] > S.ratings[a.key]) { var tmp = a; a = b; b = tmp; }
     lastPair = [a.key, b.key];  // next pair will avoid these two
     app.innerHTML = "<div class='duel'>" +
       nav(" &middot; <a href='#/rank/" + pos + "'>" + pos + " ranking</a>") +

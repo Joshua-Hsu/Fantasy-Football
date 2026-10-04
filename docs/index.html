@@ -185,7 +185,7 @@
   .duel .nav { position:static; }
   .duel .cards { flex:1; min-height:0; }
   .duel .card { min-height:0; overflow:hidden; }
-  .duel .vs { margin:.6rem 0 .2rem; }
+  .duel .vs { margin:.6rem 0 calc(.2rem + env(safe-area-inset-bottom, 0px)); }
   .vals {
     display:flex; flex-wrap:nowrap; gap:.6rem; justify-content:space-between;
     overflow:hidden; margin-top:.5rem; padding-top:.45rem;
@@ -421,6 +421,6 @@
 </script>
 <script src="data.js?v=202609290939"></script>
 <script src="dvp.js?v=202610031111"></script>
-<script src="app.js?v=202609290927"></script>
+<script src="app.js?v=202610040000"></script>
 </body>
 </html>

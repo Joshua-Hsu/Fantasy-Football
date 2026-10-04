@@ -1,0 +1,60 @@
+<!-- @dsCard group="Foundations" -->
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Foundations</title>
+<style>
+  :root{color-scheme:light dark;
+    --bg:#fff;--surface:#fff;--surface-2:#f5f6f8;--ink:#0b0c0e;--muted:#6b7280;--line:#e7e9ec;
+    --accent:#00c805;--accent-ink:#009e22;--accent-soft:#e9faec;--down:#ff5000;
+    --radius:18px;--radius-sm:12px;--shadow:0 1px 2px rgba(16,24,40,.04),0 8px 20px rgba(16,24,40,.06);}
+  @media (prefers-color-scheme:dark){:root{
+    --bg:#000;--surface:#0c0e0f;--surface-2:#15181a;--ink:#f4f6f7;--muted:#98a2ad;--line:#23272b;
+    --accent:#00c805;--accent-ink:#27e068;--accent-soft:#0f2417;--shadow:0 1px 2px rgba(0,0,0,.5),0 8px 24px rgba(0,0,0,.5);}}
+  *{box-sizing:border-box}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,Roboto,sans-serif;margin:0;padding:28px;background:var(--bg);color:var(--ink);-webkit-font-smoothing:antialiased}
+  h2{font-size:.7rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700;margin:26px 0 12px}
+  h2:first-of-type{margin-top:0}
+  .swatches{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:12px}
+  .sw{border:1px solid var(--line);border-radius:var(--radius-sm);overflow:hidden;background:var(--surface)}
+  .sw .chip{height:56px}
+  .sw .meta{padding:8px 10px;font-size:.72rem}
+  .sw .meta b{display:block;font-size:.8rem;margin-bottom:2px}
+  .sw .meta span{color:var(--muted);font-variant-numeric:tabular-nums}
+  .type .t{letter-spacing:-.02em;font-weight:800;line-height:1.05;margin:0 0 6px}
+  .type .lbl{font-size:.7rem;color:var(--muted);font-weight:600}
+  .radii{display:flex;gap:16px;flex-wrap:wrap}
+  .rad{width:92px;height:68px;background:var(--surface-2);border:1px solid var(--line);display:flex;align-items:flex-end;justify-content:center;padding:8px;font-size:.7rem;color:var(--muted)}
+  .shadowbox{width:160px;height:72px;background:var(--surface);border-radius:var(--radius);box-shadow:var(--shadow);display:flex;align-items:center;justify-content:center;font-size:.72rem;color:var(--muted)}
+</style></head>
+<body>
+  <h2>Color</h2>
+  <div class="swatches">
+    <div class="sw"><div class="chip" style="background:#00c805"></div><div class="meta"><b>accent</b><span>#00C805</span></div></div>
+    <div class="sw"><div class="chip" style="background:#009e22"></div><div class="meta"><b>accent-ink</b><span>#009E22</span></div></div>
+    <div class="sw"><div class="chip" style="background:#e9faec"></div><div class="meta"><b>accent-soft</b><span>#E9FAEC</span></div></div>
+    <div class="sw"><div class="chip" style="background:#0b0c0e"></div><div class="meta"><b>ink</b><span>#0B0C0E</span></div></div>
+    <div class="sw"><div class="chip" style="background:#6b7280"></div><div class="meta"><b>muted</b><span>#6B7280</span></div></div>
+    <div class="sw"><div class="chip" style="background:#f5f6f8"></div><div class="meta"><b>surface-2</b><span>#F5F6F8</span></div></div>
+    <div class="sw"><div class="chip" style="background:#e7e9ec"></div><div class="meta"><b>line</b><span>#E7E9EC</span></div></div>
+    <div class="sw"><div class="chip" style="background:#ff5000"></div><div class="meta"><b>down</b><span>#FF5000</span></div></div>
+  </div>
+
+  <h2>Type scale</h2>
+  <div class="type">
+    <p class="t" style="font-size:2.1rem">Tier Builder <span class="lbl">— h1 · 2.1rem / 800</span></p>
+    <p class="t" style="font-size:1.5rem">214.1 <span class="lbl">— stat value · 1.5rem / 800 · tabular</span></p>
+    <p class="t" style="font-size:1.14rem">Daniel Jones <span class="lbl">— card name · 1.14rem / 800</span></p>
+    <p class="t" style="font-size:.9rem;font-weight:500;color:var(--muted)">QB · IND · Pos #36 <span class="lbl" style="font-weight:600">— muted body · .9rem</span></p>
+    <p class="t" style="font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)">Last-yr total <span class="lbl">— stat label · .68rem / 700 / caps</span></p>
+  </div>
+
+  <h2>Radius</h2>
+  <div class="radii">
+    <div class="rad" style="border-radius:18px">18px card</div>
+    <div class="rad" style="border-radius:12px">12px control</div>
+    <div class="rad" style="border-radius:999px">999px pill</div>
+  </div>
+
+  <h2>Elevation</h2>
+  <div class="shadowbox">--shadow</div>
+</body></html>
