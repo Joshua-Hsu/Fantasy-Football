@@ -78,4 +78,15 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add master_tiers.*.csv docs/data.js docs/index.html
           git commit -m "Season tiers refresh $(date -u +%F): re-seeded from in-season production" || echo "no changes"
-          git push
+          # rebase-and-retry: another job or a PR merge may have moved main during the run
+          pushed=0
+          for i in 1 2 3 4; do
+            if git pull --rebase origin main; then
+              if git push; then pushed=1; break; fi
+            elif [ -d .git/rebase-merge ] || [ -d .git/rebase-apply ]; then
+              git diff --name-only --diff-filter=U | xargs -r git checkout --theirs --
+              git add -A && GIT_EDITOR=true git rebase --continue || git rebase --abort
+            fi
+            sleep $((i * 5))
+          done
+          [ "$pushed" = 1 ] || { echo "::error::push failed after 4 attempts"; exit 1; }
