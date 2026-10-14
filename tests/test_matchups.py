@@ -263,7 +263,11 @@ def test_read_injuries(tmp_path, session):
         "2026-09-22,Some Back,PIT,RB,OUT,toe (carted off),not back wk3,Backup Guy leads,run-heavy\n"
         "2026-09-22,,PIT,RB,OUT,blank name skipped,,,\n"
     )
-    inj = read_injuries(str(path))
+    import datetime as dt
+
+    # Pin "today": the 21-day age-off would otherwise drop these fixed-date
+    # rows once the calendar passes 2026-10-13 (it did; the test broke).
+    inj = read_injuries(str(path), today=dt.date(2026, 9, 29))
     assert len(inj) == 1  # newest row per player wins, blank names skipped
     assert inj[0]["st"] == "OUT" and inj[0]["tm"] == "PIT" and inj[0]["rep"] == "Backup Guy leads"
     assert read_injuries(str(tmp_path / "missing.csv")) == []
