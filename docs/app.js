@@ -804,17 +804,35 @@
   // the week-by-week points allowed. The scouting note is shown under it
   // as a labeled weekly observation - its prose describes ONE game and is
   // not verified beyond the box-score lines, so it never carries the grade.
-  function sparkline(vals) {
-    var bars = "▁▂▃▄▅▆▇█";
+  // Inline-SVG bar strip: one thin bar per week on a shared baseline, the
+  // last three shaded darker (the "Last 3" window), the latest value labeled.
+  // Scales to 18 weeks without growing: the strip is a fixed width and the
+  // bars thin as weeks are added. Each bar carries a <title> for hover.
+  function weekBars(vals, weeks) {
     var nums = vals.filter(function (v) { return v != null; });
     if (!nums.length) return "";
-    var lo = Math.min.apply(null, nums), hi = Math.max.apply(null, nums);
-    return vals.map(function (v) {
-      if (v == null) return "·";
-      var i = hi > lo ? Math.round((v - lo) / (hi - lo) * 7) : 3;
-      return "<span title='" + v + "'>" + bars.charAt(i) + "</span>";
+    var W = 100, H = 22, pad = 1, n = vals.length;
+    var bw = Math.max(2, Math.floor((W - pad * (n - 1)) / n));
+    var hi = Math.max.apply(null, nums.concat([1]));
+    var last = nums[nums.length - 1];
+    var rects = vals.map(function (v, i) {
+      var h = v == null ? 0 : Math.max(2, Math.round((v / hi) * (H - 2)));
+      var x = i * (bw + pad), recent = i >= n - 3;
+      return "<rect x='" + x + "' y='" + (H - h) + "' width='" + bw + "' height='" + h + "' rx='1' class='" +
+        (recent ? "wb-recent" : "wb-bar") + "'><title>wk " + (weeks ? weeks[i] : i + 1) + ": " + (v == null ? "-" : v) + "</title></rect>";
     }).join("");
+    return "<span class='wb'><svg viewBox='0 0 " + W + " " + H + "' width='" + W + "' height='" + H + "' role='img' aria-label='by week'>" +
+      "<line x1='0' y1='" + (H - 0.5) + "' x2='" + W + "' y2='" + (H - 0.5) + "' class='wb-base'/>" + rects + "</svg>" +
+      "<span class='wb-last'>" + last + "</span></span>";
   }
+  var avgOf3 = function (vals) {
+    var v = vals.filter(function (x) { return x != null; }).slice(-3);
+    return v.length ? (v.reduce(function (a, b) { return a + b; }, 0) / v.length).toFixed(1) : "";
+  };
+  var avgAll = function (vals) {
+    var v = vals.filter(function (x) { return x != null; });
+    return v.length ? (v.reduce(function (a, b) { return a + b; }, 0) / v.length).toFixed(1) : "";
+  };
   function defensesPage(sortPos) {
     var V = window.FF_DVP, P = V && V.profiles;
     if (!P || !Object.keys(P).length) {
@@ -838,26 +856,39 @@
       return bits.join(" &middot; ");
     };
     var arrow = function (tr) {
-      if (tr >= 4) return "<span class='dvp-easy'>&#9650; softer lately (+" + tr + ")</span>";
-      if (tr <= -4) return "<span class='dvp-hard'>&#9660; tougher lately (" + tr + ")</span>";
-      return "<span class='muted'>steady</span>";
+      if (tr >= 4) return "<span class='dvp-easy' title='softer lately than the season rank'>&#9650; +" + tr + "</span>";
+      if (tr <= -4) return "<span class='dvp-hard' title='tougher lately than the season rank'>&#9660; " + tr + "</span>";
+      return "<span class='muted' title='steady'>&ndash;</span>";
     };
     var rkCls = function (r) { return r >= 20 ? " class='dvp-easy'" : (r <= 13 ? " class='dvp-hard'" : ""); };
     var cards = teams.map(function (d) {
       var p = P[d], opp = V.opp ? (V.opp[d] || "bye") : "";
       var rowsHtml = positions.map(function (pos) {
         return "<tr><td>" + pos + "</td><td" + rkCls(p.rk[pos]) + ">" + p.rk[pos] + "</td><td" + rkCls(p.rk3[pos]) + ">" + p.rk3[pos] +
-          "</td><td>" + arrow(p.trend[pos]) + "</td><td class='note-col'><span class='dvp-spark'>" + sparkline(p.pa[pos]) +
-          "</span> <span class='muted'>" + p.pa[pos].map(function (v) { return v; }).join(" / ") + "</span></td></tr>";
+          "</td><td>" + arrow(p.trend[pos]) + "</td><td class='wb-cell'>" + weekBars(p.pa[pos], p.wk) + "</td></tr>";
       }).join("");
-      var line = "<div class='dvp-scout'><b>per game</b> pts " + sparkline(p.pts) + " <span class='muted'>" + p.pts.join(" / ") +
-        "</span> &middot; sacks " + p.sk.join(" / ") + " &middot; INT " + p.int.join(" / ") + "</div>";
+      // Per-game defensive line as the same strip, then the raw numbers in a
+      // weeks-as-columns table that scrolls sideways as the season grows.
+      var wbRow = function (label, vals) {
+        return "<div class='wb-row'><span class='wb-lab'>" + label + "</span>" + weekBars(vals, p.wk) + "</div>";
+      };
+      var line = "<div class='dvp-scout wb-line'>" + wbRow("Pts allowed", p.pts) + wbRow("Sacks", p.sk) + wbRow("INT", p.int) + "</div>";
+      var weekRow = function (label, vals) {
+        return "<tr><td class='dvp-stick'>" + label + "</td>" + vals.map(function (v) { return "<td>" + (v == null ? "" : v) + "</td>"; }).join("") +
+          "<td class='wb-avg'>" + avgAll(vals) + "</td><td class='wb-avg'>" + avgOf3(vals) + "</td></tr>";
+      };
+      var weekTable = "<details class='dvp-weeks'><summary class='muted'>by week</summary><div class='table-wrap'><table class='pk wb-table'><thead><tr><th class='dvp-stick'></th>" +
+        p.wk.map(function (w) { return "<th>" + w + "</th>"; }).join("") + "<th>avg</th><th>last 3</th></tr></thead><tbody>" +
+        positions.map(function (pos) { return weekRow("vs " + pos, p.pa[pos]); }).join("") +
+        weekRow("Pts", p.pts) + weekRow("Sacks", p.sk) + weekRow("INT", p.int) +
+        "</tbody></table></div></details>";
+      line += weekTable;
       var latest = (V.notes && V.notes[d] && V.notes[d][0]) || null;
       var note = latest ? "<details class='dvp-obs'><summary class='muted'>weekly observation (" + esc(latest.d) + ", one game, prose unverified beyond the box lines)</summary>" +
         fmtNote(latest.d, latest.t) + "</details>" : "";
       return "<section class='dvp-card'><h2 class='dvp-h2'>" + esc(d) + " <span class='muted'>" + esc(opp) + "</span></h2>" +
         "<p class='muted'>" + identity(d) + "</p>" +
-        "<div class='table-wrap'><table class='pk'><thead><tr><th>Pos</th><th>Season</th><th>Last 3</th><th>Trend</th><th class='note-col'>Pts allowed by week (wk " + p.wk.join(", ") + ")</th></tr></thead><tbody>" +
+        "<div class='table-wrap'><table class='pk'><thead><tr><th>Pos</th><th>Season</th><th>Last 3</th><th>Trend</th><th class='wb-cell'>By week</th></tr></thead><tbody>" +
         rowsHtml + "</tbody></table></div>" + line + note + "</section>";
     }).join("");
     var tabs = ["", ].concat(positions).map(function (p) {
@@ -869,7 +900,7 @@
       "<div class='dvp-tabs'>" + tabs + "</div>" + cards +
       "<p class='muted foot'>Ranks: 1 = fewest fantasy points allowed to the position (toughest), " + n + " = most (softest); green 20+, red 13-. " +
       "Season = all games this year; Last 3 = the last three games only; Trend = Last 3 minus Season, so a positive number means the defense has been softer than its season rank lately (shown from &plusmn;4). " +
-      "The bars are points allowed to the position by week. The identity line is measured: DBs on the field per snap from the snap counts (4.x base, ~5 nickel, 5.5+ dime), pressure rate from play-by-play, and how many plays opponents get. " +
+      "By week = one bar per game on a shared scale, the last three shaded, the latest value printed; open &ldquo;by week&rdquo; for the numbers. The identity line is measured: DBs on the field per snap from the snap counts (4.x base, ~5 nickel, 5.5+ dime), pressure rate from play-by-play, and how many plays opponents get. " +
       "The weekly observation is the scout's prose for one game - only its box-score lines are checked, so quote the table, not the paragraph.</p>";
   }
 

@@ -972,7 +972,7 @@ def _cmd_scout_run(args: argparse.Namespace) -> int:
                         # The next-opponent line must only name that opponent's players.
                         notes[k], bad = validate_next(notes[k], week, nxt,
                                                       roster_names(session, nxt.lstrip("@v")),
-                                                      all_names)
+                                                      all_names, own=roster_names(session, k))
                         if bad:
                             print(f"{k}: next-opponent line named {', '.join(bad)} - not on "
                                   f"{nxt.lstrip('@v')}; line neutralised")

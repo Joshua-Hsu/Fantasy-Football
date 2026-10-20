@@ -367,6 +367,23 @@
   .dvp-obs summary { cursor:pointer; }
   .dvp-obs .dvp-note { position:static; max-width:none; }
   .dvp-card table.pk td.note-col, .dvp-card table.pk th.note-col { max-width:none; white-space:nowrap; }
+  /* Week bars: one thin bar per game, shared baseline, last three shaded. */
+  .wb { display:inline-flex; align-items:flex-end; gap:.35rem; vertical-align:middle; }
+  .wb svg { display:block; overflow:visible; }
+  .wb-bar { fill:var(--accent-ink); opacity:.45; }
+  .wb-recent { fill:var(--accent-ink); opacity:.95; }
+  .wb-base { stroke:var(--line); stroke-width:1; }
+  .wb-last { font-size:.8rem; font-weight:700; color:var(--ink); line-height:1; }
+  td.wb-cell, th.wb-cell { white-space:nowrap; max-width:none; }
+  .wb-line { display:flex; flex-direction:column; gap:.25rem; }
+  .wb-row { display:flex; align-items:center; gap:.5rem; }
+  .wb-lab { width:5.4rem; flex:none; color:var(--muted); font-weight:600; font-size:.8rem; }
+  table.wb-table td { font-weight:400; }
+  .dvp-weeks { margin-top:.4rem; font-size:.85rem; }
+  .dvp-weeks summary { cursor:pointer; }
+  table.wb-table td, table.wb-table th { text-align:right; padding:.25rem .45rem; }
+  table.wb-table td.dvp-stick, table.wb-table th.dvp-stick { text-align:left; }
+  table.wb-table td.wb-avg { font-weight:700; border-left:1px solid var(--line); }
   .dvp-out, .dvp-back { font-size:.72rem; font-weight:700; white-space:nowrap; }
   .dvp-out { color:#c74a44; }
   .dvp-back { color:#2f9e57; }
@@ -433,7 +450,7 @@
   window.FF_CONFIG = { workerUrl: "https://ff-commit-worker.joshuahsu2.workers.dev" };
 </script>
 <script src="data.js?v=202610202204"></script>
-<script src="dvp.js?v=202610202156"></script>
-<script src="app.js?v=202610202122"></script>
+<script src="dvp.js?v=202610202217"></script>
+<script src="app.js?v=202610202217"></script>
 </body>
 </html>

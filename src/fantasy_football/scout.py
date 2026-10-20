@@ -286,13 +286,19 @@ def _norm_name(n: str) -> str:
 
 
 def validate_next(note: str, week: int, next_code: str, roster: set[str],
-                  all_players: set[str]) -> tuple[str, list[str]]:
+                  all_players: set[str], own: set[str] | None = None) -> tuple[str, list[str]]:
     """Check the 'Wk<N> <opp>:' line names players who are actually on that
     opponent. Gemini wrote "Wk4 @TB: ... Mike Evans" with Evans a 49er; the
     page then contradicted the roster. Any named player known to the DB but
-    NOT on the next opponent gets the line replaced by a neutral one, and
-    the offending names are returned for the log. Unknown names (coaches,
-    defenders) are ignored.
+    NOT on the next opponent (and not on ``own``, the scouted defense's own
+    roster - its corners and safeties are legitimately named in the line)
+    gets the line replaced by a neutral one, and the offending names are
+    returned for the log. Unknown names (coaches) are ignored.
+
+    The check only works when ``Player.current_team`` is populated: a DB
+    built from stats alone (no ``load-active``) yields empty rosters and
+    the check passes everything - which is how "George Pickens" survived on
+    a Saints note about Pittsburgh (wk6 2026).
     """
     if not next_code or next_code == "bye":
         return note, []
@@ -300,7 +306,7 @@ def validate_next(note: str, week: int, next_code: str, roster: set[str],
     if not m:
         return note, []
     tail = m.group(2)
-    rn = {_norm_name(x) for x in roster}
+    rn = {_norm_name(x) for x in roster} | {_norm_name(x) for x in (own or ())}
     an = {_norm_name(x) for x in all_players}
     bad = []
     for name in _NAME_RE.findall(tail):
