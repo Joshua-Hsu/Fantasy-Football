@@ -305,6 +305,15 @@ GitHub credentials or connectors. The Friday designations run was retired
 once the official layer covered it. Defensive players matter too: a
 star edge/safety out or back is what moves the flags and the scheme notes.
 
+**Defense profiles** (`defense_profiles` in `matchups.py`, page
+`#/defenses`, payload `FF_DVP.profiles`): the measured, week-over-week
+read of every defense from the box scores - points allowed to each
+position by week, season rank, last-3-games rank and the trend between
+them, plus the per-game defensive line (pts/yds/sacks/INT). It exists
+because the weekly scouting notes describe one game each and their
+scheme percentages swing (or are invented) week to week; the profile is
+what a recommendation quotes, the note is color (PLAYBOOK 2a).
+
 **Defense notes loop** (`scout.py`, skill `.claude/skills/defense-notes`).
 `defense_notes.csv` gets one note per defense per week; notes are appended,
 newest wins. `cli scout-prompts --game DEN-JAX` prints the fan-style

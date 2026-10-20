@@ -362,6 +362,7 @@
       "<div class='actions'>" +
       "<button class='btn btn-primary' onclick='FF.commitPicks()'>&#128640; Commit to GitHub</button>" +
       (window.FF_DVP ? "<button class='btn' onclick=\"location.hash='#/dvp'\">&#127919; Matchups</button>" : "") +
+      ((window.FF_DVP || {}).profiles ? "<button class='btn' onclick=\"location.hash='#/defenses'\">&#128737; Defenses</button>" : "") +
       ((window.FF_DVP || {}).official || (window.FF_DVP || {}).injuries ? "<button class='btn' onclick=\"location.hash='#/injuries'\">&#129657; Injuries</button>" : "") +
       ((window.FF_DVP || {}).vegasWeeks ? "<button class='btn' onclick=\"location.hash='#/vegas'\">&#128200; Vegas</button>" : "") +
       ((window.FF_DVP || {}).decisions ? "<button class='btn' onclick=\"location.hash='#/log'\">&#128211; Log</button>" : "") +
@@ -797,6 +798,81 @@
       buildInjuries(V);
   }
 
+  // ---- defense profiles: the measured, week-over-week read (#/defenses) ----
+  // One card per defense built from box scores only: season rank vs each
+  // position, rank over the last three games, the trend between them and
+  // the week-by-week points allowed. The scouting note is shown under it
+  // as a labeled weekly observation - its prose describes ONE game and is
+  // not verified beyond the box-score lines, so it never carries the grade.
+  function sparkline(vals) {
+    var bars = "▁▂▃▄▅▆▇█";
+    var nums = vals.filter(function (v) { return v != null; });
+    if (!nums.length) return "";
+    var lo = Math.min.apply(null, nums), hi = Math.max.apply(null, nums);
+    return vals.map(function (v) {
+      if (v == null) return "·";
+      var i = hi > lo ? Math.round((v - lo) / (hi - lo) * 7) : 3;
+      return "<span title='" + v + "'>" + bars.charAt(i) + "</span>";
+    }).join("");
+  }
+  function defensesPage(sortPos) {
+    var V = window.FF_DVP, P = V && V.profiles;
+    if (!P || !Object.keys(P).length) {
+      app.innerHTML = nav() + "<h1>Defenses</h1><p class='lead'>No defense profiles yet - they appear with the first week's stats.</p>";
+      return;
+    }
+    var positions = V.positions || ["QB", "RB", "WR", "TE"];
+    sortPos = (sortPos || "").toUpperCase();
+    if (positions.indexOf(sortPos) < 0) sortPos = "";
+    var teams = Object.keys(P).sort(function (a, b) {
+      if (sortPos) return P[b].rk[sortPos] - P[a].rk[sortPos];   // softest first
+      return a < b ? -1 : 1;
+    });
+    var n = teams.length;
+    var M = V.metrics || {}, T = V.teams || {};
+    var identity = function (d) {
+      var m = M[d] || {}, t = T[d] || {}, bits = [];
+      if (m.db != null) bits.push(m.db >= 5.4 ? "dime-leaning (" + m.db + " DB)" : m.db >= 4.8 ? "nickel-based (" + m.db + " DB)" : "base-heavy (" + m.db + " DB)");
+      if (m.prs != null) bits.push("pressure " + m.prs + "% (rk " + m.rkPrs + ")");
+      if (t.pace && t.pace.rk) bits.push(t.pace.rk <= 6 ? "slows games" : t.pace.rk >= n - 5 ? "fast games" : "average pace");
+      return bits.join(" &middot; ");
+    };
+    var arrow = function (tr) {
+      if (tr >= 4) return "<span class='dvp-easy'>&#9650; softer lately (+" + tr + ")</span>";
+      if (tr <= -4) return "<span class='dvp-hard'>&#9660; tougher lately (" + tr + ")</span>";
+      return "<span class='muted'>steady</span>";
+    };
+    var rkCls = function (r) { return r >= 20 ? " class='dvp-easy'" : (r <= 13 ? " class='dvp-hard'" : ""); };
+    var cards = teams.map(function (d) {
+      var p = P[d], opp = V.opp ? (V.opp[d] || "bye") : "";
+      var rowsHtml = positions.map(function (pos) {
+        return "<tr><td>" + pos + "</td><td" + rkCls(p.rk[pos]) + ">" + p.rk[pos] + "</td><td" + rkCls(p.rk3[pos]) + ">" + p.rk3[pos] +
+          "</td><td>" + arrow(p.trend[pos]) + "</td><td class='note-col'><span class='dvp-spark'>" + sparkline(p.pa[pos]) +
+          "</span> <span class='muted'>" + p.pa[pos].map(function (v) { return v; }).join(" / ") + "</span></td></tr>";
+      }).join("");
+      var line = "<div class='dvp-scout'><b>per game</b> pts " + sparkline(p.pts) + " <span class='muted'>" + p.pts.join(" / ") +
+        "</span> &middot; sacks " + p.sk.join(" / ") + " &middot; INT " + p.int.join(" / ") + "</div>";
+      var latest = (V.notes && V.notes[d] && V.notes[d][0]) || null;
+      var note = latest ? "<details class='dvp-obs'><summary class='muted'>weekly observation (" + esc(latest.d) + ", one game, prose unverified beyond the box lines)</summary>" +
+        fmtNote(latest.d, latest.t) + "</details>" : "";
+      return "<section class='dvp-card'><h2 class='dvp-h2'>" + esc(d) + " <span class='muted'>" + esc(opp) + "</span></h2>" +
+        "<p class='muted'>" + identity(d) + "</p>" +
+        "<div class='table-wrap'><table class='pk'><thead><tr><th>Pos</th><th>Season</th><th>Last 3</th><th>Trend</th><th class='note-col'>Pts allowed by week (wk " + p.wk.join(", ") + ")</th></tr></thead><tbody>" +
+        rowsHtml + "</tbody></table></div>" + line + note + "</section>";
+    }).join("");
+    var tabs = ["", ].concat(positions).map(function (p) {
+      return "<a class='pill dvp-tab" + (p === sortPos ? " dvp-on" : "") + "' href='#/defenses" + (p ? "/" + p : "") + "'>" + (p || "A-Z") + "</a>";
+    }).join(" ");
+    app.innerHTML = nav(" &middot; <span class='muted'>defenses</span>") +
+      "<h1>Defenses &middot; through week " + (V.through_week || "?") + "</h1>" +
+      "<p class='lead'>Every defense's measured identity and trend, from the box scores alone, so a rank can be read as a season's habit or a recent change rather than one game's story.</p>" +
+      "<div class='dvp-tabs'>" + tabs + "</div>" + cards +
+      "<p class='muted foot'>Ranks: 1 = fewest fantasy points allowed to the position (toughest), " + n + " = most (softest); green 20+, red 13-. " +
+      "Season = all games this year; Last 3 = the last three games only; Trend = Last 3 minus Season, so a positive number means the defense has been softer than its season rank lately (shown from &plusmn;4). " +
+      "The bars are points allowed to the position by week. The identity line is measured: DBs on the field per snap from the snap counts (4.x base, ~5 nickel, 5.5+ dime), pressure rate from play-by-play, and how many plays opponents get. " +
+      "The weekly observation is the scout's prose for one game - only its box-score lines are checked, so quote the table, not the paragraph.</p>";
+  }
+
   // ---- matchups: defense-vs-position (#/dvp) ----
   // Reads the dvp.js sidecar (regenerated weekly, independent of the master
   // rebuild); the page simply doesn't render when the file is missing.
@@ -1004,7 +1080,7 @@
         "the player's own average. ImpTot = Vegas implied points for the player's offense " +
         "(green 26+, red 17.5-); hover for the game total. " +
         "Green = soft by both seasons, red = tough by both, no color = they disagree. " +
-        "<a href='#/cost'>Edit roster</a> &middot; <a href='#/injuries'>Injuries</a></p>"
+        "<a href='#/cost'>Edit roster</a> &middot; <a href='#/injuries'>Injuries</a> &middot; <a href='#/defenses'>Defense profiles</a></p>"
       : "<p class='muted'>Add your roster on the <a href='#/cost'>Roster cost</a> page " +
         "and your players' weekly matchups will appear here.</p>";
     var rows = teams.map(function (d, i) {
@@ -1784,6 +1860,7 @@
     m = h.match(/^#\/vegas(?:\/(\d+))?/); if (m) return vegasPage(m[1]);
     if (h.indexOf("#/log") === 0) return logPage();
     if (h.indexOf("#/injuries") === 0) return injuriesPage();
+    if (h.indexOf("#/defenses") === 0) return defensesPage(h.split("/")[2] || "");
     if (h.indexOf("#/preseason") === 0) return preseasonPage();
     m = h.match(/^#\/admin(?:\/(\w+))?/); if (m) return adminPage(m[1]);
     home();

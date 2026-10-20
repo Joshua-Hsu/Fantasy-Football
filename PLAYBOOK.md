@@ -19,6 +19,15 @@ luck, they were skipped steps.
    If the recommendation disagrees with the board, write **OVERRIDE** and
    exactly one structural reason (injury, depth chart, scheme note). No
    structural reason = the board wins.
+2a. **Grade the defense from its profile, not the week's note.** `#/defenses`
+   (`FF_DVP.profiles`) carries the measured read: season rank, last-3-games
+   rank, the trend between them, points allowed by week, and the snap-count
+   package identity. Quote those. The weekly scouting note describes ONE
+   game in prose that is only box-score-checked - its percentages (nickel
+   rate, pressure rate) swing from week to week because they are one
+   game's numbers, or invented. A note is color, never the grade. *(User
+   call, wk7 2026: "the analysis seems to differ week to week for every
+   defense.")*
 2b. **An average is not a ceiling.** Quote the weekly distribution
    (`cli usage` prints the best games), never describe a player's mean as
    his cap. *(Schultz: called a "hard ~8-point ceiling"; 8.0 was his

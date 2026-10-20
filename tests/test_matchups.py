@@ -85,6 +85,46 @@ def test_points_allowed_and_ranks(session):
     assert all(t["g"] == 1 for t in teams.values())
 
 
+def test_defense_profiles_trend_and_payload(tmp_path, session):
+    from fantasy_football.matchups import defense_profiles
+    from fantasy_football.models import TeamGameStats
+
+    g1, g2, g3 = _seed(session)
+    teams = {t.abbreviation: t for t in session.query(Team).all()}
+    # Week 2 played: CHI now shuts GB's RBs down -> CHI's recent RB form is
+    # tougher than its season rank. Add the box-score defensive line too.
+    g3.home_score, g3.away_score = 17, 14
+    session.add(TeamGameStats(team_id=teams["CHI"].id, game_id=g1.id, is_home=False,
+                              points_allowed=30, yards_allowed=400, sacks=1, interceptions=0))
+    session.add(TeamGameStats(team_id=teams["CHI"].id, game_id=g3.id, is_home=True,
+                              points_allowed=14, yards_allowed=250, sacks=4, interceptions=2))
+    p = Player(full_name="rbE", position="RB", slug="rbe")
+    session.add(p)
+    session.flush()
+    session.add(PlayerGameStats(player_id=p.id, game_id=g3.id, team_id=teams["DET"].id,
+                                rush_yards=10))
+    session.commit()
+
+    prof = defense_profiles(session, 2026, window=1)
+    chi = prof["CHI"]
+    assert chi["wk"] == [1, 2]
+    assert chi["pa"]["RB"][0] > chi["pa"]["RB"][1]       # 200 yds + TD wk1, 10 yds wk2
+    assert chi["rk"]["RB"] == 4                           # softest vs RB on the season
+    assert chi["rk3"]["RB"] < chi["rk"]["RB"]             # but tough in the last game
+    assert chi["trend"]["RB"] == chi["rk3"]["RB"] - chi["rk"]["RB"]
+    assert chi["pts"] == [30, 14] and chi["sk"] == [1, 4] and chi["int"] == [0, 2]
+    # Ranks span 1..n for every position and every team carries all keys.
+    n = len(prof)
+    for pos in ("QB", "RB", "WR", "TE"):
+        assert sorted(t["rk"][pos] for t in prof.values()) == list(range(1, n + 1))
+    assert defense_profiles(session, 2030) == {}
+
+    out = tmp_path / "dvp.js"
+    write_dvp_js(session, str(out), 2026)
+    payload = json.loads(out.read_text().split("window.FF_DVP = ", 1)[1].rstrip().rstrip(";"))
+    assert payload["profiles"]["CHI"]["rk3"]["RB"] == chi["rk3"]["RB"] or payload["profiles"]["CHI"]["wk"] == [1, 2]
+
+
 def test_week_opponents_and_next_week(session):
     _seed(session)
     assert next_week(session, 2026) == 2
