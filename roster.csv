@@ -1,8 +1,8 @@
 player,pos,team,slot
 Drake Maye,QB,NE,QB
-Omarion Hampton,RB,LAC,RB1
+Omarion Hampton,RB,LAC,RB1 (bye wk7)
 Rhamondre Stevenson,RB,NE,RB2
-Davante Adams,WR,LA,WR1
+Davante Adams,WR,LA,"WR1 (OUT 6-10 wks, hamstring - IR)"
 Jameson Williams,WR,DET,WR2
 Pat Freiermuth,TE,PIT,TE
 Tee Higgins,WR,CIN,FLEX
@@ -11,6 +11,6 @@ LA,DST,LA,DST
 Rashee Rice,WR,KC,"bench (hamstring, OUT wk6)"
 Blake Corum,RB,LA,bench
 Alvin Kamara,RB,NO,bench
-Mike Evans,WR,SF,bench
+Mike Evans,WR,SF,"bench (Achilles tendinitis, Q)"
 Josh Jacobs,RB,GB,bench (exempt list)
 Roschon Johnson,RB,CHI,bench
