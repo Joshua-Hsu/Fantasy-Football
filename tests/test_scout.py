@@ -249,3 +249,20 @@ def test_validate_next_neutralises_wrong_roster_names():
     assert validate_next(ok, 3, "bye", tb, everyone) == (ok, [])
     # unknown names (a coach) are ignored
     assert validate_next("Body. Wk4 @TB: Todd Bowles blitzes.", 3, "@TB", tb, everyone)[1] == []
+
+
+def test_validate_next_keeps_own_defenders():
+    """The scouted defense's own corners/safeties may be named in the Next
+    line; only players on neither roster are errors."""
+    from fantasy_football.scout import validate_next
+
+    note = "Wk7 vPIT: Budda Baker shadows the slot; start George Pickens and Pat Freiermuth."
+    pit = {"Pat Freiermuth", "Kenny Pickett"}
+    own = {"Budda Baker"}
+    everyone = pit | own | {"George Pickens"}
+    fixed, bad = validate_next(note, 6, "vPIT", pit, everyone, own=own)
+    assert bad == ["George Pickens"]
+    assert "Pickens" not in fixed and "apply the fantasy read to the PIT roster" in fixed
+    # Without the own-roster set the home defender would be flagged too.
+    _fixed, bad2 = validate_next(note, 6, "vPIT", pit, everyone)
+    assert set(bad2) == {"Budda Baker", "George Pickens"}

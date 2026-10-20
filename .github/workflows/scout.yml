@@ -61,6 +61,10 @@ jobs:
           YEAR=$(date -u +%Y)
           python -m fantasy_football.cli load-season --year $((YEAR - 1))
           python -m fantasy_football.cli load-season --year "$YEAR"
+          # Rosters set Player.current_team; without them validate_next sees
+          # an empty roster for every opponent and lets Gemini's "Next" line
+          # name players who are not on that team (Pickens on PIT, wk6).
+          python -m fantasy_football.cli load-active --year "$YEAR"
 
       - name: Scout the week
         if: steps.key.outputs.ok == 'true'
