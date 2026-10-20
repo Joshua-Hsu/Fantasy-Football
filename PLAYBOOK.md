@@ -55,6 +55,15 @@ luck, they were skipped steps.
    it. Quote the sheet's timeline; if the sheet is silent, run the sweep
    (WebSearch - WebFetch is egress-blocked here) before recommending.
    Never treat "no timeline" as "back next week".
+4d. **Waivers are season-long first, this week second.** For RB/WR adds,
+   rank candidates by role durability (who has to get hurt or return for
+   the role to change) and the rest-of-season schedule (opponent rank vs
+   position for every remaining week, playoffs wk15-16 included, byes
+   counted), THEN by this Sunday's spot. A red spot this week is a reason
+   to bench a claim, not to skip it. Only TE/K/DST are streamed by the
+   week. *(wk7 2026: Keenan Allen was passed on for a red week-7 spot
+   while carrying the softest ROS WR schedule on the wire; the user
+   called it.)*
 5. **Log it before the games.** Add the row to `decisions.csv` with the
    board grade and rationale, then grade it after. Unlogged calls don't
    count; overrides are tracked separately on `#/log`.
