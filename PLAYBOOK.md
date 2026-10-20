@@ -27,7 +27,11 @@ luck, they were skipped steps.
    this season's rank and last season's disagree hard, say "no verdict",
    do not pick the side that makes the better story. *(CIN 5th vs TE in
    wk1, 32nd in 2025 - "trust the week-1 number" was a coin flip dressed
-   up as analysis.)*
+   up as analysis.)* **From week 6 this rule retires**: six games is a
+   sample, so the current-season rank decides and last season is quoted
+   only as a tiebreaker (the app colors rows on the current rank alone
+   from week 6 and weights it 90% in the model). Quote the current rank
+   first in every grade. *(User call, wk7 2026.)*
 3. **One game is not a role.** A usage claim needs two games or a
    structural cause. This applies symmetrically: one bad game does not kill
    a role either. *(Gesicki's 7 targets were one game, in a defined funnel;

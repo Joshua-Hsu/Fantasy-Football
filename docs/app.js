@@ -865,7 +865,9 @@
     // ---- Matchup model: one number fusing every layer ----
     // proj = ppg x vegas^.45 x dvp^.35 x pace^.2, each factor a ratio to
     // league average, clamped so no single signal dominates. DvP blends
-    // last season with this one by weeks played (w = wk/8, capped .8).
+    // last season with this one by weeks played (w = wk/6, capped .9):
+    // by week 6 the current season carries 90% and last year is a
+    // tiebreaker, not a vote (user call, wk7 2026).
     // K keys off the team's implied total alone; DST inverts the OPPONENT's
     // implied total. Transparent by design - every input is on this page.
     var clamp = function (x, lo, hi) { return Math.max(lo, Math.min(hi, x)); };
@@ -874,7 +876,7 @@
       vals.forEach(function (v) { if (v != null && v !== "") { s0 += v; n0++; } });
       return n0 ? s0 / n0 : null;
     };
-    var wNow = Math.min((V.through_week || 1) / 8, 0.8);
+    var wNow = Math.min((V.through_week || 1) / 6, 0.9);
     var avgIT = V.vegas ? avgOf(Object.keys(V.vegas).map(function (k) { return V.vegas[k].it; })) : null;
     var avgOpl = avgOf(teams.map(function (d) { var p = paceOf(d); return p && p.opl; }));
     var dvpBlend = function (d, pos) {
@@ -967,9 +969,9 @@
         var b = (V.baseline && V.baseline[d] && V.baseline[d].rk) ? V.baseline[d].rk[e.pos] : null;
         // Color only when this season and last AGREE - a soft '26 rank over a
         // tough '25 one (or vice versa) is a conflict, not a verdict, and the
-        // badges/notes carry the tiebreak. Late season (wk 8+) the current
-        // rank has earned the right to speak alone.
-        var late = V.through_week >= 8;
+        // badges/notes carry the tiebreak. From week 6 the current rank has
+        // earned the right to speak alone; last season stays as a column.
+        var late = V.through_week >= 6;
         var soft = cur >= 20 && (late || b == null || b >= 20);
         var tough = cur <= 13 && (late || b == null || b <= 13);
         var cls = soft ? " class='dvp-easy'" : (tough ? " class='dvp-hard'" : "");
