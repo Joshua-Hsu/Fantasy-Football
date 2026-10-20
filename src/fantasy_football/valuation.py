@@ -495,9 +495,11 @@ def compute_values(
     else:
         entities = [e for e in entities if e["basis_value"] > 0 or e["total"] > 0]
     if min_games:
+        # Filter only. The team must survive: the in-season rebuild passes
+        # --min-games, and blanking ``team`` here shipped a data.js where no
+        # player could be matched to his week's opponent (every My Team row
+        # read BYE, 2026-10-20).
         entities = [e for e in entities if int(e.get("games") or 0) >= min_games]
-        for e in entities:
-            e["team"] = e["name"] if e["position"] == "DST" else ""
 
     for e in entities:
         e["is_rookie"] = e["position"] != "DST" and not e["seasons"]
