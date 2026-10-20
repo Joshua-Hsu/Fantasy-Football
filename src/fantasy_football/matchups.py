@@ -110,6 +110,89 @@ def defense_vs_position(
     return {"through_week": played, "teams": teams}
 
 
+#: Games in the "recent form" window of a defense profile.
+PROFILE_WINDOW = 3
+
+
+def defense_profiles(
+    session: Session,
+    year: int,
+    *,
+    rules: ScoringRules = DEFAULT_RULES,
+    through_week: int | None = None,
+    window: int = PROFILE_WINDOW,
+) -> dict[str, dict]:
+    """The consistent, measured read of every defense: trend, not prose.
+
+    The weekly scouting notes describe one game each and swing with it
+    (a 14% pressure rate one week, 49% the next); this is the layer that
+    does not. Per defense, from the box scores alone: fantasy points
+    allowed to each position **week by week**, the season rank, the rank
+    over the last ``window`` games, and the defensive line per game
+    (points, yards, sacks, interceptions allowed/made). Rank 1 = fewest
+    points allowed (toughest), 32 = softest, as everywhere on the board.
+
+    Returns ``{abbr: {"wk": [weeks], "pa": {pos: [pts/wk]}, "rk": {pos: n},
+    "rk3": {pos: n}, "trend": {pos: rk3 - rk}, "pts": [..], "yds": [..],
+    "sk": [..], "int": [..]}}`` - a positive trend means the defense has
+    been SOFTER lately than its season rank says.
+    """
+    max_week = min(through_week or _REG_WEEKS, _REG_WEEKS)
+    abbr = {t.id: t.abbreviation for t in session.execute(select(Team)).scalars()}
+    rows = session.execute(
+        select(Player.position, PlayerGameStats, Game)
+        .join(PlayerGameStats, PlayerGameStats.player_id == Player.id)
+        .join(Game, PlayerGameStats.game_id == Game.id)
+        .where(Game.season_year == year, Game.week <= max_week,
+               Player.position.in_(DVP_POSITIONS))
+    ).all()
+    by_week: dict[str, dict[int, dict[str, float]]] = {}
+    for pos, st, game in rows:
+        if st.team_id is None:
+            continue
+        opp_id = game.away_team_id if st.team_id == game.home_team_id else game.home_team_id
+        d = abbr.get(opp_id)
+        if not d:
+            continue
+        wkd = by_week.setdefault(d, {}).setdefault(game.week, {p: 0.0 for p in DVP_POSITIONS})
+        wkd[pos] += score_stats(st, rules)
+
+    lines: dict[str, dict[int, dict]] = {}
+    for tg, game in session.execute(
+        select(TeamGameStats, Game).join(Game, TeamGameStats.game_id == Game.id)
+        .where(Game.season_year == year, Game.week <= max_week)
+    ).all():
+        d = abbr.get(tg.team_id)
+        if d:
+            lines.setdefault(d, {})[game.week] = {
+                "pts": tg.points_allowed, "yds": tg.yards_allowed,
+                "sk": tg.sacks, "int": tg.interceptions}
+
+    out: dict[str, dict] = {}
+    for d, weeks in by_week.items():
+        wks = sorted(weeks)
+        prof: dict = {"wk": wks, "pa": {}, "rk": {}, "rk3": {}, "trend": {}}
+        for pos in DVP_POSITIONS:
+            prof["pa"][pos] = [round(weeks[w][pos], 1) for w in wks]
+        for key in ("pts", "yds", "sk", "int"):
+            prof[key] = [lines.get(d, {}).get(w, {}).get(key) for w in wks]
+        out[d] = prof
+
+    def _rank(key_fn):
+        order = sorted(out, key=key_fn)
+        return {d: i + 1 for i, d in enumerate(order)}
+
+    for pos in DVP_POSITIONS:
+        season = _rank(lambda d: sum(out[d]["pa"][pos]) / max(len(out[d]["pa"][pos]), 1))
+        recent = _rank(lambda d: sum(out[d]["pa"][pos][-window:])
+                       / max(len(out[d]["pa"][pos][-window:]), 1))
+        for d in out:
+            out[d]["rk"][pos] = season[d]
+            out[d]["rk3"][pos] = recent[d]
+            out[d]["trend"][pos] = recent[d] - season[d]
+    return out
+
+
 def week_opponents(session: Session, year: int, week: int) -> dict[str, str]:
     """``{team_abbr: "@OPP" | "vOPP"}`` for one week's schedule (byes absent)."""
     abbr = {t.id: t.abbreviation for t in session.execute(select(Team)).scalars()}
@@ -668,6 +751,9 @@ def write_dvp_js(
         "teams": cur["teams"],
         "positions": list(DVP_POSITIONS),
     }
+    profiles = defense_profiles(session, year, rules=rules)
+    if profiles:
+        payload["profiles"] = profiles
     if baseline_year:
         base = defense_vs_position(session, baseline_year, rules=rules)
         if base["teams"]:

@@ -354,6 +354,19 @@
   .pill.dvp-on { background:var(--accent-soft); color:var(--accent-ink); border-color:var(--accent-ink); }
   tr.dvp-easy td { background:rgba(46,160,67,.14); }
   tr.dvp-hard td { background:rgba(248,81,73,.10); }
+  /* Defense profiles: cell-level grades, trend arrows, sparklines, cards. */
+  td.dvp-easy { background:rgba(46,160,67,.14); font-weight:700; }
+  td.dvp-hard { background:rgba(248,81,73,.10); font-weight:700; }
+  span.dvp-easy { color:#2f9e57; font-weight:700; white-space:nowrap; }
+  span.dvp-hard { color:#c74a44; font-weight:700; white-space:nowrap; }
+  .dvp-card { border:1px solid var(--line); border-radius:10px; padding:.2rem .8rem .6rem; margin:0 0 1rem; background:var(--surface); }
+  .dvp-card .dvp-h2 { margin:.6rem 0 .2rem; }
+  .dvp-card .dvp-scout { position:static; max-width:none; padding:.3rem 0 0; font-size:.85rem; }
+  .dvp-spark { font-family:ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing:.05em; color:var(--accent-ink); }
+  .dvp-obs { margin-top:.4rem; font-size:.85rem; }
+  .dvp-obs summary { cursor:pointer; }
+  .dvp-obs .dvp-note { position:static; max-width:none; }
+  .dvp-card table.pk td.note-col, .dvp-card table.pk th.note-col { max-width:none; white-space:nowrap; }
   .dvp-out, .dvp-back { font-size:.72rem; font-weight:700; white-space:nowrap; }
   .dvp-out { color:#c74a44; }
   .dvp-back { color:#2f9e57; }
@@ -420,7 +433,7 @@
   window.FF_CONFIG = { workerUrl: "https://ff-commit-worker.joshuahsu2.workers.dev" };
 </script>
 <script src="data.js?v=202609290939"></script>
-<script src="dvp.js?v=202610202022"></script>
-<script src="app.js?v=202610202022"></script>
+<script src="dvp.js?v=202610202122"></script>
+<script src="app.js?v=202610202122"></script>
 </body>
 </html>
