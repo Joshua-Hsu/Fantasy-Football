@@ -209,8 +209,13 @@ def build_webapp_data(
     backup_overrides: dict[str, str] | None = None,
     extra_rookies: set[str] | None = None,
     min_games: int = 0,
+    keep_names: set[str] | None = None,
 ) -> dict[str, list[dict]]:
     """Per-position player data for the static pick game (browser app).
+
+    ``keep_names`` (the committed ``roster.csv``) are always in the pool:
+    exempt from ``min_games`` and from the per-position depth cap, so a
+    rostered player never disappears from the app's My Team page.
 
     Each entity carries the three comparison stats, a seed value (for the
     in-browser Elo), current team, and coaching. No DB needed at play time.
@@ -256,9 +261,10 @@ def build_webapp_data(
         )
     elif pinned_tiers:
         tier_map = {**tier_map, **pinned_tiers}
+    keep_names = {n.lower() for n in (keep_names or set())}
     values = compute_values(
         session, year=year, config=config, rules=rules, basis=basis, manual_tiers=tier_map,
-        min_games=min_games,
+        min_games=min_games, keep_names=keep_names,
     )
     coaching = {
         t.abbreviation: (t.head_coach or "", t.offensive_coordinator or "",
@@ -407,7 +413,7 @@ def build_webapp_data(
         # even if they fall outside the per-team / depth selection.
         have = {r.key for r, _ in chosen}
         for r in rows:
-            if r.key in manual_tiers and r.key not in have:
+            if (r.key in manual_tiers or r.name.lower() in keep_names) and r.key not in have:
                 chosen.append((r, seed_for(r, r.basis_value)))
                 have.add(r.key)
 
@@ -449,6 +455,7 @@ def write_webapp_data(
     base: str | None = None,
     extra_rookies: set[str] | None = None,
     min_games: int = 0,
+    keep_names: set[str] | None = None,
 ) -> str:
     """Write the pick-game data as ``docs/data.js`` (``window.FF_DATA = {...}``).
 
@@ -466,7 +473,7 @@ def write_webapp_data(
         manual_tiers=manual_tiers, seed_overrides=seed_overrides,
         pinned_tiers=pinned_tiers,
         prices=prices, backups=backups, backup_overrides=backup_overrides,
-        extra_rookies=extra_rookies, min_games=min_games,
+        extra_rookies=extra_rookies, min_games=min_games, keep_names=keep_names,
     )
     starters = starters or {}
     last_year = year or _latest_season(session)

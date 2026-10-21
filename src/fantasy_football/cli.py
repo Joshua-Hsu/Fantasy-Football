@@ -1381,9 +1381,27 @@ def _cmd_build_webapp(args: argparse.Namespace) -> int:
             base=_master_base(getattr(args, "tiers_file", None)),
             extra_rookies=_read_pool_overrides(getattr(args, "pool_overrides", None)),
             min_games=getattr(args, "min_games", 0),
+            keep_names=_read_roster_names(getattr(args, "roster", None)),
         )
     print(f"Wrote pick-game data to {path}")
     return 0
+
+
+def _read_roster_names(path: str | None) -> set[str]:
+    """Player names from the committed ``roster.csv`` (column ``player``).
+
+    They are always kept in the app pool: a rostered player with no games
+    this season (Jacobs, reinstated after six weeks on the exempt list) was
+    dropped by ``--min-games`` and vanished from the My Team page.
+    """
+    import csv
+    import os
+
+    if not path or not os.path.exists(path):
+        return set()
+    with open(path, newline="") as fh:
+        return {(r.get("player") or "").strip() for r in csv.DictReader(fh)
+                if (r.get("player") or "").strip()}
 
 
 def _cmd_serve(args: argparse.Namespace) -> int:
@@ -1646,6 +1664,9 @@ def build_parser() -> argparse.ArgumentParser:
                          dest="pool_overrides",
                          help="CSV of players (player[,treat]) forced into the pool "
                               "and seeded like rookies (injury returnees)")
+    p_webapp.add_argument("--roster", default="roster.csv", dest="roster",
+                         help="CSV of the user's roster (player,...); its players are "
+                              "always kept in the pool regardless of --min-games")
     p_webapp.set_defaults(func=_cmd_build_webapp)
 
     p_yahoo = sub.add_parser(

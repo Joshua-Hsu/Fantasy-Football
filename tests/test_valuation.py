@@ -163,3 +163,16 @@ def test_min_games_drops_one_game_spikes(session):
     # pool while min_games=1 keeps it - the in-season refresh uses 2.
     assert compute_values(session, year=2025, config=LeagueConfig(teams=1), min_games=1)["RB"]
     assert not compute_values(session, year=2025, config=LeagueConfig(teams=1), min_games=2)["RB"]
+
+
+def test_min_games_keeps_named_roster_players(session):
+    _seed(session)
+    rows = compute_values(session, year=2025, config=LeagueConfig(teams=1), min_games=1)["RB"]
+    name = rows[0].name
+    # With min_games=2 the pool empties - unless the player is on the keep list
+    # (the committed roster), which is how a rostered player with no games yet
+    # stays visible in the app.
+    kept = compute_values(session, year=2025, config=LeagueConfig(teams=1), min_games=2,
+                          keep_names={name.lower()})["RB"]
+    assert [r.name for r in kept] == [name]
+    assert kept[0].team == rows[0].team

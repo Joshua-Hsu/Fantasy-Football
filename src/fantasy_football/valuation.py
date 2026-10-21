@@ -443,12 +443,14 @@ def compute_values(
     active_only: bool | None = None,
     fixed_prices: dict[str, float] | None = None,
     min_games: int = 0,
+    keep_names: set[str] | None = None,
 ) -> dict[str, list[ValueRow]]:
     """Compute tiers and auction values, grouped by position.
 
     ``min_games`` drops entities with fewer games in the latest season - the
     in-season tier refresh uses it so a one-game points-per-game spike
-    (a backup QB's lone start) cannot top a position.
+    (a backup QB's lone start) cannot top a position. ``keep_names``
+    (lower-cased full names) are exempt from that filter.
 
     ``basis`` selects which value drives pricing (``total`` / ``ppg`` / ``w3yr``);
     all three are reported regardless. ``manual_tiers`` maps an entity ``key`` to
@@ -498,8 +500,13 @@ def compute_values(
         # Filter only. The team must survive: the in-season rebuild passes
         # --min-games, and blanking ``team`` here shipped a data.js where no
         # player could be matched to his week's opponent (every My Team row
-        # read BYE, 2026-10-20).
-        entities = [e for e in entities if int(e.get("games") or 0) >= min_games]
+        # read BYE, 2026-10-20). ``keep_names`` are exempt: a rostered player
+        # with no games yet (Jacobs off the exempt list) must stay in the pool
+        # or he vanishes from the app's My Team page.
+        keep = {n.lower() for n in (keep_names or ())}
+        entities = [e for e in entities
+                    if int(e.get("games") or 0) >= min_games
+                    or e["name"].lower() in keep]
 
     for e in entities:
         e["is_rookie"] = e["position"] != "DST" and not e["seasons"]
