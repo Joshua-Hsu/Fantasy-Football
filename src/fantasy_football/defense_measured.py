@@ -168,7 +168,9 @@ def scheme_plays(pbp, ftn=None, participation=None) -> list[dict]:
         elif p is not None:
             # No FTN row: participation carries the same two counts (NGS).
             rushers, box = _num(p.get("number_of_pass_rushers")), _num(p.get("defenders_in_box"))
+        gd = r.get("game_date")
         out.append({"tm": str(d), "wk": wk, "gid": key[0], "pass": is_pass, "rush": is_rush,
+                    "date": str(gd)[:10] if gd is not None and gd == gd else "",
                     "label": label, "db": db,
                     "rushers": rushers if rushers else None, "box": box if box else None})
     return out
@@ -364,40 +366,72 @@ def season_blocks(plays, *, key: dict[str, list[dict]] | None = None,
     return out
 
 
-def shift_flags(plays, *, weeks: int = SHIFT_WEEKS, points: int = SHIFT_POINTS) -> dict[str, dict]:
-    """Defenses whose last ``weeks`` games moved away from their earlier habit.
+def shift_flags(plays, profiles: dict[str, dict] | None = None, *,
+                weeks: int = SHIFT_WEEKS, points: int = SHIFT_POINTS) -> dict[str, dict]:
+    """Defenses that have played away from their current profile for a while.
 
-    The last two games a defense played are each compared with its season
-    BEFORE them (pooling them into the baseline would hide the move): a
-    shift is the weekly base formation differing from the baseline base in
-    both games, or the 5+ DB share or blitz rate moving ``points`` or more
-    in the same direction in both. Without participation the 7+ box share
-    stands in for the formation fields. Needs two baseline games.
-    Returns ``{team: {"since": week, "what": "blitz 24 -> 41; ..."}}``.
+    The baseline is what the profile describes: the measured block over
+    the games played BEFORE the profile row's date (``profiles[TEAM]["d"]``).
+    Every game since is compared with it; a shift is a run of ``weeks`` or
+    more consecutive games, ending with the latest, in which the base
+    formation differs from the profile's, or the 5+ DB share or blitz rate
+    sits ``points`` or more off it in the same direction (7+ box stands in
+    for the formation fields while participation is missing). Appending a
+    new ``defense_profiles.csv`` row moves the baseline forward, so the
+    flag clears once the profile has been rewritten.
+
+    A team with no dated profile falls back to its last ``weeks`` games vs
+    the games before them. Needs two baseline games.
+    Returns ``{team: {"since": week, "what": "blitz 24 -> 41; ...",
+    "vs": profile date | None}}``.
     """
     out: dict[str, dict] = {}
     for team, wks in _by_team_week(plays).items():
         order = sorted(wks)
-        if len(order) < weeks + 2:
+        pdate = ((profiles or {}).get(team) or {}).get("d") or ""
+        dates = {w: min((p.get("date") or "") for p in wks[w]) for w in order}
+        if pdate and all(dates.values()):
+            earlier = [w for w in order if dates[w] < pdate]
+            recent = [w for w in order if dates[w] >= pdate]
+        else:
+            pdate = ""
+            earlier, recent = order[:-weeks], order[-weeks:]
+        if len(earlier) < 2 or len(recent) < weeks:
             continue
-        recent, earlier = order[-weeks:], order[:-weeks]
         base = aggregate([p for w in earlier for p in wks[w]])
-        rec = [aggregate(wks[w]) for w in recent]
-        pooled = aggregate([p for w in recent for p in wks[w]])
-        what = []
-        if base["base"] and all(r["base"] for r in rec) and \
-                all(r["base"][0] != base["base"][0] for r in rec):
-            what.append(f"base {base['base'][0]} -> {pooled['base'][0]}")
+        rec = {w: aggregate(wks[w]) for w in recent}
+
+        def streak(off) -> list[int]:
+            """Consecutive recent weeks (ending with the latest) where off(w) holds."""
+            run = []
+            for w in reversed(recent):
+                if not off(w):
+                    break
+                run.insert(0, w)
+            return run if len(run) >= weeks else []
+
+        what, since = [], []
+        if base["base"]:
+            run = streak(lambda w: rec[w]["base"] is not None
+                         and rec[w]["base"][0] != base["base"][0])
+            if run:
+                now = aggregate([p for w in run for p in wks[w]])["base"][0]
+                what.append(f"base {base['base'][0]} -> {now}")
+                since.append(run[0])
         fields = (("db5", "5+ DB"), ("blitz", "blitz")) if base["src"] == "participation" \
             else (("box7", "7+ box"), ("blitz", "blitz"))
         for k, label in fields:
-            if base[k] is None or any(r[k] is None for r in rec):
+            if base[k] is None:
                 continue
-            diffs = [r[k] - base[k] for r in rec]
-            if all(d >= points for d in diffs) or all(d <= -points for d in diffs):
-                what.append(f"{label} {base[k]} -> {pooled[k]}")
+            for sign in (1, -1):
+                run = streak(lambda w: rec[w][k] is not None
+                             and sign * (rec[w][k] - base[k]) >= points)
+                if run:
+                    now = aggregate([p for w in run for p in wks[w]])[k]
+                    what.append(f"{label} {base[k]} -> {now}")
+                    since.append(run[0])
         if what:
-            out[team] = {"since": recent[0], "what": "; ".join(what)}
+            out[team] = {"since": min(since), "what": "; ".join(what), "vs": pdate or None}
     return out
 
 
@@ -554,7 +588,7 @@ def scheme_payload(src: SchemeSources, profiles: dict[str, dict] | None = None,
                         contracts=src.contracts, official=src.official,
                         unmatched=unmatched) if src.snaps else {}
     blocks = season_blocks(plays, key=key)
-    shifts = shift_flags(plays)
+    shifts = shift_flags(plays, profiles)
     out: dict[str, dict] = {}
     for team in sorted(set(blocks) | set(profiles or {})):
         ent: dict = {}

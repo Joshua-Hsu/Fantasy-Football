@@ -276,7 +276,8 @@ def _weeks(team, blitz_by_week):
         gid = f"2026_{wk:02d}_{team}_X"
         for i in range(10):
             pbp.append({"game_id": gid, "play_id": i, "week": wk, "season_type": "REG",
-                        "defteam": team, "pass": 1, "rush": 0})
+                        "defteam": team, "pass": 1, "rush": 0,
+                        "game_date": f"2026-{9 + wk // 4:02d}-{1 + (wk % 4) * 7:02d}"})
             ftn.append({"nflverse_game_id": gid, "nflverse_play_id": i,
                         "n_pass_rushers": 5 if i < k else 4, "n_defense_box": 6})
     return scheme_plays(pbp, ftn)
@@ -293,6 +294,36 @@ def test_shift_one_week_no_flag():
     assert shift_flags(_weeks("NYG", {1: 2, 2: 2, 3: 2, 4: 2, 5: 2, 6: 6})) == {}
     # Opposite directions in the two weeks are noise, not a shift.
     assert shift_flags(_weeks("NYG", {1: 4, 2: 4, 3: 4, 4: 4, 5: 7, 6: 1})) == {}
+
+
+def _date(plays, wk):
+    return next(p["date"] for p in plays if p["wk"] == wk)
+
+
+def test_shift_measured_against_the_profile():
+    # Profile written after wk3 (blitz 20%); wk4-6 all blitz 50%+.
+    plays = _weeks("NYG", {1: 2, 2: 2, 3: 2, 4: 5, 5: 5, 6: 6})
+    prof = {"NYG": {"d": _date(plays, 4), "t": "four-man rush"}}
+    flag = shift_flags(plays, prof)["NYG"]
+    assert flag == {"since": 4, "what": "blitz 20 -> 53", "vs": _date(plays, 4)}
+    # Weeks BEFORE the profile never count as the shift, however recent.
+    prof = {"NYG": {"d": _date(plays, 6), "t": "x"}}
+    assert shift_flags(plays, prof) == {}
+
+
+def test_shift_needs_two_weeks_off_the_profile():
+    plays = _weeks("NYG", {1: 2, 2: 2, 3: 2, 4: 2, 5: 6})
+    prof = {"NYG": {"d": _date(plays, 4), "t": "x"}}
+    assert shift_flags(plays, prof) == {}            # only wk5 is off
+    plays = _weeks("NYG", {1: 2, 2: 2, 3: 2, 4: 6, 5: 2, 6: 6})
+    assert shift_flags(plays, prof) == {}            # off, back, off: no run
+
+
+def test_new_profile_row_clears_the_flag():
+    plays = _weeks("NYG", {1: 2, 2: 2, 3: 2, 4: 5, 5: 5, 6: 5, 7: 5, 8: 5})
+    assert "NYG" in shift_flags(plays, {"NYG": {"d": _date(plays, 4), "t": "old"}})
+    # Rewritten after wk7: the baseline now includes the 50% weeks.
+    assert shift_flags(plays, {"NYG": {"d": _date(plays, 8), "t": "new"}}) == {}
 
 
 def test_shift_base_formation_change():

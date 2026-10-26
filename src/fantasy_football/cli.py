@@ -1191,11 +1191,14 @@ def _cmd_defense_notes_measured(args: argparse.Namespace) -> int:
     if unmatched:
         print(f"contracts unmatched ({len(unmatched)}, no star tag): "
               + ", ".join(sorted(unmatched)))
-    shifts = {t: f for t, f in shift_flags([p for p in plays if p["wk"] <= week]).items()}
+    from .matchups import read_defense_profiles
+    shifts = shift_flags([p for p in plays if p["wk"] <= week],
+                         read_defense_profiles(args.profiles))
     if shifts:
         print("Profile shift flagged (append a defense_profiles.csv row):")
         for t, f in sorted(shifts.items()):
-            print(f"  {t}: since wk{f['since']} - {f['what']}")
+            vs = f"profile of {f['vs']}" if f.get("vs") else "earlier games (no dated profile)"
+            print(f"  {t}: since wk{f['since']} vs {vs} - {f['what']}")
     else:
         print("Profile shift flagged: none")
     return 0
@@ -1667,6 +1670,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_dnm.add_argument("--week", type=int, default=None,
                        help="Week (default: the latest week in the play-by-play)")
     p_dnm.add_argument("--notes", default="defense_notes.csv")
+    p_dnm.add_argument("--profiles", default="defense_profiles.csv",
+                       help="Profiles CSV; a shift is measured against each team's newest row")
     p_dnm.add_argument("--force", action="store_true",
                        help="Replace a team's existing measured note for the week")
     p_dnm.set_defaults(func=_cmd_defense_notes_measured)

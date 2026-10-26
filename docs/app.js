@@ -891,7 +891,7 @@
       var summary = "defensive profile (" + (s.m ? "season through wk " + m.wk + ", measured" + (ftnOnly ? ", no formation file yet" : "") : "no measured block") +
         (s.d ? "; text seeded " + esc(s.d) : "") + ")";
       return "<details class='dvp-prof'><summary class='muted'>" + summary + shift + "</summary>" + table +
-        (s.shift ? "<p class='dvp-shift-line'><b>Shift since wk " + s.shift.since + ":</b> " + esc(s.shift.what) + "</p>" : "") +
+        (s.shift ? "<p class='dvp-shift-line'><b>Shift since wk " + s.shift.since + (s.shift.vs ? " (vs profile of " + esc(s.shift.vs) + ")" : "") + ":</b> " + esc(s.shift.what) + "</p>" : "") +
         (key ? "<p><b>Key</b> " + key + "</p>" : "") +
         (s.t ? "<p class='dvp-prof-text'>" + esc(s.t) + "</p>" : "") + "</details>";
     };
@@ -937,7 +937,7 @@
       "<p class='muted foot'>Ranks: 1 = fewest fantasy points allowed to the position (toughest), " + n + " = most (softest); green 20+, red 13-. " +
       "Season = all games this year; Last 3 = the last three games only; Trend = Last 3 minus Season, so a positive number means the defense has been softer than its season rank lately (shown from &plusmn;4). " +
       "By week = one bar per game on a shared scale, the last three shaded, the latest value printed; open &ldquo;by week&rdquo; for the numbers. The identity line is measured: DBs on the field per snap from the snap counts (4.x base, ~5 nickel, 5.5+ dime), pressure rate from play-by-play, and how many plays opponents get. " +
-      "The defensive profile is the durable read: Season / Last 3 are computed from nflverse files - formation from the participation file (5+ DB = nickel or heavier), blitz = 5+ pass rushers on dropbacks and avg rushers from FTN charting, 7+ box from FTN when the formation file is not out yet; Key = defenders on 50%+ of snaps, $ = $15M+ a year, R1 = recent first-rounder or top-10 pick, OUT = Out/Doubtful on the official report. &#9650; profile shift = the last two games moved 15+ points (or changed base formation) from the weeks before, so the text below it may be stale - quote the numbers when they disagree. " +
+      "The defensive profile is the durable read: Season / Last 3 are computed from nflverse files - formation from the participation file (5+ DB = nickel or heavier), blitz = 5+ pass rushers on dropbacks and avg rushers from FTN charting, 7+ box from FTN when the formation file is not out yet; Key = defenders on 50%+ of snaps, $ = $15M+ a year, R1 = recent first-rounder or top-10 pick, OUT = Out/Doubtful on the official report. &#9650; profile shift = two or more straight games since the profile text was dated sat 15+ points off what the defense measured before that date (or on a different base formation), so the text may be stale - quote the numbers when they disagree. " +
       "The weekly observation is the latest note for one game; &ldquo;WkN measured&rdquo; notes are computed, older prose notes are the scout's and only their box-score lines are checked, so quote the table, not the paragraph.</p>";
   }
 

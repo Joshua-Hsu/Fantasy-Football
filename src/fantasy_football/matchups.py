@@ -508,7 +508,7 @@ def fetch_scheme_pbp(year: int) -> list[dict]:
     from .ingest.nflverse import PBP_URL
 
     # game_id/play_id/rush feed the measured scheme join (defense_measured).
-    cols = ["game_id", "play_id", "week", "season_type", "defteam", "pass", "rush",
+    cols = ["game_id", "play_id", "game_date", "week", "season_type", "defteam", "pass", "rush",
             "sack", "qb_hit"]
     df = pd.read_parquet(PBP_URL.format(year=year), columns=cols)
     df = df[(df["season_type"] == "REG") & (df["week"] <= _REG_WEEKS)]

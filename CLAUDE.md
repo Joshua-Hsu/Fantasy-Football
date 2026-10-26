@@ -337,12 +337,16 @@ participation file publishes late (2026 is 404 as of 2026-10-26) - until
 it lands every block is `src: "ftn-only"`, formation/5+ DB fields are
 `n/a`, and the note writes the FTN 7+ box / light-box split instead,
 still with blitz, rushers and key players; it switches to
-`participation` by itself once the file appears. **Shift flag:** the last
-two games each moved 15+ points the same way (5+ DB or blitz; 7+ box
-when ftn-only) or changed base formation vs the weeks before them -> a
-`▲ profile shift` chip on the page and a line in the Actions job
-summary; nothing rewrites the profile text, the Tuesday Routine appends a
-`defense_profiles.csv` row for flagged teams. `scout.py` and its CLI
+`participation` by itself once the file appears. **Shift flag:** measured
+against the CURRENT PROFILE - the baseline is the block over the games
+played before the team's newest `defense_profiles.csv` row's date; a
+run of 2+ consecutive games since then (ending with the latest) all 15+
+points off it the same way (5+ DB or blitz; 7+ box when ftn-only) or on
+a different base formation -> a `▲ profile shift` chip on the page and a
+line in the Actions job summary. Nothing rewrites the profile text: the
+Tuesday Routine appends a `defense_profiles.csv` row for flagged teams,
+which moves the baseline forward and clears the flag. (Seeds are dated
+2026-10-26, so the first flags can appear after wk8-9.) `scout.py` and its CLI
 commands still exist (frozen); the hand-paste path in the
 `defense-notes` skill is a manual override (newest wins).
 

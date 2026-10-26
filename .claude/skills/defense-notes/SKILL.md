@@ -29,12 +29,17 @@ Spec: `specs/defense-profiles.md`. Every number now comes from nflverse files
 
 ## 2. Profile shift -> append a profile row
 
-When the run prints `Profile shift flagged` (also in the Actions job summary)
-or a card shows `▲ profile shift`, read that defense's Season vs Last 3 and
-the last two measured notes, then **append** (never edit) a row to
+A shift is measured against the team's CURRENT profile: the games before
+the newest `defense_profiles.csv` row's date are the baseline, and 2+
+straight games since then sat 15+ points off it (or on another base
+formation). When the run prints `Profile shift flagged` (also in the Actions
+job summary) or a card shows `▲ profile shift`, read the shift line, the
+Season vs Last 3 numbers and the measured notes since the profile date, then
+**append** (never edit) a row to
 `defense_profiles.csv`: `TEAM,YYYY-MM-DD,"..."`, <= 900 chars, describing
 the new habit in measured terms (formation, 5+ DB, blitz, box, who plays).
-Newest row per team wins. Regenerate `docs/dvp.js` with `cli dvp` (or let
+Newest row per team wins, and its date resets the shift baseline, so the
+chip clears. Regenerate `docs/dvp.js` with `cli dvp` (or let
 the next Action do it) and ship via PR.
 
 ## 3. Hand-paste override
