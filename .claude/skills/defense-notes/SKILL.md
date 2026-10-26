@@ -1,62 +1,46 @@
 ---
 name: defense-notes
-description: Weekly defensive scouting loop for the Matchups page - generate the two-defense Gemini questions per game, verify each paste against the box scores, file capped notes to defense_notes.csv, regenerate docs/dvp.js and ship. Use when the user says "start week N defensive notes", pastes a Gemini scouting answer, or asks for the next scouting prompt.
+description: Weekly defense notes for the Defenses/Matchups pages - read the computed "WkN measured:" note and the profile drop-down, append a defense_profiles.csv row when a defense shows the profile-shift chip, and file a hand-pasted note as a manual override. Use when the user says "start week N defensive notes", asks what a defense's scheme is, pastes a scouting answer, or a measured run flags a profile shift.
 ---
 
-# Weekly defense notes
+# Defense notes (measured)
 
-`defense_notes.csv` (`team,date,note`) carries one scouting note per defense
-per week. `#/dvp` shows the three newest per team, capped at 900 chars.
-Notes are **appended, never edited**: a corrected note supersedes the old one.
+The Gemini scouting loop is **retired** (2026-10-26): its package and blitz
+percentages were invented and it put players on the wrong teams. Code frozen
+on the `gemini-scout` branch; do not revive it or call any LLM for numbers.
+Spec: `specs/defense-profiles.md`. Every number now comes from nflverse files
+(`defense_measured.py`).
 
-## The loop (Tuesday/Wednesday after the box scores load)
+## 1. Read the measured note
 
-1. **Fact sheet first.** Build the per-defense numbers for the week so every
-   paste has something to be checked against:
-   `python -m fantasy_football.cli scout-verify --team ALL` is not a thing -
-   use the DB directly (points allowed by position that week, season ranks,
-   DB/LB per snap, pressure rate, opponent plays, personnel flags) as in the
-   week-2 fact sheet, and list the defenses the user's players face next week
-   first (roster = My Team keys on `#/dvp`).
-2. **Hand the user one prompt per game**, both defenses in one question:
-   `python -m fantasy_football.cli scout-prompts --game DEN-JAX`.
-   The wording matters and it lives in **`prompts/defense_scout.txt`** (the
-   source of truth; `scout.py` reads it at run time). A terse "scout X for
-   fantasy" prompt came back as one thin paragraph; the fan-style question
-   in that file came back with scheme, personnel percentages, injuries and
-   a fantasy translation for both teams. Always give the NEXT prompt at the
-   end of every reply, in a fenced block, ready to copy, in EXACTLY that
-   format - the user asked that the copy-paste prompt not carry extra stats
-   (the box lines are appended only on the Gemini API path, `--lines`
-   opt-in). **Tweaking the prompt**: edit the file, and log the change and
-   its result in `prompts/README.md` (what came back better or worse), so
-   the prompt improves week over week instead of drifting.
-3. **Verify every paste before filing.** Run
-   `python -m fantasy_football.cli scout-verify --team DEN,JAX` and check each
-   named line (carries, targets, yards, TDs). Where the paste's *story*
-   contradicts the numbers (e.g. "erased underneath" when the TE went 12-140,
-   "shut down the run" when the RB scored twice), file the number and say so
-   in the note ("verified" / "the data disagrees"). Never file a claim that
-   the box score contradicts without the correction next to it.
-4. **File the note**: `team,YYYY-MM-DD,"..."` - scheme + pressure design,
-   what changed and why, defensive injuries with who filled in, what the
-   offense did (with the verified lines), season ranks by position, the
-   fantasy translation, and a line for the next opponent naming the user's
-   own players if they are in it. Keep it <= 900 characters (`cap_note`).
-5. **Regenerate and ship**: `cli dvp --year <yr> --baseline-year <yr-1> --out
-   docs/dvp.js`, bump `dvp.js?v=` in `docs/index.html`, commit, push, keep ONE
-   batch PR open for the week's notes and merge it when the batch is done
-   (or immediately if a note changes a lineup call before games).
-6. **Restate any lineup call the note moves** (PLAYBOOK rule 3 "update, don't
-   defend"): say whether it reverses the logged decision, and log it.
+- `defense_notes.csv` gets one `WkN measured:` row per defense from the
+  Wednesday `dvp.yml` run (`cli defense-notes-measured --force`). Rerun by
+  hand: `python -m fantasy_football.cli defense-notes-measured --year <yr>
+  [--week N] [--force]`.
+- Fields: base + 2nd formation with %, 5+ DB share, blitz (5+ rushers on
+  dropbacks) with avg rushers, 7+ box, key defenders (`$` = $15M+/yr,
+  `R1` = recent first-rounder or top-10 pick, `OUT` = Out/Doubtful on the
+  official report).
+- `base/2nd: n/a (no participation file)` means the season's participation
+  file is not out yet (`src: "ftn-only"`); quote the box split and blitz
+  rate, never estimate a formation.
+- For a matchup call quote the `#/defenses` profile drop-down's **Season /
+  Last 3** numbers (PLAYBOOK 2a), not the seed text and not one week's note.
 
-## Automated path
+## 2. Profile shift -> append a profile row
 
-With a `GEMINI_API_KEY` repo secret, `.github/workflows/scout.yml` runs
-`cli scout-run` on Tuesdays after the DvP refresh: one grounded Gemini call
-per game, sections split per team, notes prefixed `Wk<N> auto (Gemini,
-unverified):`. Those still need step 3 before they are trusted for a lineup
-call; the user's pasted notes supersede them (newest wins).
+When the run prints `Profile shift flagged` (also in the Actions job summary)
+or a card shows `▲ profile shift`, read that defense's Season vs Last 3 and
+the last two measured notes, then **append** (never edit) a row to
+`defense_profiles.csv`: `TEAM,YYYY-MM-DD,"..."`, <= 900 chars, describing
+the new habit in measured terms (formation, 5+ DB, blitz, box, who plays).
+Newest row per team wins. Regenerate `docs/dvp.js` with `cli dvp` (or let
+the next Action do it) and ship via PR.
 
-Without the key, the fallback is the session's own WebSearch sweep for the
-defenses the user's players face, filed with the same verification.
+## 3. Hand-paste override
+
+A note the user pastes (or a verified WebSearch finding) still goes in
+`defense_notes.csv` as `TEAM,YYYY-MM-DD,"..."` and supersedes the measured
+row by date (newest wins). Check every named stat against the box score
+first (`cli scout-verify --team DEN,JAX` still works); file the number and
+the correction where the story disagrees. Keep it <= 900 characters.

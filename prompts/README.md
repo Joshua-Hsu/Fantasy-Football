@@ -14,6 +14,14 @@ Rams", `{week}`, `{prev}`, `{year}`. Printed by
 
 ### Changelog (what worked, what did not)
 
+- **2026-10-26: the whole Gemini loop is RETIRED.** Checked against the
+  snap counts, the wk3-6 auto notes invented package/blitz percentages and
+  put players on the wrong teams (Myles Garrett and Trent McDuffie filed
+  as a Brown and a Chief; both Rams). The code is frozen on the
+  `gemini-scout` branch, `scout.yml` is manual-dispatch only, and weekly
+  notes are now computed from nflverse data (`defense-notes-measured`,
+  `specs/defense-profiles.md`). This file stays for the hand-paste path.
+
 - **v1 (2026-09-22, retired)** - a structured "Scout BOTH defenses ... For
   EACH defense give: 1. scheme ... 5. fantasy translation ... under 900
   characters. Cite sources." Gemini returned one thin paragraph on one team

@@ -314,42 +314,43 @@ because the weekly scouting notes describe one game each and their
 scheme percentages swing (or are invented) week to week; the profile is
 what a recommendation quotes, the note is color (PLAYBOOK 2a).
 
-**Defense notes loop - Gemini path RETIRED 2026-10-26.** The auto notes
-invented package/blitz percentages and misplaced players (wk6 filed Myles
-Garrett as a Brown; the snap counts have him a Ram, McDuffie a Ram, Gardner
-a Colt, Woolen an Eagle). `scout.yml` has no schedule now (manual dispatch
-only) and the code is frozen on the `gemini-scout` branch. Replacement:
-`defense_profiles.csv` (one durable scheme profile per defense, seeded
-2026-10-26 from the wk3-6 auto notes, archived at
-`archive/defense_notes_auto_2026_wk3-6.csv`) plus a weekly MEASURED note
-computed from nflverse data - spec in `specs/defense-profiles.md`. The
-paragraph below describes the retired loop.
-
-**Defense notes loop** (`scout.py`, skill `.claude/skills/defense-notes`).
-`defense_notes.csv` gets one note per defense per week; notes are appended,
-newest wins. `cli scout-prompts --game DEN-JAX` prints the fan-style
-two-defense question that gets full answers out of Gemini (a terse
-"scout X" prompt came back thin); the wording is the committed
-`prompts/defense_scout.txt` (edit that, log tweaks + results in
-`prompts/README.md`; `--lines` appends the verified box-score lines, off
-by default for copy-paste); `cli scout-verify --team DEN,JAX` prints the lines a paste must
-be checked against before filing (file the number and the correction when
-the paste's story contradicts it); `cli scout-run` is the automated path
-via the Gemini API with search grounding (`GEMINI_API_KEY` secret,
-`scout.yml` Tuesday 13:00 UTC, notes labeled "auto (Gemini <model>,
-box-checked)"). Cost discipline: only the 16 per-game scouting calls are
-grounded (with a thinking budget); the per-team check pass runs ungrounded
-on flash-lite with thinking off; the run prints tokens + an estimated
-cost into the Actions job summary - a week should cost cents, and
-`prompts/README.md` logs each run's grade and cost.
-Cap is 900 chars (`cap_note`). Every auto note's next-opponent line is
-checked by `validate_next` against the DB roster (`Player.current_team`):
-a named player who is not on that opponent (Gemini put Mike Evans on TB)
-gets the line neutralised and logged. Always hand the user the NEXT game's
-prompt in a fenced block at the end of a reply.
+**Measured defense layer** (`defense_measured.py`, spec
+`specs/defense-profiles.md`; replaced the Gemini scouting loop, retired
+2026-10-26 for inventing package percentages and misplacing players -
+code frozen on the `gemini-scout` branch, `scout.yml` manual-only, notes
+archived at `archive/defense_notes_auto_2026_wk3-6.csv`). No model: every
+number comes from nflverse release files - formation per play from the
+**participation** file (`defense_personnel` -> `4-2-5 nickel`; 5+ DB =
+coverage defense), blitz (5+ rushers on dropbacks) / avg rushers / box
+count from **FTN charting** joined to pbp on game+play id, key defenders
+from **snap counts** (>= 50%) with **contracts** (`$` = apy >= $15M,
+`R1` = first-rounder within 4 seasons or a top-10 pick) as the star
+tie-break, `OUT` from the official report. Two outputs: (1)
+`cli dvp` puts `FF_DVP.scheme[TEAM] = {d, t, m, shift}` in dvp.js - `t`
+is the newest `defense_profiles.csv` row (`team,date,profile`, appended,
+newest wins), `m` the season block with `last3` and `key`; (2)
+`cli defense-notes-measured` (dvp.yml's Wednesday 06:00 run, `--force`,
+before the build) appends one `WkN measured:` row per defense to
+`defense_notes.csv` for the latest fully charted week (idempotent;
+`--force` replaces that week's row). **`src` fallback:** the season's
+participation file publishes late (2026 is 404 as of 2026-10-26) - until
+it lands every block is `src: "ftn-only"`, formation/5+ DB fields are
+`n/a`, and the note writes the FTN 7+ box / light-box split instead,
+still with blitz, rushers and key players; it switches to
+`participation` by itself once the file appears. **Shift flag:** the last
+two games each moved 15+ points the same way (5+ DB or blitz; 7+ box
+when ftn-only) or changed base formation vs the weeks before them -> a
+`▲ profile shift` chip on the page and a line in the Actions job
+summary; nothing rewrites the profile text, the Tuesday Routine appends a
+`defense_profiles.csv` row for flagged teams. `scout.py` and its CLI
+commands still exist (frozen); the hand-paste path in the
+`defense-notes` skill is a manual override (newest wins).
 
 **App pages.** Home = the pick game + in-season buttons (Matchups,
-Injuries, Vegas, Log, Roster cost) and a **Pre-season tools** page
+Injuries, Vegas, Log, Roster cost); `#/defenses` cards stack three
+drop-downs: **defensive profile** (measured block + key defenders +
+profile text, shift chip), **by week**, **weekly observation**; and a
+**Pre-season tools** page
 (`#/preseason`: draft packet, tiers CSV export/import, build stamp). Page
 leads are one or two sentences; legends live in a `.foot` paragraph at the
 bottom of the page - keep new pages to that shape.
