@@ -314,6 +314,17 @@ because the weekly scouting notes describe one game each and their
 scheme percentages swing (or are invented) week to week; the profile is
 what a recommendation quotes, the note is color (PLAYBOOK 2a).
 
+**Defense notes loop - Gemini path RETIRED 2026-10-26.** The auto notes
+invented package/blitz percentages and misplaced players (wk6 filed Myles
+Garrett as a Brown; the snap counts have him a Ram, McDuffie a Ram, Gardner
+a Colt, Woolen an Eagle). `scout.yml` has no schedule now (manual dispatch
+only) and the code is frozen on the `gemini-scout` branch. Replacement:
+`defense_profiles.csv` (one durable scheme profile per defense, seeded
+2026-10-26 from the wk3-6 auto notes, archived at
+`archive/defense_notes_auto_2026_wk3-6.csv`) plus a weekly MEASURED note
+computed from nflverse data - spec in `specs/defense-profiles.md`. The
+paragraph below describes the retired loop.
+
 **Defense notes loop** (`scout.py`, skill `.claude/skills/defense-notes`).
 `defense_notes.csv` gets one note per defense per week; notes are appended,
 newest wins. `cli scout-prompts --game DEN-JAX` prints the fan-style
