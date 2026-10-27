@@ -27,7 +27,10 @@ luck, they were skipped steps.
    rate, pressure rate) swing from week to week because they are one
    game's numbers, or invented. A note is color, never the grade. *(User
    call, wk7 2026: "the analysis seems to differ week to week for every
-   defense.")*
+   defense.")* The defensive-profile drop-down's **measured block**
+   (`FF_DVP.scheme[TEAM].m`: base/2nd formation, 5+ DB, blitz, rushers,
+   7+ box, key defenders) is what a matchup recommendation quotes; when it
+   disagrees with the profile's seed text, the measured block wins.
 2b. **An average is not a ceiling.** Quote the weekly distribution
    (`cli usage` prints the best games), never describe a player's mean as
    his cap. *(Schultz: called a "hard ~8-point ceiling"; 8.0 was his

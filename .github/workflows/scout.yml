@@ -1,15 +1,18 @@
-# Weekly defensive scouting notes via the Gemini API (Google Search grounding).
-# Runs Tuesday 13:00 UTC, after the DvP refresh has loaded the box scores, and
-# asks one two-defense question per played game of the last completed week.
-# Needs the GEMINI_API_KEY repo secret; without it the job exits cleanly and
-# the paste-and-verify loop (see .claude/skills/defense-notes) is the path.
-# Auto notes are prefixed "auto (Gemini, unverified)" - a pasted, verified
-# note for the same team supersedes them on the page (newest wins).
+# RETIRED 2026-10-26: the Gemini scouting loop is switched off. Its notes
+# invented package percentages and misplaced players (Myles Garrett filed as
+# a Brown in wk6; he is a Ram), so defense notes are now computed from data -
+# see specs/defense-profiles.md and the `gemini-scout` branch, which keeps
+# this workflow + scout.py as they last ran. The schedule is removed; manual
+# dispatch is left in place only so the branch can be compared against.
+#
+# (Original header) Weekly defensive scouting notes via the Gemini API (Google
+# Search grounding). Ran Tuesday 13:00 UTC, after the DvP refresh had loaded
+# the box scores, and asked one two-defense question per played game of the
+# last completed week. Needs the GEMINI_API_KEY repo secret; without it the
+# job exits cleanly.
 name: Defense Scouting Notes
 
 on:
-  schedule:
-    - cron: "0 13 * * 2"
   workflow_dispatch:
     inputs:
       week:

@@ -861,6 +861,40 @@
       return "<span class='muted' title='steady'>&ndash;</span>";
     };
     var rkCls = function (r) { return r >= 20 ? " class='dvp-easy'" : (r <= 13 ? " class='dvp-hard'" : ""); };
+    // Durable profile (FF_DVP.scheme): the measured season block, key
+    // defenders and the hand-kept profile text. Absent from an old dvp.js,
+    // in which case the card simply has no profile drop-down.
+    var S = V.scheme || {};
+    var profileBlock = function (d) {
+      var s = S[d];
+      if (!s || (!s.m && !s.t)) return "";
+      var m = s.m || {}, l3 = m.last3 || {}, ftnOnly = m.src !== "participation";
+      var pct = function (v) { return v == null ? "n/a" : v + "%"; };
+      var fm = function (f) { return f ? esc(f[0]) + " " + f[1] + "%" : "n/a"; };
+      var row = function (label, a, b) { return "<tr><td class='dvp-stick'>" + label + "</td><td>" + a + "</td><td>" + b + "</td></tr>"; };
+      var table = "";
+      if (s.m) {
+        table = "<div class='table-wrap'><table class='pk wb-table dvp-prof-t'><thead><tr><th class='dvp-stick'></th><th>Season</th><th>Last 3</th></tr></thead><tbody>" +
+          (ftnOnly ? row("Base / 2nd", "n/a", "n/a") :
+            row("Base", fm(m.base), fm(l3.base)) + row("2nd", fm(m.second), fm(l3.second)) +
+            row("5+ DB", pct(m.db5), pct(l3.db5))) +
+          row("Blitz (5+)", pct(m.blitz), pct(l3.blitz)) +
+          row("Avg rushers", m.rushers == null ? "n/a" : m.rushers, l3.rushers == null ? "n/a" : l3.rushers) +
+          (ftnOnly ? row("7+ box", pct(m.box7), pct(l3.box7)) : "") +
+          "</tbody></table></div>";
+      }
+      var key = (m.key || []).map(function (k) {
+        return esc(k.n) + " <span class='muted'>" + esc(k.pos) + " " + k.snap + "%</span>" +
+          (k.star ? " <b>" + esc(k.star) + "</b>" : "") + (k.out ? " <span class='dvp-out'>OUT</span>" : "");
+      }).join(", ");
+      var shift = s.shift ? " <span class='dvp-shift'>&#9650; profile shift</span>" : "";
+      var summary = "defensive profile (" + (s.m ? "season through wk " + m.wk + ", measured" + (ftnOnly ? ", no formation file yet" : "") : "no measured block") +
+        (s.d ? "; text seeded " + esc(s.d) : "") + ")";
+      return "<details class='dvp-prof'><summary class='muted'>" + summary + shift + "</summary>" + table +
+        (s.shift ? "<p class='dvp-shift-line'><b>Shift since wk " + s.shift.since + (s.shift.vs ? " (vs profile of " + esc(s.shift.vs) + ")" : "") + ":</b> " + esc(s.shift.what) + "</p>" : "") +
+        (key ? "<p><b>Key</b> " + key + "</p>" : "") +
+        (s.t ? "<p class='dvp-prof-text'>" + esc(s.t) + "</p>" : "") + "</details>";
+    };
     var cards = teams.map(function (d) {
       var p = P[d], opp = V.opp ? (V.opp[d] || "bye") : "";
       var rowsHtml = positions.map(function (pos) {
@@ -882,9 +916,11 @@
         positions.map(function (pos) { return weekRow("vs " + pos, p.pa[pos]); }).join("") +
         weekRow("Pts", p.pts) + weekRow("Sacks", p.sk) + weekRow("INT", p.int) +
         "</tbody></table></div></details>";
-      line += weekTable;
+      line += profileBlock(d) + weekTable;
       var latest = (V.notes && V.notes[d] && V.notes[d][0]) || null;
-      var note = latest ? "<details class='dvp-obs'><summary class='muted'>weekly observation (" + esc(latest.d) + ", one game, prose unverified beyond the box lines)</summary>" +
+      var measured = latest && /^\s*Wk\d+ measured:/.test(latest.t);
+      var note = latest ? "<details class='dvp-obs'><summary class='muted'>weekly observation (" + esc(latest.d) +
+        (measured ? ", one game, measured" : ", one game, prose unverified beyond the box lines") + ")</summary>" +
         fmtNote(latest.d, latest.t) + "</details>" : "";
       return "<section class='dvp-card'><h2 class='dvp-h2'>" + esc(d) + " <span class='muted'>" + esc(opp) + "</span></h2>" +
         "<p class='muted'>" + identity(d) + "</p>" +
@@ -901,7 +937,8 @@
       "<p class='muted foot'>Ranks: 1 = fewest fantasy points allowed to the position (toughest), " + n + " = most (softest); green 20+, red 13-. " +
       "Season = all games this year; Last 3 = the last three games only; Trend = Last 3 minus Season, so a positive number means the defense has been softer than its season rank lately (shown from &plusmn;4). " +
       "By week = one bar per game on a shared scale, the last three shaded, the latest value printed; open &ldquo;by week&rdquo; for the numbers. The identity line is measured: DBs on the field per snap from the snap counts (4.x base, ~5 nickel, 5.5+ dime), pressure rate from play-by-play, and how many plays opponents get. " +
-      "The weekly observation is the scout's prose for one game - only its box-score lines are checked, so quote the table, not the paragraph.</p>";
+      "The defensive profile is the durable read: Season / Last 3 are computed from nflverse files - formation from the participation file (5+ DB = nickel or heavier), blitz = 5+ pass rushers on dropbacks and avg rushers from FTN charting, 7+ box from FTN when the formation file is not out yet; Key = defenders on 50%+ of snaps, $ = $15M+ a year, R1 = recent first-rounder or top-10 pick, OUT = Out/Doubtful on the official report. &#9650; profile shift = two or more straight games since the profile text was dated sat 15+ points off what the defense measured before that date (or on a different base formation), so the text may be stale - quote the numbers when they disagree. " +
+      "The weekly observation is the latest note for one game; &ldquo;WkN measured&rdquo; notes are computed, older prose notes are the scout's and only their box-score lines are checked, so quote the table, not the paragraph.</p>";
   }
 
   // ---- matchups: defense-vs-position (#/dvp) ----

@@ -3,7 +3,8 @@
 # regenerates docs/dvp.js — the Matchups page's data sidecar. Runs Tuesday
 # noon UTC (box scores complete) and again Wednesday 06:00 UTC, because the
 # snap-count release trails Monday night by a day and the personnel flags
-# must be complete before Wednesday-morning waivers.
+# must be complete before Wednesday-morning waivers. The Wednesday run also
+# appends the computed "WkN measured:" defense notes (defense_measured.py).
 # Independent of the master-tiers rebuild: matchup data changes every
 # week whether or not anyone submitted picks.
 name: Defense vs Position
@@ -52,6 +53,19 @@ jobs:
           python -m fantasy_football.cli load-season --year "$YEAR" || \
             echo "current season not published yet - baseline only"
 
+      # Measured weekly defense notes (no model): Wednesday's run sees the
+      # full snap counts and the FTN charting file. Runs BEFORE the build so
+      # the new "WkN measured:" rows land in this dvp.js. --force refreshes
+      # a week already written; the default week is the latest one every
+      # defense is charted for. Flagged profile shifts go to the job summary.
+      - name: Measured defense notes (Wednesday)
+        if: github.event.schedule == '0 6 * * 3' || github.event_name == 'workflow_dispatch'
+        run: |
+          python -m fantasy_football.cli defense-notes-measured --year "$(date -u +%Y)" --force \
+            | tee measured.log
+          { echo "### Measured defense notes"; echo '```'; cat measured.log; echo '```'; } \
+            >> "$GITHUB_STEP_SUMMARY"
+
       - name: Build docs/dvp.js
         run: |
           python -m fantasy_football.cli dvp --out docs/dvp.js
@@ -62,7 +76,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add docs/dvp.js docs/index.html
+          git add docs/dvp.js docs/index.html defense_notes.csv
           git commit -m "DvP refresh $(date -u +%F)" || echo "no changes"
           # rebase-and-retry: another job or a PR merge may have moved main during the run
           pushed=0

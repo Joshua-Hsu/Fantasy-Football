@@ -1052,6 +1052,7 @@ def _cmd_dvp(args: argparse.Namespace) -> int:
             flags = None
             metrics: dict[str, dict] = {}
             snaps: list[dict] = []
+            pbp_rows: list[dict] = []
             if not args.no_snaps:
                 cur = defense_vs_position(session, year, rules=rules)
                 wk = cur["through_week"]
@@ -1066,7 +1067,8 @@ def _cmd_dvp(args: argparse.Namespace) -> int:
                     print(f"warning: personnel flags skipped: {exc}")
                 try:
                     from .matchups import fetch_scheme_pbp, pressure_metrics
-                    for a, m in pressure_metrics(fetch_scheme_pbp(year)).items():
+                    pbp_rows = fetch_scheme_pbp(year)
+                    for a, m in pressure_metrics(pbp_rows).items():
                         metrics.setdefault(a, {}).update(m)
                 except Exception as exc:  # noqa: BLE001 - metrics are optional
                     print(f"warning: pressure metrics skipped: {exc}")
@@ -1098,7 +1100,18 @@ def _cmd_dvp(args: argparse.Namespace) -> int:
                     vegas = implied_totals(vrows, week=wk_next) or None
             except Exception as exc:  # noqa: BLE001 - lines are optional
                 print(f"warning: vegas lines skipped: {exc}")
-            from .matchups import read_decisions, read_defense_notes, read_injuries
+            # Measured scheme block (FF_DVP.scheme): reuses the pbp + snap rows
+            # fetched above, adds FTN / participation / contracts. Each layer
+            # degrades on its own - 2026 participation is 404 -> "ftn-only".
+            scheme_src = None
+            if not args.no_snaps:
+                from .defense_measured import load_sources
+                scheme_src = load_sources(year, pbp=pbp_rows, snaps=snaps,
+                                          official=official)
+                for layer, err in scheme_src.errors.items():
+                    print(f"warning: scheme layer {layer} missing: {err}")
+            from .matchups import (read_decisions, read_defense_notes,
+                                   read_defense_profiles, read_injuries)
             path = write_dvp_js(session, args.out, year,
                                 baseline_year=baseline or None, rules=rules,
                                 flags=flags, notes=read_defense_notes(args.notes),
@@ -1106,8 +1119,88 @@ def _cmd_dvp(args: argparse.Namespace) -> int:
                                 vegas_weeks_payload=vweeks,
                                 decisions=read_decisions(args.decisions),
                                 injuries=read_injuries(args.injuries),
-                                official=official)
+                                official=official,
+                                scheme_sources=scheme_src,
+                                defense_profiles_text=read_defense_profiles(args.profiles))
             print(f"Wrote {path}")
+    return 0
+
+
+def _cmd_defense_notes_measured(args: argparse.Namespace) -> int:
+    """Append one computed ``WkN measured:`` note per defense for a week.
+
+    Works from the nflverse release files alone (no DB): play-by-play for
+    who was on defense, FTN charting for rushers and box, participation for
+    formations (``n/a`` while the season's file is missing), snap counts +
+    contracts for key defenders, the official report for OUT tags.
+    """
+    import datetime as dt
+
+    from .defense_measured import (aggregate, key_defenders, load_sources,
+                                   shift_flags, weekly_note, write_measured_notes)
+
+    year = args.year or dt.date.today().year
+    official: list[dict] = []
+    src = load_sources(year)
+    if "pbp" in src.errors:
+        print(f"No {year} play-by-play: {src.errors['pbp']}")
+        return 1
+    for layer, err in src.errors.items():
+        print(f"warning: {layer} missing: {err}")
+    plays = src.plays()
+    played_by: dict[int, set[str]] = {}
+    for r in src.pbp:
+        d = r.get("defteam")
+        if isinstance(d, str) and d:
+            played_by.setdefault(int(r.get("week") or 0), set()).add(d)
+    charted_by: dict[int, set[str]] = {}
+    for p in plays:
+        charted_by.setdefault(p["wk"], set()).add(p["tm"])
+    # Default: the latest week every defense that played is charted for
+    # (FTN lags a day or two, so the newest week is often half there).
+    week = args.week or max((w for w, ts in charted_by.items()
+                             if ts >= played_by.get(w, set())), default=0)
+    if not week:
+        print(f"No {year} regular-season plays yet.")
+        return 1
+    try:
+        from .matchups import fetch_injuries, official_injuries
+        official = official_injuries(fetch_injuries(year), week=week + 1)
+    except Exception as exc:  # noqa: BLE001 - OUT tags are optional
+        print(f"warning: official injury report skipped: {exc}")
+    unmatched: set[str] = set()
+    key = key_defenders(src.snaps, through_week=week, season=year,
+                        contracts=src.contracts, official=official, unmatched=unmatched)
+    wk_plays: dict[str, list[dict]] = {}
+    for p in plays:
+        if p["wk"] == week:
+            wk_plays.setdefault(p["tm"], []).append(p)
+    played = played_by.get(week, set())
+    notes: dict[str, str] = {}
+    for team in sorted(played - set(wk_plays)):
+        print(f"  {team}: no charted plays for wk{week} yet - skipped")
+    for team, ps in sorted(wk_plays.items()):
+        notes[team] = weekly_note(week, aggregate(ps), key.get(team, []))
+    written, skipped = write_measured_notes(args.notes, notes, week=week,
+                                            date=dt.date.today().isoformat(),
+                                            force=args.force)
+    src_kind = "participation" if src.participation else "ftn-only"
+    print(f"Wk{week} {year}: wrote {written} measured notes to {args.notes} "
+          f"(src {src_kind}); {len(skipped)} already present"
+          + (" (use --force to refresh)" if skipped else ""))
+    if unmatched:
+        print(f"contracts unmatched ({len(unmatched)}, no star tag): "
+              + ", ".join(sorted(unmatched)))
+    from .matchups import read_defense_profiles
+    shifts = shift_flags([p for p in plays if p["wk"] <= week],
+                         read_defense_profiles(args.profiles))
+    if shifts:
+        print("Profile shift flagged (append a defense_profiles.csv row):")
+        for t, f in sorted(shifts.items()):
+            vs = f"profile of {f['vs']}" if f.get("vs") else "earlier games (no dated profile)"
+            print(f"  {t}: since wk{f['since']} vs {vs} - {f['what']}")
+    else:
+        print("Profile shift flagged: none")
     return 0
 
 
@@ -1566,7 +1659,22 @@ def build_parser() -> argparse.ArgumentParser:
                        help="Skip fetching snap counts (no personnel out/back flags)")
     p_dvp.add_argument("--no-official", action="store_true", dest="no_official",
                        help="Skip the official nflverse injury report (designations + pre-game flags)")
+    p_dvp.add_argument("--profiles", default="defense_profiles.csv",
+                       help="Durable per-defense scheme profiles CSV (team,date,profile)")
     p_dvp.set_defaults(func=_cmd_dvp)
+
+    p_dnm = sub.add_parser(
+        "defense-notes-measured",
+        help="Append one computed 'WkN measured:' note per defense (no DB, no model)")
+    p_dnm.add_argument("--year", type=int, default=None, help="Season (default: this year)")
+    p_dnm.add_argument("--week", type=int, default=None,
+                       help="Week (default: the latest week in the play-by-play)")
+    p_dnm.add_argument("--notes", default="defense_notes.csv")
+    p_dnm.add_argument("--profiles", default="defense_profiles.csv",
+                       help="Profiles CSV; a shift is measured against each team's newest row")
+    p_dnm.add_argument("--force", action="store_true",
+                       help="Replace a team's existing measured note for the week")
+    p_dnm.set_defaults(func=_cmd_defense_notes_measured)
 
     p_std = sub.add_parser("season-tiers-due",
                            help="Exit 0 when the completed week count is a multiple of --every")
