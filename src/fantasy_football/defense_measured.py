@@ -236,10 +236,13 @@ def norm_name(name) -> str:
 def contract_index(rows) -> dict:
     """Active contracts de-duplicated per player (highest ``apy`` kept).
 
-    Returns ``{"exact": {name: rec}, "norm": {norm_name: rec}}`` where rec
-    is ``{"apy", "draft_year", "draft_round", "draft_overall"}``.
+    Returns ``{"exact": {name: rec}, "norm": {norm_name: rec}, "gsis":
+    {gsis_id: rec}}`` where rec is ``{"apy", "draft_year", "draft_round",
+    "draft_overall"}``. The gsis index is what catches nicknames: snap
+    counts say "Riq Woolen", the contract says "Tariq Woolen".
     """
     best: dict[str, dict] = {}
+    gsis: dict[str, dict] = {}
     for r in rows or []:
         if not r.get("is_active"):
             continue
@@ -247,17 +250,21 @@ def contract_index(rows) -> dict:
         if not name:
             continue
         apy = _num(r.get("apy")) or 0.0
+        rec = {"apy": apy, "draft_year": _num(r.get("draft_year")),
+               "draft_round": _num(r.get("draft_round")),
+               "draft_overall": _num(r.get("draft_overall"))}
+        gid = r.get("gsis_id")
+        if isinstance(gid, str) and gid and (gid not in gsis or gsis[gid]["apy"] < apy):
+            gsis[gid] = rec
         if name in best and best[name]["apy"] >= apy:
             continue
-        best[name] = {"apy": apy, "draft_year": _num(r.get("draft_year")),
-                      "draft_round": _num(r.get("draft_round")),
-                      "draft_overall": _num(r.get("draft_overall"))}
+        best[name] = rec
     norm: dict[str, dict] = {}
     for name, rec in best.items():
         k = norm_name(name)
         if k not in norm or norm[k]["apy"] < rec["apy"]:
             norm[k] = rec
-    return {"exact": best, "norm": norm}
+    return {"exact": best, "norm": norm, "gsis": gsis}
 
 
 def star_tags(rec: dict | None, season: int) -> str:
@@ -279,7 +286,8 @@ def _group(pos: str) -> str | None:
 
 
 def key_defenders(snap_rows, *, through_week: int, season: int, contracts=None,
-                  official=None, unmatched: set | None = None) -> dict[str, list[dict]]:
+                  official=None, unmatched: set | None = None,
+                  ids: dict[str, str] | None = None) -> dict[str, list[dict]]:
     """Top defenders per team: snap share first, star pedigree as tie-break.
 
     Candidates average >= 50% ``defense_pct`` over the games they played
@@ -288,7 +296,9 @@ def key_defenders(snap_rows, *, through_week: int, season: int, contracts=None,
     (``$`` or ``R1``). The top six are taken with at least one DL, LB and
     DB when the team has one. ``out`` is True when the official report
     lists the player Out or Doubtful. Contract names are matched exactly,
-    then normalized; misses go into ``unmatched`` (never guessed).
+    then normalized; misses go into ``unmatched`` (never guessed). With
+    ``ids`` (``{pfr_id: gsis_id}`` from the roster file) the snap row's
+    ``pfr_player_id`` is tried first - an exact id join, not a guess.
     Returns ``{team: [{"n", "pos", "snap", "star", "out"}]}``.
     """
     idx = contracts if isinstance(contracts, dict) and "exact" in contracts \
@@ -307,7 +317,8 @@ def key_defenders(snap_rows, *, through_week: int, season: int, contracts=None,
         games.setdefault(team, set()).add(wk)
         if pct <= 0:
             continue
-        ent = hist.setdefault((team, name), {"pos": pos, "w": {}})
+        ent = hist.setdefault((team, name), {"pos": pos, "w": {},
+                                             "pfr": r.get("pfr_player_id")})
         ent["w"][wk] = max(ent["w"].get(wk, 0.0), pct)
     out_names = {(r.get("tm"), norm_name(r.get("n"))) for r in official or []
                  if r.get("st") in ("OUT", "DOUBTFUL")}
@@ -318,7 +329,9 @@ def key_defenders(snap_rows, *, through_week: int, season: int, contracts=None,
         avg = sum(ent["w"].values()) / played
         if played < need or avg < KEY_MIN_PCT:
             continue
-        rec = idx["exact"].get(name) or idx["norm"].get(norm_name(name))
+        gid = (ids or {}).get(ent["pfr"]) if isinstance(ent["pfr"], str) else None
+        rec = (idx.get("gsis", {}).get(gid) if gid else None) \
+            or idx["exact"].get(name) or idx["norm"].get(norm_name(name))
         if rec is None and unmatched is not None:
             unmatched.add(f"{team} {name}")
         star = star_tags(rec, season)
@@ -468,6 +481,216 @@ def weekly_note(week: int, blk: dict, key) -> str:
     return f"Wk{week} measured: {head} · {rush} · key: {_key_text(key)}"[:900]
 
 
+# ---- the game story (box scores + snaps + schedule, all computed) ------
+
+#: Personnel thresholds for the story: a "core" defender, a real role change.
+STORY_CORE = 0.60
+STORY_ABSENT = 0.15
+STORY_NEW = 0.40
+STORY_ROLE_POINTS = 25
+STORY_STEP_UP = 15
+STORY_PRODUCERS = 4
+_DVP_POS = ("QB", "RB", "WR", "TE")
+
+
+def _scheme_text(blk: dict) -> str:
+    """The measured scheme clause (formation only when participation exists)."""
+    na = "n/a"
+    blitz = f"{blk['blitz']}%" if blk.get("blitz") is not None else na
+    rushers = f"{blk['rushers']}" if blk.get("rushers") is not None else na
+    box7 = f"{blk['box7']}%" if blk.get("box7") is not None else na
+    bits = []
+    if blk.get("src") == "participation" and blk.get("base"):
+        bits.append(f"base {blk['base'][0]} {blk['base'][1]}%")
+        if blk.get("second"):
+            bits.append(f"2nd {blk['second'][0]} {blk['second'][1]}%")
+        bits.append(f"5+ DB {blk['db5']}%")
+    bits.append(f"blitz {blitz} (avg {rushers} rushers)")
+    bits.append(f"7+ box {box7}")
+    if blk.get("src") != "participation":
+        bits.append("formation n/a (no participation file)")
+    return ", ".join(bits)
+
+
+def _line(name: str, pos: str, st) -> str:
+    """One compact box line: ``CeeDee Lamb WR 5-74-2 (12 tgt)``."""
+    rush = (f"{st.rush_attempts}-{st.rush_yards}-{st.rush_touchdowns} rush"
+            if st.rush_attempts else "")
+    if pos == "QB":
+        out = f"{name} QB {st.pass_yards} yds {st.pass_touchdowns} TD"
+        if st.interceptions_thrown:
+            out += f" {st.interceptions_thrown} INT"
+        if st.rush_attempts and (st.rush_yards >= 15 or st.rush_touchdowns):
+            out += f", {rush}"
+        return out
+    rec = (f"{st.receptions}-{st.receiving_yards}-{st.receiving_touchdowns}"
+           f" ({st.targets} tgt)" if st.targets else "")
+    if pos == "RB":
+        parts = [p for p in (rush, rec and rec + " rec") if p]
+    else:
+        parts = [p for p in (rec, rush) if p]
+    return f"{name} {pos} " + ", ".join(parts)
+
+
+def personnel_changes(snap_rows, team: str, week: int) -> list[str]:
+    """What changed in the defense's personnel this week, from snap counts.
+
+    ``out``: a core defender (avg >= 60% before) absent this week - shown
+    for the first two missed games only, after that it is the roster, not
+    news. ``back``: a core defender playing 60%+ after missing the game
+    before. ``new``: 40%+ this week with no real snaps earlier this season.
+    A role change: a 50%+ regular whose share moved 25+ points, or a
+    rotation player who jumped 15+ points to 40%+ (who absorbed the work).
+    At most six items, absences first.
+    """
+    weeks: set[int] = set()
+    hist: dict[str, dict] = {}
+    for r in snap_rows or []:
+        if str(r.get("team")) != team or not _group(str(r.get("position") or "")):
+            continue
+        wk = int(_num(r.get("week")) or 0)
+        if not 1 <= wk <= week:
+            continue
+        weeks.add(wk)
+        pct = _num(r.get("defense_pct")) or 0.0
+        h = hist.setdefault(str(r.get("player")), {})
+        h[wk] = max(h.get(wk, 0.0), pct)
+    if week not in weeks:
+        return []
+    order = sorted(weeks)
+    prev_weeks = order[:-1]
+    out, back, new, role = [], [], [], []
+    for name, h in hist.items():
+        before = [h[w] for w in prev_weeks if h.get(w, 0) > STORY_ABSENT]
+        avg = sum(before) / len(before) if before else 0.0
+        now = h.get(week, 0.0)
+        short = name
+        if before and avg >= STORY_CORE and now <= STORY_ABSENT:
+            missed = 0
+            for w in reversed(order):
+                if h.get(w, 0) > STORY_ABSENT:
+                    break
+                missed += 1
+            if missed <= 2:
+                nth = "2nd game" if missed == 2 else "1st game"
+                out.append((-avg, f"{short} out ({nth})"))
+        elif before and avg >= STORY_CORE and now >= STORY_CORE and prev_weeks \
+                and h.get(prev_weeks[-1], 0) <= STORY_ABSENT:
+            back.append((-now, f"{short} back {round(100 * now)}%"))
+        elif not before and now >= STORY_NEW:
+            new.append((-now, f"{short} {round(100 * now)}%"))
+        elif before and avg >= 0.5 and now > STORY_ABSENT \
+                and abs(now - avg) * 100 >= STORY_ROLE_POINTS:
+            role.append((-abs(now - avg), f"{short} {round(100 * avg)}→{round(100 * now)}%"))
+        elif before and avg < 0.5 and now >= STORY_NEW \
+                and (now - avg) * 100 >= STORY_STEP_UP:
+            # A rotation player taking a bigger share: who absorbed the work.
+            role.append((-(now - avg), f"{short} {round(100 * avg)}→{round(100 * now)}%"))
+    bits = [t for _, t in sorted(out)] + [t for _, t in sorted(back)]
+    if new:
+        bits.append("first snaps this season: " + ", ".join(t for _, t in sorted(new)))
+    bits += [t for _, t in sorted(role)]
+    return bits[:6]
+
+
+def story_note(session, year: int, week: int, team: str, blk: dict, *,
+               snap_rows=None, official=None, rules=None) -> str | None:
+    """The full ``WkN measured:`` story for one defense-week, or None.
+
+    Every piece is computed: the opponent and score (schedule), who
+    produced against the defense (box scores, by fantasy points), what
+    changed in its personnel (snap counts), the measured scheme (FTN /
+    participation), points allowed by position against its own season
+    average (the DvP table), and the next opponent with the season ranks
+    a lineup call quotes. ``None`` when the DB does not have the game, so
+    the caller falls back to :func:`weekly_note`.
+    """
+    from sqlalchemy import select
+
+    from .matchups import defense_profiles
+    from .models import Game, Player, PlayerGameStats, Team
+    from .scoring import DEFAULT_RULES, score_stats
+
+    rules = rules or DEFAULT_RULES
+    abbr = {t.id: t.abbreviation for t in session.execute(select(Team)).scalars()}
+    tid = next((i for i, a in abbr.items() if a == team), None)
+    if tid is None:
+        return None
+    games = session.execute(
+        select(Game).where(Game.season_year == year, Game.week >= week,
+                           Game.week <= _REG_WEEKS,
+                           (Game.home_team_id == tid) | (Game.away_team_id == tid))
+        .order_by(Game.week)).scalars().all()
+    game = next((g for g in games if g.week == week), None)
+    if game is None or game.home_score is None:
+        return None
+    home = game.home_team_id == tid
+    opp_id = game.away_team_id if home else game.home_team_id
+    opp = abbr.get(opp_id, "?")
+    pf, pa = (game.home_score, game.away_score) if home else (game.away_score, game.home_score)
+    res = "W" if pf > pa else ("L" if pf < pa else "T")
+    head = f"Wk{week} measured: {'v' if home else '@'}{opp}, {res} {pf}-{pa}."
+
+    scored = []
+    for st, pl in session.execute(
+            select(PlayerGameStats, Player).join(Player, Player.id == PlayerGameStats.player_id)
+            .where(PlayerGameStats.game_id == game.id,
+                   PlayerGameStats.team_id == opp_id)).all():
+        pos = (st.position or pl.position or "").upper()
+        if pos not in _DVP_POS:
+            continue
+        pts = score_stats(st, rules)
+        if pts > 0:
+            scored.append((-pts, _line(pl.full_name, pos, st)))
+    scored.sort()
+    lines = [t for _, t in scored[:STORY_PRODUCERS]]
+
+    pers = personnel_changes(snap_rows, team, week)
+    prof = defense_profiles(session, year, rules=rules, through_week=week).get(team)
+    read = []
+    if prof and week in prof["wk"]:
+        i = prof["wk"].index(week)
+        rows = []
+        for pos in _DVP_POS:
+            vals = [v for v in prof["pa"][pos] if v is not None]
+            if not vals:
+                continue
+            avg = sum(vals) / len(vals)
+            rows.append((-(prof["pa"][pos][i] - avg),
+                         f"{pos} {round(prof['pa'][pos][i])} (avg {round(avg)})"))
+        read = [t for _, t in sorted(rows)]
+
+    nxt = next((g for g in games if g.week > week), None)
+    tail = ""
+    if nxt is not None and prof:
+        nhome = nxt.home_team_id == tid
+        nopp = abbr.get(nxt.away_team_id if nhome else nxt.home_team_id, "?")
+        ranks = ", ".join(f"{p} {prof['rk'][p]}" for p in _DVP_POS if p in prof["rk"])
+        tail = (f" Wk{nxt.week} {'v' if nhome else '@'}{nopp}: season rank vs {ranks}"
+                f" (32 = softest).")
+        outs = [r["n"] for r in official or [] if r.get("tm") == team
+                and r.get("st") in ("OUT", "DOUBTFUL") and _group(r.get("pos", ""))]
+        if outs:
+            tail = tail[:-1] + f"; report OUT/D: {', '.join(outs[:3])}."
+
+    def build(n_lines: int) -> str:
+        parts = [head]
+        if lines:
+            parts.append("Faced: " + "; ".join(lines[:n_lines]) + ".")
+        if pers:
+            parts.append("Personnel: " + "; ".join(pers) + ".")
+        parts.append("Scheme: " + _scheme_text(blk) + ".")
+        if read:
+            parts.append("Fantasy read: allowed " + ", ".join(read) + ".")
+        return " ".join(parts) + tail
+
+    for n in range(len(lines), -1, -1):
+        text = build(n)
+        if len(text) <= 900:
+            return text
+    return text[:900]
+
+
 def measured_rows(path: str) -> set[tuple[str, int]]:
     """``{(team, week)}`` already carrying a ``WkN measured:`` note."""
     if not path or not os.path.exists(path):
@@ -527,6 +750,7 @@ class SchemeSources:
     snaps: list = field(default_factory=list)
     contracts: list = field(default_factory=list)
     official: list = field(default_factory=list)
+    ids: dict = field(default_factory=dict)       # pfr_id -> gsis_id (rosters)
     errors: dict = field(default_factory=dict)
 
     def plays(self) -> list[dict]:
@@ -553,10 +777,21 @@ def fetch_ftn(year: int) -> list[dict]:
 def fetch_contracts() -> list[dict]:
     import pandas as pd
 
-    cols = ["player", "position", "is_active", "apy", "draft_year",
+    cols = ["player", "gsis_id", "position", "is_active", "apy", "draft_year",
             "draft_round", "draft_overall"]
     df = pd.read_parquet(CONTRACTS_URL, columns=cols)
     return df[df["is_active"] == True].to_dict("records")  # noqa: E712 - pandas mask
+
+
+def fetch_roster_ids(year: int) -> dict[str, str]:
+    """``{pfr_id: gsis_id}`` from the season roster (links snaps to contracts)."""
+    import pandas as pd
+
+    from .ingest.nflverse import ROSTER_URL
+
+    df = pd.read_parquet(ROSTER_URL.format(year=year), columns=["gsis_id", "pfr_id"])
+    df = df.dropna()
+    return dict(zip(df["pfr_id"].astype(str), df["gsis_id"].astype(str)))
 
 
 def load_sources(year: int, *, pbp=None, snaps=None, official=None) -> SchemeSources:
@@ -568,7 +803,8 @@ def load_sources(year: int, *, pbp=None, snaps=None, official=None) -> SchemeSou
             ("snaps", lambda: fetch_snap_counts(year), not src.snaps),
             ("ftn", lambda: fetch_ftn(year), True),
             ("participation", lambda: fetch_participation(year), True),
-            ("contracts", fetch_contracts, True)]
+            ("contracts", fetch_contracts, True),
+            ("ids", lambda: fetch_roster_ids(year), True)]
     for name, fn, need in jobs:
         if not need:
             continue
@@ -586,7 +822,7 @@ def scheme_payload(src: SchemeSources, profiles: dict[str, dict] | None = None,
     through = max((p["wk"] for p in plays), default=0)
     key = key_defenders(src.snaps, through_week=through or _REG_WEEKS, season=src.year,
                         contracts=src.contracts, official=src.official,
-                        unmatched=unmatched) if src.snaps else {}
+                        unmatched=unmatched, ids=src.ids) if src.snaps else {}
     blocks = season_blocks(plays, key=key)
     shifts = shift_flags(plays, profiles)
     out: dict[str, dict] = {}
