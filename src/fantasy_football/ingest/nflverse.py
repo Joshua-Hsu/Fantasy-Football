@@ -33,7 +33,7 @@ from ..models import Game, Player, PlayerGameStats, Season, Team, TeamGameStats
 
 # --- Source URLs -----------------------------------------------------------
 
-TEAMS_URL = "https://github.com/nflverse/nflfastR-data/raw/master/teams_colors_logos.csv"
+TEAMS_URL = "https://raw.githubusercontent.com/nflverse/nflfastR-data/master/teams_colors_logos.csv"
 GAMES_URL = "https://raw.githubusercontent.com/nflverse/nfldata/master/data/games.csv"
 WEEKLY_URL = (
     "https://github.com/nflverse/nflverse-data/releases/download/"

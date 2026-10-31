@@ -332,7 +332,19 @@ newest wins), `m` the season block with `last3` and `key`; (2)
 `cli defense-notes-measured` (dvp.yml's Wednesday 06:00 run, `--force`,
 before the build) appends one `WkN measured:` row per defense to
 `defense_notes.csv` for the latest fully charted week (idempotent;
-`--force` replaces that week's row). **`src` fallback:** the season's
+`--force` replaces that week's row). The note is the computed game
+story (`story_note`, added 2026-10-29 because the bare numbers read
+worse than the Gemini prose): opponent + score, **Faced** (top 4
+opposing producers by fantasy points, box lines), **Personnel** (from
+snap counts: core defender out for 1st/2nd game, back, first snaps,
+regulars moving 25+ points, rotation players stepping up 15+),
+**Scheme** (measured block), **Fantasy read** (points allowed by
+position this game vs the defense's own average), and the next
+opponent with season ranks + report OUT/D. It reads the DB (the
+Action loads it first); without the game in the DB it falls back to the
+bare measured line. Key defenders live in the profile drop-down, not
+the note. Contracts join snap rows by id first (snap `pfr_player_id` ->
+roster `gsis_id` -> contract), so nicknames (Riq/Tariq Woolen) match. **`src` fallback:** the season's
 participation file publishes late (2026 is 404 as of 2026-10-26) - until
 it lands every block is `src: "ftn-only"`, formation/5+ DB fields are
 `n/a`, and the note writes the FTN 7+ box / light-box split instead,

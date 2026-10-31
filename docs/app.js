@@ -954,8 +954,14 @@
     var src = read || body;
     var j = src.search(/\bWk\s?\d+\s+[v@][A-Z]{2,3}\b/);
     if (j > 0) { next = src.slice(j); if (read) read = src.slice(0, j); else body = src.slice(0, j); }
+    // Measured notes carry labeled sections (Faced / Personnel / Scheme):
+    // one line each, label in bold, so the story scans like the old prose.
+    var bodyHtml = body.trim().split(/\s(?=(?:Faced|Personnel|Scheme):)/).map(function (part) {
+      var m = part.match(/^(Faced|Personnel|Scheme):\s*([\s\S]*)$/);
+      return m ? "<p><b>" + m[1] + "</b> " + esc(m[2]) + "</p>" : "<p>" + esc(part) + "</p>";
+    }).join("");
     var out = "<div class='dvp-note'><div class='dvp-note-h'>" + esc(date || "") + "</div>" +
-      "<p>" + esc(body.trim()) + "</p>" +
+      bodyHtml +
       (read ? "<p><b>Fantasy read</b> " + esc(read.trim()) + "</p>" : "") +
       (next ? "<p><b>Next</b> " + esc(next.trim()) + "</p>" : "") + "</div>";
     return out;

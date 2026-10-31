@@ -752,7 +752,8 @@ def fetch_snap_counts(year: int) -> list[dict]:
 
     df = pd.read_csv(SNAP_COUNTS_URL.format(year=year))
     df = df[df["game_type"] == "REG"]
-    return df[["week", "player", "position", "team", "defense_pct"]].to_dict("records")
+    return df[["week", "player", "pfr_player_id", "position", "team",
+               "defense_pct"]].to_dict("records")
 
 
 def write_dvp_js(

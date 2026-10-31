@@ -17,10 +17,13 @@ Spec: `specs/defense-profiles.md`. Every number now comes from nflverse files
   Wednesday `dvp.yml` run (`cli defense-notes-measured --force`). Rerun by
   hand: `python -m fantasy_football.cli defense-notes-measured --year <yr>
   [--week N] [--force]`.
-- Fields: base + 2nd formation with %, 5+ DB share, blitz (5+ rushers on
-  dropbacks) with avg rushers, 7+ box, key defenders (`$` = $15M+/yr,
-  `R1` = recent first-rounder or top-10 pick, `OUT` = Out/Doubtful on the
-  official report).
+- Each note is the computed game story: opponent + score, **Faced** (who
+  produced against the defense), **Personnel** (outs, returns, snap-share
+  moves from the snap counts), **Scheme** (blitz, rushers, box; formation
+  once participation exists), **Fantasy read** (points allowed by position
+  vs the defense's own average) and the next opponent with season ranks.
+  Every number is from data; it needs the DB loaded (`load-season`) or it
+  falls back to the bare measured line.
 - `base/2nd: n/a (no participation file)` means the season's participation
   file is not out yet (`src: "ftn-only"`); quote the box split and blitz
   rate, never estimate a formation.

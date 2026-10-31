@@ -1137,7 +1137,8 @@ def _cmd_defense_notes_measured(args: argparse.Namespace) -> int:
     import datetime as dt
 
     from .defense_measured import (aggregate, key_defenders, load_sources,
-                                   shift_flags, weekly_note, write_measured_notes)
+                                   shift_flags, story_note, weekly_note,
+                                   write_measured_notes)
 
     year = args.year or dt.date.today().year
     official: list[dict] = []
@@ -1170,7 +1171,8 @@ def _cmd_defense_notes_measured(args: argparse.Namespace) -> int:
         print(f"warning: official injury report skipped: {exc}")
     unmatched: set[str] = set()
     key = key_defenders(src.snaps, through_week=week, season=year,
-                        contracts=src.contracts, official=official, unmatched=unmatched)
+                        contracts=src.contracts, official=official, unmatched=unmatched,
+                        ids=src.ids)
     wk_plays: dict[str, list[dict]] = {}
     for p in plays:
         if p["wk"] == week:
@@ -1179,8 +1181,23 @@ def _cmd_defense_notes_measured(args: argparse.Namespace) -> int:
     notes: dict[str, str] = {}
     for team in sorted(played - set(wk_plays)):
         print(f"  {team}: no charted plays for wk{week} yet - skipped")
-    for team, ps in sorted(wk_plays.items()):
-        notes[team] = weekly_note(week, aggregate(ps), key.get(team, []))
+    # The story (box lines, points allowed vs average, next opponent) reads
+    # the DB the dvp step loads; without it the plain measured note stands.
+    stories = 0
+    with _open_session(args) as session:
+        for team, ps in sorted(wk_plays.items()):
+            blk = aggregate(ps)
+            text = None
+            try:
+                text = story_note(session, year, week, team, blk,
+                                  snap_rows=src.snaps, official=official)
+            except Exception as exc:  # noqa: BLE001 - fall back, never fail the run
+                print(f"  {team}: story skipped ({exc})")
+            stories += text is not None
+            notes[team] = text or weekly_note(week, blk, key.get(team, []))
+    if wk_plays and not stories:
+        print(f"note: no {year} wk{week} games in the DB - plain measured notes "
+              "(load-season first for the full story)")
     written, skipped = write_measured_notes(args.notes, notes, week=week,
                                             date=dt.date.today().isoformat(),
                                             force=args.force)

@@ -8,6 +8,7 @@ contracts, official injury report).
 from __future__ import annotations
 
 import csv
+import datetime as dt
 import json
 
 import pytest
@@ -19,14 +20,17 @@ from fantasy_football.defense_measured import (
     formation,
     key_defenders,
     measured_rows,
+    personnel_changes,
     scheme_payload,
     scheme_plays,
     season_blocks,
     shift_flags,
+    story_note,
     weekly_note,
     write_measured_notes,
 )
 from fantasy_football.matchups import read_defense_profiles, write_dvp_js
+from fantasy_football.models import Game, Player, PlayerGameStats, Season, Team
 
 NICKEL = "3 CB, 2 DE, 2 DT, 1 FS, 1 MLB, 1 OLB, 1 SS"       # 4-2-5
 BASE43 = "2 CB, 2 DE, 2 DT, 1 FS, 2 MLB, 1 OLB, 1 SS"       # 4-3-4
@@ -367,3 +371,115 @@ def test_scheme_payload_and_dvp_js(tmp_path):
         # No scheme inputs -> no key at all (old pages keep working).
         write_dvp_js(session, str(out), 2026)
         assert "scheme" not in out.read_text()
+
+
+# ---- id join + the computed game story ----------------------------------
+
+def test_contract_matched_by_id_when_names_differ():
+    snaps = [{"week": w, "player": "Riq Woolen", "pfr_player_id": "WoolTa00",
+              "position": "CB", "team": "PHI", "defense_pct": 0.99} for w in (1, 2)]
+    contracts = [{"player": "Tariq Woolen", "gsis_id": "00-0037079", "is_active": True,
+                  "apy": 18.0, "draft_year": 2022, "draft_round": 5, "draft_overall": 153}]
+    unmatched: set = set()
+    plain = key_defenders(snaps, through_week=2, season=2026, contracts=contracts,
+                          unmatched=unmatched)
+    assert plain["PHI"][0]["star"] == "" and unmatched == {"PHI Riq Woolen"}
+    by_id = key_defenders(snaps, through_week=2, season=2026, contracts=contracts,
+                          ids={"WoolTa00": "00-0037079"})
+    assert by_id["PHI"][0]["star"] == "$"
+
+
+def _snap_weeks(team, rows):
+    out = []
+    for name, pos, by_week in rows:
+        for wk, pct in by_week.items():
+            out.append({"week": wk, "player": name, "position": pos, "team": team,
+                        "defense_pct": pct})
+    return out
+
+
+def test_personnel_changes():
+    snaps = _snap_weeks("PHI", [
+        ("Edge Starter", "DE", {1: 0.8, 2: 0.8, 3: 0.0}),          # out, 1st game
+        ("Long Gone", "LB", {1: 0.9}),                              # out 2 games
+        ("Gone Forever", "CB", {}),                                 # never core
+        ("Back Again", "S", {1: 0.9, 2: 0.0, 3: 0.95}),            # back
+        ("New Guy", "DT", {3: 0.55}),                               # first snaps
+        ("Shrinking", "LB", {1: 0.95, 2: 0.9, 3: 0.5}),            # role down
+        ("Rotation", "DE", {1: 0.2, 2: 0.25, 3: 0.45}),            # stepped up
+        ("Steady", "CB", {1: 1.0, 2: 1.0, 3: 0.98}),
+        ("Filler", "CB", {2: 0.1, 3: 0.1}),
+    ])
+    bits = personnel_changes(snaps, "PHI", 3)
+    # Absences first, the biggest usual snap share first.
+    assert bits[:2] == ["Long Gone out (2nd game)", "Edge Starter out (1st game)"]
+    assert "Back Again back 95%" in bits
+    assert "first snaps this season: New Guy 55%" in bits
+    assert "Shrinking 92→50%" in bits
+    assert "Rotation 22→45%" in bits
+    assert not any("Steady" in b or "Filler" in b for b in bits)
+    assert personnel_changes(snaps, "PHI", 4) == []      # no wk4 rows: no verdict
+
+
+@pytest.fixture()
+def story_db():
+    engine = create_db_engine(":memory:")
+    init_db(engine)
+    with get_sessionmaker(engine)() as s:
+        phi, dal, was = (Team(abbreviation=a, name=a) for a in ("PHI", "DAL", "WAS"))
+        s.add_all([phi, dal, was, Season(year=2026)])
+        s.flush()
+        g1 = Game(season_year=2026, week=1, season_type="regular",
+                  game_date=dt.date(2026, 9, 13), home_team_id=was.id,
+                  away_team_id=phi.id, home_score=10, away_score=20)
+        g2 = Game(season_year=2026, week=2, season_type="regular",
+                  game_date=dt.date(2026, 9, 20), home_team_id=phi.id,
+                  away_team_id=dal.id, home_score=21, away_score=38)
+        g4 = Game(season_year=2026, week=4, season_type="regular",
+                  game_date=dt.date(2026, 10, 4), home_team_id=was.id,
+                  away_team_id=phi.id)
+        s.add_all([g1, g2, g4])
+        s.flush()
+
+        def stat(name, pos, team, game, **kw):
+            p = Player(full_name=name, position=pos, slug=name.lower())
+            s.add(p)
+            s.flush()
+            s.add(PlayerGameStats(player_id=p.id, game_id=game.id, team_id=team.id, **kw))
+
+        stat("Was Wr", "WR", was, g1, targets=5, receptions=3, receiving_yards=40)
+        stat("CeeDee Lamb", "WR", dal, g2, targets=12, receptions=5, receiving_yards=74,
+             receiving_touchdowns=2)
+        stat("Javonte Williams", "RB", dal, g2, rush_attempts=25, rush_yards=155,
+             rush_touchdowns=1)
+        stat("Dak Prescott", "QB", dal, g2, pass_attempts=30, pass_completions=20,
+             pass_yards=212, pass_touchdowns=3)
+        stat("Zero Guy", "TE", dal, g2)
+        stat("Phi Wr", "WR", phi, g2, targets=9, receptions=9, receiving_yards=200)
+        s.commit()
+        yield s
+
+
+def test_story_note(story_db):
+    blk = {"src": "ftn-only", "blitz": 30, "rushers": 4.4, "box7": 43, "light": 57}
+    snaps = _snap_weeks("PHI", [("Nolan Smith", "DE", {1: 0.8, 2: 0.0}),
+                                ("Zack Baun", "LB", {1: 1.0, 2: 1.0})])
+    official = [{"n": "Zack Baun", "tm": "PHI", "pos": "LB", "st": "OUT"},
+                {"n": "Some Wr", "tm": "PHI", "pos": "WR", "st": "OUT"}]
+    note = story_note(story_db, 2026, 2, "PHI", blk, snap_rows=snaps, official=official)
+    assert note.startswith("Wk2 measured: vDAL, L 21-38. Faced: ")
+    # Ordered by fantasy points; zero-point lines and PHI's own players left out.
+    # Lamb 21.9 half-PPR points, Williams 21.5, Prescott 20.5.
+    assert ("Faced: CeeDee Lamb WR 5-74-2 (12 tgt); Javonte Williams RB 25-155-1 rush; "
+            "Dak Prescott QB 212 yds 3 TD.") in note
+    assert "Zero Guy" not in note and "Phi Wr" not in note
+    assert "Personnel: Nolan Smith out (1st game)." in note
+    assert "Scheme: blitz 30% (avg 4.4 rushers), 7+ box 43%, formation n/a" in note
+    # RB 21.5 allowed this week vs a 10.75 average over two games, listed first.
+    assert "Fantasy read: allowed RB 22 (avg 11), " in note
+    assert note.endswith("(32 = softest); report OUT/D: Zack Baun.")
+    assert "Wk4 @WAS: season rank vs QB " in note
+    assert len(note) <= 900
+    # A week the DB does not have -> None (the caller writes the plain note).
+    assert story_note(story_db, 2026, 3, "PHI", blk) is None
+    assert story_note(story_db, 2026, 2, "XXX", blk) is None
