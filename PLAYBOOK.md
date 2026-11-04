@@ -59,6 +59,11 @@ luck, they were skipped steps.
    for the one thing that is genuinely scarce and injury-driven: a starting
    RB. *(A $22 bid on Bryce Young off two games was drafted and withdrawn
    after the user called it - correctly - poor process.)*
+4b2. **A bid is a price for beating the field, not a grade of the player.**
+   Low rostered %, nobody naming him on the waiver columns, no team in
+   the league with a need at his spot = $1. Go higher only for a second
+   bidder you can point to; then price the job, not the hope. *(wk9 2026:
+   Emmett Johnson at $3 with no other bid - $2 wasted; Washington lost by $1.)*
 4c. **Check the injury sheet for every candidate and his backup.**
    The Injuries table on `#/dvp` is the league's official report (status,
    injury, practice participation - tokenless, refreshed Tue/Wed/Sat/Sun by
