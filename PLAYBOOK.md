@@ -7,6 +7,10 @@ luck, they were skipped steps.
 
 ## The pre-recommendation checklist (all five, every time)
 
+0. **Read `PREFERENCES.md`.** The owner's standing calls (holds, waiver
+   rules, lineup rules, rejections) come before the checklist. A
+   recommendation against one of them is labeled **OVERRIDE**, like a call
+   against the board. When the owner states a new standing rule, add it there.
 1. **Current-season usage for every candidate, from the database.**
    `python -m fantasy_football.cli usage --player "<name>"` prints the
    week-by-week targets/carries/yards/points for this season next to last
