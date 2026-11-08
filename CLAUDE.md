@@ -274,6 +274,22 @@ totals graded vs actuals) and `#/log` all read the `docs/dvp.js` sidecar,
 refreshed by the `dvp.yml` Action (Tue 12:00 UTC for box scores, Wed 06:00
 UTC for the lagging snap counts, before Wednesday waivers).
 
+**Weekly skills** (`.claude/skills/<name>/SKILL.md`; any fresh session can
+run them end to end): **`/lineup`** (run `cli lineup`, sweep the roster's
+injuries, state the lineup slot by slot with PREFERENCES applied, log the
+`FINAL week-N lineup` row), **`/waivers`** (the owner's wire -> usage, this
+week's spot and the rest-of-season schedule per player, season-long
+ranking, field-priced bids, a named drop per claim; log the sheet and the
+owner's queue) and **`/sweep`** (the Tuesday procedure: grade pending
+decisions, injury sweep, profile-shift rows, waiver sheet + tentative
+lineup). All three share one setup block (fresh branch from main, DB check
+and rebuild, read `PREFERENCES.md` -> `PLAYBOOK.md` -> `roster.csv` and
+read the roster back, rebuild `docs/dvp.js`) and one ship block (append-only
+CSV rows via `csv.writer(..., lineterminator="\n")`, cache-buster bump,
+`pytest`, PR, squash-merge, verify on main), plus a Known-traps list. The
+Tuesday Routine below is a **backstop that runs `/sweep`**; change the
+procedure in the skill, not in the Routine prompt.
+
 **Injury sweep** (`injuries.csv`, rendered on its own page `#/injuries`
 (the official report joined to the sheet; `buildInjuries` in app.js) and as
 an OUT/EXEMPT chip on My Team rows; read by `read_injuries`, `dvp
