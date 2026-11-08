@@ -255,12 +255,26 @@ in SQLite, so anything bypassing this helper loses referential integrity.
 
 ## In-season decision discipline
 
+**Read `PREFERENCES.md` first** - before `PLAYBOOK.md`, for any roster
+recommendation. It holds the owner's standing calls (roster holds, waiver
+rules, lineup rules, reporting preferences, things rejected), one bullet each
+with the date stated and the `decisions.csv` row it came from. Update it
+whenever the owner states a standing rule; a reversal is appended with its
+date and the earlier bullet marked `superseded <date>`, never deleted. A
+recommendation that goes against a bullet is labeled OVERRIDE.
+
 **Read `PLAYBOOK.md` before any roster recommendation** - it is the
 checklist (usage from the DB via `cli usage`, board grade, one-game rule,
 league format, log it) plus the graded misses that produced it.
 
-`decisions.csv` (date,week,decision,who,board,override,rationale,outcome,
-verdict) is the pre-registered decision log, rendered at `#/log` by the
+**State files** (`roster.csv`, `decisions.csv`, `injuries.csv`,
+`defense_profiles.csv`): schemas, rules and examples live in **`STATE.md`**;
+`cli check-state` validates them (also a test, and a step in `dvp.yml`
+before the build). Change the roster ONLY with `cli roster add|drop|move`
+(resolves names against the DB, logs a `who=user` row); write log rows with
+`cli log add` / `cli log grade` instead of hand-editing CSV.
+
+`decisions.csv` is the pre-registered decision log, rendered at `#/log` by the
 `dvp` build. Rules that came out of a graded miss (wk2 2026: dropping the
 board's best TE matchup for a one-game "role"): (1) every add/drop/start/sit
 recommendation quotes the matchup board's grade for EVERY candidate first;
@@ -274,14 +288,40 @@ totals graded vs actuals) and `#/log` all read the `docs/dvp.js` sidecar,
 refreshed by the `dvp.yml` Action (Tue 12:00 UTC for box scores, Wed 06:00
 UTC for the lagging snap counts, before Wednesday waivers).
 
+**Lineup command** (`cli lineup [--roster roster.csv] [--dvp docs/dvp.js]
+[--json] [--week N]`, logic in `lineup.py`): the weekly start/sit answer
+from `roster.csv` + the committed `docs/dvp.js` + the DB, no network. It is
+a Python port of the app's `modelProj` (keep the two in lockstep; a test
+pins a hand-computed case), with `ppg` = season PPG blended 50/50 with
+last-3 PPG (`RECENT_FORM_WEIGHT`) from 3 games; usage counts only games
+before the sidecar's week. Prints a table per slot (top-3 alternatives),
+the unavailable list (OUT/DOUBTFUL/IR/bye) and questionable starters with
+the next man up; unmatched roster names fail loudly. Start every lineup
+answer from it.
+
+**Weekly skills** (`.claude/skills/<name>/SKILL.md`; any fresh session can
+run them end to end): **`/lineup`** (run `cli lineup`, sweep the roster's
+injuries, state the lineup slot by slot with PREFERENCES applied, log the
+`FINAL week-N lineup` row), **`/waivers`** (the owner's wire -> usage, this
+week's spot and the rest-of-season schedule per player, season-long
+ranking, field-priced bids, a named drop per claim; log the sheet and the
+owner's queue) and **`/sweep`** (the Tuesday procedure: grade pending
+decisions, injury sweep, profile-shift rows, waiver sheet + tentative
+lineup). All three share one setup block (fresh branch from main, DB check
+and rebuild, read `PREFERENCES.md` -> `PLAYBOOK.md` -> `roster.csv` and
+read the roster back, rebuild `docs/dvp.js`) and one ship block (append-only
+CSV rows via `csv.writer(..., lineterminator="\n")`, cache-buster bump,
+`pytest`, PR, squash-merge, verify on main), plus a Known-traps list. The
+Tuesday Routine below is a **backstop that runs `/sweep`**; change the
+procedure in the skill, not in the Routine prompt.
+
 **Injury sweep** (`injuries.csv`, rendered on its own page `#/injuries`
 (the official report joined to the sheet; `buildInjuries` in app.js) and as
 an OUT/EXEMPT chip on My Team rows; read by `read_injuries`, `dvp
 --injuries`; rows older than `INJURY_MAX_AGE_DAYS` (21) age off the page
 unless the status is IR/exempt/season/PUP, so the sheet can only grow while
-the page stays current). Columns `date,player,team,pos,status,
-injury,timeline,replacement,note`: the timeline, who absorbs the work (one
-beneficiary vs a split) and the scheme read (what the offense's philosophy
+the page stays current). Columns per `STATE.md`: the timeline, who absorbs
+the work (one beneficiary vs a split) and the scheme read (what the offense's philosophy
 does with the absence). Newest row per player wins, so append rather than
 edit. Two layers: the **official report** is tokenless - nflverse
 republishes the league's practice reports and Friday designations as
@@ -295,7 +335,8 @@ out on Friday shows on Arizona's row before kickoff instead of after the
 snap file lands. `dvp.yml` runs it Tue/Wed/Sat/Sun. The **analysis layer**
 (timeline, who absorbs the work, scheme) needs judgment: a Tuesday
 14:00 UTC Routine fires into the MAIN session (`roster.csv` holds the
-user's current roster + slots - keep it current after every waiver move),
+user's current roster + slots - keep it current after every waiver move
+with `cli roster`),
 grades last week's decisions, sweeps with WebSearch (WebFetch to news
 sites is egress-blocked), appends rows, ships via PR, and writes the
 waiver sheet; that path costs tokens, the official layer does not. A
@@ -327,7 +368,7 @@ from **snap counts** (>= 50%) with **contracts** (`$` = apy >= $15M,
 `R1` = first-rounder within 4 seasons or a top-10 pick) as the star
 tie-break, `OUT` from the official report. Two outputs: (1)
 `cli dvp` puts `FF_DVP.scheme[TEAM] = {d, t, m, shift}` in dvp.js - `t`
-is the newest `defense_profiles.csv` row (`team,date,profile`, appended,
+is the newest `defense_profiles.csv` row (schema in `STATE.md`; appended,
 newest wins), `m` the season block with `last3` and `key`; (2)
 `cli defense-notes-measured` (dvp.yml's Wednesday 06:00 run, `--force`,
 before the build) appends one `WkN measured:` row per defense to

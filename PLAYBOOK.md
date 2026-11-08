@@ -7,6 +7,10 @@ luck, they were skipped steps.
 
 ## The pre-recommendation checklist (all five, every time)
 
+0. **Read `PREFERENCES.md`.** The owner's standing calls (holds, waiver
+   rules, lineup rules, rejections) come before the checklist. A
+   recommendation against one of them is labeled **OVERRIDE**, like a call
+   against the board. When the owner states a new standing rule, add it there.
 1. **Current-season usage for every candidate, from the database.**
    `python -m fantasy_football.cli usage --player "<name>"` prints the
    week-by-week targets/carries/yards/points for this season next to last
@@ -19,6 +23,8 @@ luck, they were skipped steps.
    If the recommendation disagrees with the board, write **OVERRIDE** and
    exactly one structural reason (injury, depth chart, scheme note). No
    structural reason = the board wins.
+   For start/sit, the board grade comes from `python -m fantasy_football.cli lineup`
+   (same model as `#/dvp` Proj, plus last-3 form and the injury report) - quote its rows.
 2a. **Grade the defense from its profile, not the week's note.** `#/defenses`
    (`FF_DVP.profiles`) carries the measured read: season rank, last-3-games
    rank, the trend between them, points allowed by week, and the snap-count
