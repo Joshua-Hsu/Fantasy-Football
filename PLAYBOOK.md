@@ -23,6 +23,8 @@ luck, they were skipped steps.
    If the recommendation disagrees with the board, write **OVERRIDE** and
    exactly one structural reason (injury, depth chart, scheme note). No
    structural reason = the board wins.
+   For start/sit, the board grade comes from `python -m fantasy_football.cli lineup`
+   (same model as `#/dvp` Proj, plus last-3 form and the injury report) - quote its rows.
 2a. **Grade the defense from its profile, not the week's note.** `#/defenses`
    (`FF_DVP.profiles`) carries the measured read: season rank, last-3-games
    rank, the trend between them, points allowed by week, and the snap-count
