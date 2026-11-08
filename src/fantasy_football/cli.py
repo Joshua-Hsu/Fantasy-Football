@@ -50,6 +50,86 @@ def _open_session(args: argparse.Namespace):
     return get_sessionmaker(engine)()
 
 
+# --- state files (state.py): check-state, roster, log ----------------------
+
+def _cmd_check_state(args: argparse.Namespace) -> int:
+    from .state import check_state
+
+    with _open_session(args) as session:
+        probs = check_state(args.root, session)
+    errors = [p for p in probs if p.level == "error"]
+    for p in probs:
+        print(p)
+    n_warn = len(probs) - len(errors)
+    if errors:
+        print(f"check-state: FAILED - {len(errors)} error(s), {n_warn} warning(s)")
+        return 1
+    print(f"check-state: OK ({n_warn} warning(s))")
+    return 0
+
+
+def _cmd_roster(args: argparse.Namespace) -> int:
+    from . import state
+
+    if args.roster_cmd == "show":
+        for head, rows in state.roster_groups(args.roster):
+            print(head)
+            for r in rows:
+                print(f"  {r.get('player', ''):<24} {r.get('pos', ''):<4} "
+                      f"{r.get('team', ''):<4} {r.get('slot', '')}")
+        return 0
+    with _open_session(args) as session:
+        try:
+            kw = dict(week=args.week, rationale=args.why or "",
+                      roster_path=args.roster, decisions_path=args.decisions)
+            if args.roster_cmd == "add":
+                ch = state.roster_add(session, args.name, slot=args.slot, drop=args.drop,
+                                      team=args.team, **kw)
+            elif args.roster_cmd == "drop":
+                ch = state.roster_drop(session, args.name, **kw)
+            else:
+                ch = state.roster_move(session, args.name, slot=args.slot, **kw)
+        except state.ResolveError as e:
+            print(f"error: {e}")
+            for c in e.candidates:
+                print(f"  candidate: {c}")
+            return 1
+        except ValueError as e:
+            print(f"error: {e}")
+            return 1
+    print(f"{ch.summary}  (logged as {args.decisions} row {ch.row})")
+    return 0
+
+
+def _cmd_log(args: argparse.Namespace) -> int:
+    from . import state
+
+    try:
+        if args.log_cmd == "add":
+            fields = state.decision_row(
+                week=args.week, decision=args.decision, who=args.who, board=args.board,
+                override=args.override, rationale=args.rationale, date=args.date)
+            row = state.append_decision(args.decisions, fields)
+            print(f"logged {args.decisions} row {row}: {fields[2]}")
+        elif args.log_cmd == "grade":
+            new = state.grade_decision(args.decisions, args.row, outcome=args.outcome,
+                                       verdict=args.verdict, force=args.force)
+            print(f"graded row {args.row} ({new[8]}): {new[2]}")
+        else:  # list
+            doc = state.CsvDoc.load(args.decisions)
+            for i, rec in enumerate(doc.rows(), start=1):
+                f = rec.fields
+                if len(f) != len(state.DECISIONS_HEADER):
+                    continue
+                if args.pending and f[8] != "pending":
+                    continue
+                print(f"{i:>4}  {f[0]}  wk{f[1]:<3} {f[3]:<6} {f[8]:<8} {f[2][:90]}")
+    except ValueError as e:
+        print(f"error: {e}")
+        return 1
+    return 0
+
+
 def _cmd_load_teams(args: argparse.Namespace) -> int:
     from .ingest import load_teams
 
@@ -1662,6 +1742,57 @@ def build_parser() -> argparse.ArgumentParser:
     p_dvp.add_argument("--profiles", default="defense_profiles.csv",
                        help="Durable per-defense scheme profiles CSV (team,date,profile)")
     p_dvp.set_defaults(func=_cmd_dvp)
+
+    # State files (schemas in STATE.md): validator, roster editor, decision log.
+    p_cs = sub.add_parser("check-state",
+                          help="Validate roster/decisions/injuries/defense_profiles CSVs")
+    p_cs.add_argument("--root", default=".", help="Directory holding the state files")
+    p_cs.set_defaults(func=_cmd_check_state)
+
+    p_ro = sub.add_parser("roster", help="Show or edit roster.csv (every edit is logged)")
+    ro_sub = p_ro.add_subparsers(dest="roster_cmd", required=True)
+    ro_show = ro_sub.add_parser("show", help="Print the roster grouped by slot")
+    ro_add = ro_sub.add_parser("add", help="Add a player (resolved against the DB)")
+    ro_add.add_argument("name")
+    ro_add.add_argument("--slot", default="bench")
+    ro_add.add_argument("--drop", default=None, help="Drop this player in the same move")
+    ro_add.add_argument("--team", default=None, help="Team code to break a name tie")
+    ro_drop = ro_sub.add_parser("drop", help="Drop a player")
+    ro_drop.add_argument("name")
+    ro_move = ro_sub.add_parser("move", help="Change a player's slot")
+    ro_move.add_argument("name")
+    ro_move.add_argument("--slot", required=True)
+    for p_ in (ro_show, ro_add, ro_drop, ro_move):
+        p_.add_argument("--roster", default="roster.csv")
+        p_.add_argument("--decisions", default="decisions.csv")
+    for p_ in (ro_add, ro_drop, ro_move):
+        p_.add_argument("--week", type=int, default=None,
+                        help="Log week (default: next unplayed week in the DB)")
+        p_.add_argument("--why", default=None, help="Rationale for the log row")
+    p_ro.set_defaults(func=_cmd_roster)
+
+    p_log = sub.add_parser("log", help="Append or grade decisions.csv rows")
+    log_sub = p_log.add_subparsers(dest="log_cmd", required=True)
+    log_add = log_sub.add_parser("add", help="Append a pending decision row")
+    log_add.add_argument("--week", type=int, required=True)
+    log_add.add_argument("--who", choices=["claude", "user"], required=True)
+    log_add.add_argument("--decision", required=True)
+    log_add.add_argument("--board", required=True)
+    log_add.add_argument("--override", required=True, help="Starts with yes/no")
+    log_add.add_argument("--rationale", required=True)
+    log_add.add_argument("--date", default=None, help="ISO date (default today)")
+    log_grade = log_sub.add_parser("grade", help="Fill outcome/verdict on a pending row")
+    log_grade.add_argument("--row", type=int, required=True,
+                           help="Data row number (1 = first row; see `log list`)")
+    log_grade.add_argument("--outcome", required=True)
+    log_grade.add_argument("--verdict", choices=["hit", "miss", "neutral", "pending"],
+                           required=True)
+    log_grade.add_argument("--force", action="store_true", help="Regrade a graded row")
+    log_list = log_sub.add_parser("list", help="List rows with their row numbers")
+    log_list.add_argument("--pending", action="store_true", help="Only pending rows")
+    for p_ in (log_add, log_grade, log_list):
+        p_.add_argument("--decisions", default="decisions.csv")
+    p_log.set_defaults(func=_cmd_log)
 
     p_dnm = sub.add_parser(
         "defense-notes-measured",

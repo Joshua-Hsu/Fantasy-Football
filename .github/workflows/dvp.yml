@@ -66,6 +66,13 @@ jobs:
           { echo "### Measured defense notes"; echo '```'; cat measured.log; echo '```'; } \
             >> "$GITHUB_STEP_SUMMARY"
 
+      # Validate the hand-kept state files (roster/decisions/injuries/
+      # defense_profiles; schemas in STATE.md) against the freshly loaded DB.
+      # A malformed row fails the run loudly here instead of being silently
+      # dropped by the readers that build the Log / Injuries pages.
+      - name: Check state files
+        run: python -m fantasy_football.cli check-state
+
       - name: Build docs/dvp.js
         run: |
           python -m fantasy_football.cli dvp --out docs/dvp.js

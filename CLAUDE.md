@@ -259,8 +259,14 @@ in SQLite, so anything bypassing this helper loses referential integrity.
 checklist (usage from the DB via `cli usage`, board grade, one-game rule,
 league format, log it) plus the graded misses that produced it.
 
-`decisions.csv` (date,week,decision,who,board,override,rationale,outcome,
-verdict) is the pre-registered decision log, rendered at `#/log` by the
+**State files** (`roster.csv`, `decisions.csv`, `injuries.csv`,
+`defense_profiles.csv`): schemas, rules and examples live in **`STATE.md`**;
+`cli check-state` validates them (also a test, and a step in `dvp.yml`
+before the build). Change the roster ONLY with `cli roster add|drop|move`
+(resolves names against the DB, logs a `who=user` row); write log rows with
+`cli log add` / `cli log grade` instead of hand-editing CSV.
+
+`decisions.csv` is the pre-registered decision log, rendered at `#/log` by the
 `dvp` build. Rules that came out of a graded miss (wk2 2026: dropping the
 board's best TE matchup for a one-game "role"): (1) every add/drop/start/sit
 recommendation quotes the matchup board's grade for EVERY candidate first;
@@ -279,9 +285,8 @@ UTC for the lagging snap counts, before Wednesday waivers).
 an OUT/EXEMPT chip on My Team rows; read by `read_injuries`, `dvp
 --injuries`; rows older than `INJURY_MAX_AGE_DAYS` (21) age off the page
 unless the status is IR/exempt/season/PUP, so the sheet can only grow while
-the page stays current). Columns `date,player,team,pos,status,
-injury,timeline,replacement,note`: the timeline, who absorbs the work (one
-beneficiary vs a split) and the scheme read (what the offense's philosophy
+the page stays current). Columns per `STATE.md`: the timeline, who absorbs
+the work (one beneficiary vs a split) and the scheme read (what the offense's philosophy
 does with the absence). Newest row per player wins, so append rather than
 edit. Two layers: the **official report** is tokenless - nflverse
 republishes the league's practice reports and Friday designations as
@@ -295,7 +300,8 @@ out on Friday shows on Arizona's row before kickoff instead of after the
 snap file lands. `dvp.yml` runs it Tue/Wed/Sat/Sun. The **analysis layer**
 (timeline, who absorbs the work, scheme) needs judgment: a Tuesday
 14:00 UTC Routine fires into the MAIN session (`roster.csv` holds the
-user's current roster + slots - keep it current after every waiver move),
+user's current roster + slots - keep it current after every waiver move
+with `cli roster`),
 grades last week's decisions, sweeps with WebSearch (WebFetch to news
 sites is egress-blocked), appends rows, ships via PR, and writes the
 waiver sheet; that path costs tokens, the official layer does not. A
@@ -327,7 +333,7 @@ from **snap counts** (>= 50%) with **contracts** (`$` = apy >= $15M,
 `R1` = first-rounder within 4 seasons or a top-10 pick) as the star
 tie-break, `OUT` from the official report. Two outputs: (1)
 `cli dvp` puts `FF_DVP.scheme[TEAM] = {d, t, m, shift}` in dvp.js - `t`
-is the newest `defense_profiles.csv` row (`team,date,profile`, appended,
+is the newest `defense_profiles.csv` row (schema in `STATE.md`; appended,
 newest wins), `m` the season block with `last3` and `key`; (2)
 `cli defense-notes-measured` (dvp.yml's Wednesday 06:00 run, `--force`,
 before the build) appends one `WkN measured:` row per defense to
