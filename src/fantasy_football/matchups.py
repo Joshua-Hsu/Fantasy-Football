@@ -672,7 +672,10 @@ def read_decisions(path: str) -> list[dict]:
                 "t": decision[:200],
                 "who": (row.get("who") or "").strip().lower()[:20],
                 "board": (row.get("board") or "").strip()[:300],
-                "ovr": (row.get("override") or "").strip().lower() in ("yes", "y", "true", "1"),
+                # "YES (structural reason...)" counts: STATE.md's rule is
+                # that the override text STARTS with yes/no.
+                "ovr": (row.get("override") or "").strip().lower().split(" ")[0].rstrip(",;:-")
+                in ("yes", "y", "true", "1"),
                 "why": (row.get("rationale") or "").strip()[:500],
                 "out": (row.get("outcome") or "").strip()[:300],
                 "v": (row.get("verdict") or "").strip().lower()[:12] or "pending",
