@@ -255,6 +255,14 @@ in SQLite, so anything bypassing this helper loses referential integrity.
 
 ## In-season decision discipline
 
+**Read `PREFERENCES.md` first** - before `PLAYBOOK.md`, for any roster
+recommendation. It holds the owner's standing calls (roster holds, waiver
+rules, lineup rules, reporting preferences, things rejected), one bullet each
+with the date stated and the `decisions.csv` row it came from. Update it
+whenever the owner states a standing rule; a reversal is appended with its
+date and the earlier bullet marked `superseded <date>`, never deleted. A
+recommendation that goes against a bullet is labeled OVERRIDE.
+
 **Read `PLAYBOOK.md` before any roster recommendation** - it is the
 checklist (usage from the DB via `cli usage`, board grade, one-game rule,
 league format, log it) plus the graded misses that produced it.
