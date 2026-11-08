@@ -274,6 +274,17 @@ totals graded vs actuals) and `#/log` all read the `docs/dvp.js` sidecar,
 refreshed by the `dvp.yml` Action (Tue 12:00 UTC for box scores, Wed 06:00
 UTC for the lagging snap counts, before Wednesday waivers).
 
+**Lineup command** (`cli lineup [--roster roster.csv] [--dvp docs/dvp.js]
+[--json] [--week N]`, logic in `lineup.py`): the weekly start/sit answer
+from `roster.csv` + the committed `docs/dvp.js` + the DB, no network. It is
+a Python port of the app's `modelProj` (keep the two in lockstep; a test
+pins a hand-computed case), with `ppg` = season PPG blended 50/50 with
+last-3 PPG (`RECENT_FORM_WEIGHT`) from 3 games; usage counts only games
+before the sidecar's week. Prints a table per slot (top-3 alternatives),
+the unavailable list (OUT/DOUBTFUL/IR/bye) and questionable starters with
+the next man up; unmatched roster names fail loudly. Start every lineup
+answer from it.
+
 **Injury sweep** (`injuries.csv`, rendered on its own page `#/injuries`
 (the official report joined to the sheet; `buildInjuries` in app.js) and as
 an OUT/EXEMPT chip on My Team rows; read by `read_injuries`, `dvp

@@ -792,6 +792,30 @@ def _cmd_usage(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_lineup(args: argparse.Namespace) -> int:
+    """This week's lineup from roster.csv + docs/dvp.js + the DB (no network)."""
+    from .lineup import (LineupError, build_lineup, load_payload, read_roster, render_markdown,
+                         resolve_roster, to_json)
+    from .matchups import read_injuries
+
+    try:
+        payload = load_payload(args.dvp)
+        roster = read_roster(args.roster)
+        with _open_session(args) as session:
+            rows, unmatched = resolve_roster(session, roster, int(payload["year"]),
+                                            payload.get("week"))
+        if unmatched:
+            raise LineupError("roster.csv names players not in the DB (fix the name or load "
+                              "the data; nothing is guessed): " + ", ".join(unmatched))
+    except LineupError as exc:
+        print(f"lineup: {exc}", file=sys.stderr)
+        return 1
+    injuries = read_injuries(args.injuries) if args.injuries else []
+    result = build_lineup(payload, rows, injuries, week=args.week)
+    print(to_json(result) if args.json else render_markdown(result))
+    return 0
+
+
 def _scout_week(session, args):
     from sqlalchemy import func, select
 
@@ -1638,6 +1662,18 @@ def build_parser() -> argparse.ArgumentParser:
     p_usage.add_argument("--year", type=int, default=None, help="Season (default: latest loaded)")
     p_usage.add_argument("--scoring", choices=["standard", "half_ppr", "ppr"], default="half_ppr")
     p_usage.set_defaults(func=_cmd_usage)
+
+    p_lineup = sub.add_parser(
+        "lineup", help="This week's lineup: matchup-model projections from roster.csv + docs/dvp.js"
+    )
+    p_lineup.add_argument("--roster", default="roster.csv", help="Roster CSV (player,pos,team,slot)")
+    p_lineup.add_argument("--dvp", default="docs/dvp.js", help="The dvp.js sidecar (window.FF_DVP)")
+    p_lineup.add_argument("--injuries", default="injuries.csv",
+                          help="Injury analysis sheet shown as notes ('' to skip)")
+    p_lineup.add_argument("--json", action="store_true", help="Print JSON instead of Markdown")
+    p_lineup.add_argument("--week", type=int, default=None,
+                          help="Week label override (the sidecar is already built for the coming week)")
+    p_lineup.set_defaults(func=_cmd_lineup)
 
     p_dvp = sub.add_parser(
         "dvp", help="Defense-vs-position: fantasy points allowed by defense, for matchup calls"
