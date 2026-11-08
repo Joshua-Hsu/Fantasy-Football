@@ -16,6 +16,35 @@ How to maintain it:
 - When a recommendation goes against a bullet here, say so and label it
   OVERRIDE, the same way a call against the board is labeled.
 
+## Operating procedure (2026-11-08)
+
+How the owner uses this repo week to week. Every session starts fresh;
+nothing lives in chat memory.
+
+- **Lineup question** (Wed-Sun): the owner types `/lineup` in a new session
+  on the repo. The session rebuilds the data, reads this file and PLAYBOOK.md,
+  reads `roster.csv` back and waits for corrections, runs `cli lineup`,
+  sweeps injuries for the roster, states the lineup slot by slot with the
+  reasons, names each questionable starter and his swap, and logs a
+  `FINAL week-N lineup` row. A screenshot of the owner's own lineup with the
+  command means: flag only the slots that differ.
+- **Waiver question** (Mon-Tue night, before Wednesday's run): `/waivers`
+  with the wire screenshots. Every named player gets usage, this week's spot
+  and the rest-of-season schedule; ranking is season-long first; bids are
+  priced by the field; every claim names its drop and shared drops are
+  flagged. The owner's final queue is logged as his.
+- **Tuesday**: `/sweep` grades last week, runs the injury pass, files
+  profile-shift rows, writes the waiver sheet and a tentative lineup, ships
+  and reports. The scheduled Routine runs the same skill as a backstop.
+- **Roster moves** are stated in words ("dropped X for Y") so they go
+  through `cli roster add|drop|move` and are logged; the file never changes
+  on an inference.
+- **Standing rules** are stated as such ("I'm holding Hampton") and appended
+  here, dated, so every later session reads them.
+- Everything else is automatic: `dvp.yml` refreshes the board and injury
+  report Tue/Wed/Sat/Sun, the tiers, Yahoo and archive Actions run on their
+  schedules, and `check-state` fails the build on a malformed row.
+
 ## Roster holds
 
 - Hold Blake Corum. "I'm not dropping Corum." The owner declined the Corum
