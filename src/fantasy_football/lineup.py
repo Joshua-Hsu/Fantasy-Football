@@ -81,7 +81,9 @@ class LineupError(Exception):
 
 def norm_name(n: str) -> str:
     """Case/suffix/punctuation-insensitive name key (same rule as ``scout._norm_name``)."""
-    n = re.sub(r"\s+(Jr\.?|Sr\.?|II|III|IV|V)$", "", (n or "").strip(), flags=re.I)
+    import unicodedata
+    n = "".join(c for c in unicodedata.normalize("NFKD", n or "") if not unicodedata.combining(c))
+    n = re.sub(r"\s+(Jr\.?|Sr\.?|II|III|IV|V)$", "", n.strip(), flags=re.I)
     return re.sub(r"\s+", " ", re.sub(r"[^a-z ]", "", n.lower())).strip()
 
 

@@ -841,6 +841,13 @@ def _cmd_usage(args: argparse.Namespace) -> int:
             .where(Player.position.in_(("QB", "RB", "WR", "TE", "K")))
         ).scalars().all()
         if not players:
+            # Accent-insensitive fallback: "Estime" must find "Audric Estimé".
+            from .scout import _norm_name
+            want = _norm_name(args.player)
+            players = [p for p in session.execute(
+                select(Player).where(Player.position.in_(("QB", "RB", "WR", "TE", "K")))
+            ).scalars() if want and want in _norm_name(p.full_name or "")]
+        if not players:
             print(f"No player matching {args.player!r}")
             return 1
         for p in players[:5]:
