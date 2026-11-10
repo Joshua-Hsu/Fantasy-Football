@@ -180,7 +180,9 @@ def norm_name(name: str) -> str:
     """Case/punctuation/suffix-insensitive key (same idea as scout._norm_name):
     ``"D.J. Moore"`` == ``"DJ Moore"``, ``"Marvin Harrison Jr."`` ==
     ``"marvin harrison"``, ``"De'Von Achane"`` == ``"Devon Achane"``."""
-    n = _SUFFIX.sub("", (name or "").strip())
+    import unicodedata
+    n = "".join(c for c in unicodedata.normalize("NFKD", name or "") if not unicodedata.combining(c))
+    n = _SUFFIX.sub("", n.strip())
     n = re.sub(r"[^a-z ]", "", n.lower())
     return " ".join(n.split())
 

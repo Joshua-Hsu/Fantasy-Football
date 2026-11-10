@@ -281,6 +281,10 @@ _NAME_RE = re.compile(r"\b([A-Z][a-z'’.-]+(?:\s(?:[A-Z][a-z'’.-]+|[A-Z]\.?))
 
 
 def _norm_name(n: str) -> str:
+    import unicodedata
+    # Strip accents first ("Estimé" -> "Estime") or the regex below drops the
+    # letter and "Audric Estime" never matches the DB's "Audric Estimé".
+    n = "".join(c for c in unicodedata.normalize("NFKD", n) if not unicodedata.combining(c))
     n = re.sub(r"\s+(Jr\.?|Sr\.?|II|III|IV)$", "", n.strip())
     return re.sub(r"[^a-z ]", "", n.lower())
 

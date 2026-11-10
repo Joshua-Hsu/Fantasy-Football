@@ -266,3 +266,13 @@ def test_validate_next_keeps_own_defenders():
     # Without the own-roster set the home defender would be flagged too.
     _fixed, bad2 = validate_next(note, 6, "vPIT", pit, everyone)
     assert set(bad2) == {"Budda Baker", "George Pickens"}
+
+
+def test_norm_name_strips_accents():
+    """"Audric Estimé" in the DB must match a typed "Audric Estime"."""
+    from fantasy_football.scout import _norm_name
+    from fantasy_football.state import norm_name as state_norm
+    from fantasy_football.lineup import norm_name as lineup_norm
+
+    for f in (_norm_name, state_norm, lineup_norm):
+        assert f("Audric Estimé") == f("Audric Estime") == "audric estime"
