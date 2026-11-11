@@ -866,8 +866,10 @@ def _cmd_usage(args: argparse.Namespace) -> int:
                 tg = [st.targets for st, _ in rows]
                 ca = [st.rush_attempts for st, _ in rows]
                 best = sorted(pts, reverse=True)[:4]
+                opp = [t + c for t, c in zip(tg, ca)]  # touches = carries + targets
                 print(f"  {yr}: {len(rows)}g  {sum(pts)/len(pts):.1f} ppg  "
                       f"{sum(tg)/len(tg):.1f} tgt/g  {sum(ca)/len(ca):.1f} car/g  "
+                      f"{sum(opp)/len(opp):.1f} opp/g  "
                       f"best {'/'.join(f'{b:.1f}' for b in best)}  "
                       f"12+ in {sum(1 for x in pts if x >= 12)}g")
                 if yr == year:
@@ -875,7 +877,8 @@ def _cmd_usage(args: argparse.Namespace) -> int:
                         print(f"    wk{wk:2}  {st.targets:2}tgt {st.receptions:2}rec "
                               f"{st.receiving_yards:4}yd {st.receiving_touchdowns}td | "
                               f"{st.rush_attempts:2}car {st.rush_yards:4}yd "
-                              f"{st.rush_touchdowns}td -> {score_stats(st, rules):5.1f}")
+                              f"{st.rush_touchdowns}td | {st.targets + st.rush_attempts:2}opp "
+                              f"-> {score_stats(st, rules):5.1f}")
     return 0
 
 

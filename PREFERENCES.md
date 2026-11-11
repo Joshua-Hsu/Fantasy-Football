@@ -103,6 +103,10 @@ nothing lives in chat memory.
 
 ## Lineup rules
 
+- **Touches = carries + targets (catches count as targets, not twice).** Any
+  touch or opportunity count quoted for a back or receiver uses that sum;
+  `cli usage` prints it as `opp`. (2026-11-11)
+
 - WR slots are a weekly pick of 3 from the floors (Rice/Adams/Higgins/Evans at
   the time) by weekly pop, not a fixed order, until a Jameson-type posts a
   smash or a lock scheme matchup. (wk3, decisions.csv 2026-09-22)
