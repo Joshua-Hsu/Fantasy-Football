@@ -106,6 +106,11 @@ def load_payload(path: str) -> dict:
 
 
 def check_payload(payload: dict, path: str = "dvp.js") -> None:
+    # ``official`` is empty (and omitted by ``write_dvp_js``) between Monday
+    # night and the first Wednesday practice report, so it cannot be required:
+    # a Tuesday run must still produce a lineup, with the gap stated.
+    if "official" not in payload:
+        payload = {**payload, "official": [], "official_missing": True}
     missing = [f for f in REQUIRED_FIELDS if f not in payload]
     if missing:
         raise LineupError(f"{path} predates the fields `cli lineup` needs (missing: "
