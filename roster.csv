@@ -1,17 +1,17 @@
 player,pos,team,slot
-Rhamondre Stevenson,RB,NE,bench (knee; NE bye wk11)
+Rhamondre Stevenson,RB,NE,FLEX
 Josh Jacobs,RB,GB,bench (finger; GB bye wk11; wk12 earliest)
 Tee Higgins,WR,CIN,WR1
-Jameson Williams,WR,DET,WR2
-Blake Corum,RB,LA,bench (bye wk11)
+Jameson Williams,WR,DET,bench
+Blake Corum,RB,LA,RB2
 Brandon Aubrey,K,DAL,K
-LA,DST,LA,"bench (DST, bye wk11)"
-Mike Evans,WR,SF,"bench (wk11: user resting him vMIN, back from the Achilles)"
-Omarion Hampton,RB,LAC,RB2 (wk11; 22 car 63% snaps wk10)
-Rashee Rice,WR,KC,FLEX
+LA,DST,LA,DST
+Mike Evans,WR,SF,WR2
+Omarion Hampton,RB,LAC,bench
+Rashee Rice,WR,KC,bench
 Chig Okonkwo,TE,WAS,TE
 Davante Adams,WR,LA,"IR (hamstring, 6-10 wks)"
 Emmett Johnson,RB,KC,RB1
 Kaleb Johnson,RB,GB,bench (bye wk11; drop candidate when Jacobs returns)
-Bo Nix,QB,DEN,QB
-LAC,DST,LAC,DST (wk11 stream vNYJ)
+Bo Nix,QB,DEN,bench
+Deshaun Watson,QB,CLE,QB
